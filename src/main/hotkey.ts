@@ -77,12 +77,13 @@ export interface IpcHandleLike<E = unknown> {
  * Wraps `ipc` so a `settings:set` naming a new `globalHotkey` registers it before anything is saved
  * (spec §3.7, §7 "Global hotkey taken"). On failure the old hotkey stays live and stored, nothing in
  * the patch is saved, and the call rejects with the readable sentence Settings → Shortcuts shows.
+ * If the save itself then fails, the previous hotkey is registered again.
  * Untrusted senders never reach the hotkey: `registerIpc` refuses them, so this does too.
  */
 export function guardHotkeySetting<E>(
   ipc: IpcHandleLike<E>,
   settingsChannel: string,
-  hotkey: Pick<GlobalHotkey, 'register'>,
+  hotkey: Pick<GlobalHotkey, 'register' | 'active'>,
   isTrusted: (event: E) => boolean = () => true,
 ): IpcHandleLike<E> {
   return {
@@ -93,14 +94,27 @@ export function guardHotkeySetting<E>(
       }
       ipc.handle(channel, (event, ...args) => {
         const patch = args[0];
-        if (isTrusted(event) && typeof patch === 'object' && patch !== null && 'globalHotkey' in patch) {
-          const accel = (patch as { globalHotkey: unknown }).globalHotkey;
-          if (typeof accel === 'string' && accel.length <= 500) {
-            const res = hotkey.register(accel);
-            if (!res.ok) throw new Error(res.error);
-          }
+        if (!isTrusted(event) || typeof patch !== 'object' || patch === null || !('globalHotkey' in patch)) {
+          return listener(event, ...args);
         }
-        return listener(event, ...args);
+        const accel = (patch as { globalHotkey: unknown }).globalHotkey;
+        if (typeof accel !== 'string' || accel.length > 500) return listener(event, ...args);
+        const previous = hotkey.active;
+        const res = hotkey.register(accel);
+        if (!res.ok) throw new Error(res.error);
+        // Review finding 3: the patch was refused or not saved, so the stored hotkey is still the
+        // previous one; that is the one that must be live.
+        const rollBack = (err: unknown): never => {
+          const back = hotkey.register(previous);
+          if (!back.ok) console.warn(`StudyAt: could not restore the previous hotkey. ${back.error}`);
+          throw err;
+        };
+        try {
+          const out = listener(event, ...args);
+          return out instanceof Promise ? out.catch(rollBack) : out;
+        } catch (err) {
+          return rollBack(err);
+        }
       });
     },
   };

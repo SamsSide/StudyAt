@@ -153,6 +153,47 @@ describe('guardHotkeySetting', () => {
     expect(hk.active).toBe('Ctrl+Alt+P');
   });
 
+  // Review finding 3: a patch that fails to save leaves the previous hotkey live.
+  it('a save that throws puts the previous hotkey back', () => {
+    const { registry, live } = fakeRegistry();
+    const hk = new GlobalHotkey(registry, vi.fn(), () => 0);
+    hk.register('Ctrl+Alt+P');
+    let listener: ((event: unknown, ...args: unknown[]) => unknown) | undefined;
+    const guarded = guardHotkeySetting({ handle: (_c, l) => void (listener = l) }, 'settings:set', hk);
+    guarded.handle('settings:set', () => {
+      throw new Error('Invalid settings');
+    });
+    expect(() => listener?.({}, { globalHotkey: 'Ctrl+Shift+F', notifications: 'yes' })).toThrow('Invalid settings');
+    expect(hk.active).toBe('Ctrl+Alt+P');
+    expect([...live.keys()]).toEqual(['Ctrl+Alt+P']);
+  });
+
+  it('a save that rejects puts the previous hotkey back', async () => {
+    const { registry, live } = fakeRegistry();
+    const hk = new GlobalHotkey(registry, vi.fn(), () => 0);
+    hk.register('Ctrl+Alt+P');
+    let listener: ((event: unknown, ...args: unknown[]) => unknown) | undefined;
+    const guarded = guardHotkeySetting({ handle: (_c, l) => void (listener = l) }, 'settings:set', hk);
+    guarded.handle('settings:set', () => Promise.reject(new Error('disk full')));
+    await expect(listener?.({}, { globalHotkey: 'Ctrl+Shift+F' })).rejects.toThrow('disk full');
+    expect(hk.active).toBe('Ctrl+Alt+P');
+    expect([...live.keys()]).toEqual(['Ctrl+Alt+P']);
+  });
+
+  it('turning the hotkey off is undone too when the save fails', () => {
+    const { registry, live } = fakeRegistry();
+    const hk = new GlobalHotkey(registry, vi.fn(), () => 0);
+    hk.register('Ctrl+Alt+P');
+    let listener: ((event: unknown, ...args: unknown[]) => unknown) | undefined;
+    const guarded = guardHotkeySetting({ handle: (_c, l) => void (listener = l) }, 'settings:set', hk);
+    guarded.handle('settings:set', () => {
+      throw new Error('Invalid settings');
+    });
+    expect(() => listener?.({}, { globalHotkey: '' })).toThrow('Invalid settings');
+    expect(hk.active).toBe('Ctrl+Alt+P');
+    expect([...live.keys()]).toEqual(['Ctrl+Alt+P']);
+  });
+
   it('an untrusted sender never touches the hotkey', () => {
     const { hk, call } = setup([], false);
     call('settings:set', { globalHotkey: 'Ctrl+Shift+F' });

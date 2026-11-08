@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import initSqlJs, { type Database as SqlJsDatabase, type SqlJsStatic } from 'sql.js';
 import { DB_FILE, fileStamp } from './backup';
+import { corruptState, markCorruptPending } from './corrupt';
 import { nodeFs, renameWithRetry, type DbFs } from './db-fs';
 import { migrate } from './migrations';
 import { seedIfEmpty, type BuiltinAssets } from './seed';
@@ -34,7 +35,7 @@ export interface Db {
   /**
    * `corrupt`: the file failed to open, was kept as `studyat.corrupt-<stamp>.sqlite`, and this is
    * a fresh database, already written to `studyat.sqlite`. Pass `skip: true` to `dailyBackup` on
-   * such a launch (R16).
+   * such a launch (R16). It stays `corrupt` on every launch until `resolveCorrupt` (R32).
    */
   recovered: 'ok' | 'corrupt';
   /**
@@ -180,6 +181,13 @@ export async function openDatabase(opts: OpenOptions): Promise<Db> {
   } catch (err) {
     raw.close();
     throw err;
+  }
+  // R32: the dialog is unresolved until Sam chooses, across relaunches, kills and failed restores.
+  if (corruptAt !== null) markCorruptPending(raw, corruptAt);
+  const pendingAt = corruptState(raw).pendingAt;
+  if (pendingAt !== null) {
+    db.recovered = 'corrupt';
+    db.corruptAt = pendingAt;
   }
   const builtin = JSON.parse(await readFile(opts.builtinPath, 'utf8')) as BuiltinAssets;
   seedIfEmpty(db, builtin, opts.now());

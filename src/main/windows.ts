@@ -211,23 +211,48 @@ export interface QuitApp {
   quit(): void;
 }
 
+/** Saving on quit gets this long; then StudyAt quits anyway (review finding 4). */
+export const QUIT_LIMIT_MS = 5000;
+
+export interface QuitTimers {
+  setTimeout(fn: () => void, ms: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+const realTimers: QuitTimers = {
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
 /**
  * Quitting saves first, exactly once (spec §3.4 rule 9): the first `before-quit` is held while
  * `shutdown` runs (bounds, timer, database), then `afterShutdown` (the renderer server), and only
- * then does the app quit, whether either of them failed or not.
+ * then does the app quit, whether either of them failed or not. If they haven't finished within
+ * `QUIT_LIMIT_MS` the app quits regardless: a running row then stays as it was last checkpointed
+ * (at most 15 s old) and is closed there on the next launch (rule 2).
  */
 export function installQuit(
   app: QuitApp,
   shutdown: () => Promise<void>,
   afterShutdown: () => Promise<void> = () => Promise.resolve(),
+  timers: QuitTimers = realTimers,
 ): { isQuitting(): boolean } {
   let quitting = false;
   let ready = false;
+  const finish = (): void => {
+    if (ready) return;
+    ready = true;
+    app.quit();
+  };
   app.on('before-quit', (event) => {
     if (ready) return;
     event.preventDefault();
     if (quitting) return; // a second Quit while saving waits for the first
     quitting = true;
+    const limit = timers.setTimeout(() => {
+      console.error(`StudyAt: saving on quit took over ${QUIT_LIMIT_MS / 1000} s; quitting anyway`);
+      finish();
+    }, QUIT_LIMIT_MS);
     void (async () => {
       try {
         await shutdown();
@@ -239,11 +264,43 @@ export function installQuit(
       } catch (err) {
         console.error('StudyAt: could not stop the renderer server', err);
       }
-      ready = true;
-      app.quit();
+      timers.clearTimeout(limit);
+      finish();
     })();
   });
   return { isQuitting: () => quitting };
+}
+
+/**
+ * The quit's shutdown: each step (bounds, mini position, hotkey) is tried on its own and a failure
+ * only logged, so `stop` (timer.quit, then db.close) always runs. Sam's A1: quitting while away
+ * discards the away time, and only `timer.quit()` does that. `stop`'s own failure is passed on.
+ */
+export async function runShutdown(steps: ReadonlyArray<() => unknown>, stop: () => Promise<void>): Promise<void> {
+  for (const step of steps) {
+    try {
+      step();
+    } catch (err) {
+      console.error('StudyAt: a quit step failed; saving anyway', err);
+    }
+  }
+  await stop();
+}
+
+/**
+ * A menu or hotkey action that must never throw into Electron's event loop: a throw or a rejection
+ * is logged as `StudyAt: <what>` and the app carries on (review finding 5).
+ */
+export function guarded(what: string, fn: () => unknown): () => void {
+  const log = (err: unknown): void => console.error(`StudyAt: ${what}`, err);
+  return () => {
+    try {
+      const out = fn();
+      if (out instanceof Promise) out.catch(log);
+    } catch (err) {
+      log(err);
+    }
+  };
 }
 
 /**
@@ -276,6 +333,8 @@ export function senderIsFrom(event: { senderFrame?: { url: string } | null }, or
 
 export const RESTORE_LATEST = 'Restore latest backup';
 export const START_FRESH = 'Start fresh';
+/** R32: shown when the dialog is back because the restore Sam chose didn't complete. */
+export const RESTORE_UNFINISHED = 'The last restore didn’t finish. Nothing was deleted.';
 
 export interface CorruptDeps {
   showMessageBox(opts: MessageBoxOptions): Promise<{ response: number }>;
@@ -285,16 +344,25 @@ export interface CorruptDeps {
   latestBackup(): Promise<BackupInfo | null>;
   /** The data service's restore (stops, copies atomically, relaunches); never deletes. */
   restore(name: string): Promise<boolean>;
+  /** `corruptState(db.raw).restoreFailed`: a restore from this dialog was started and didn't finish. */
+  restoreFailed: boolean;
+  /** `markCorruptRestoreAttempt(db)`: on disk before `restore` closes the database (R32). */
+  markRestoreAttempt(): Promise<void>;
+  /** `resolveCorrupt(db)`: Sam carries on with the fresh database, so the dialog is done (R32). */
+  resolveFresh(): Promise<void>;
 }
 
 /**
  * Spec §3.3: the database could not be opened and was set aside. Sam chooses "Restore latest
  * backup" (the default; Esc and closing the box choose it too) or "Start fresh". With no backup to
- * restore, the box says so and StudyAt starts fresh. Nothing is ever deleted.
+ * restore, the box says so and StudyAt starts fresh. Nothing is ever deleted. Until Sam starts
+ * fresh, every launch comes back here (R32): a kill while the box is open, or a restore whose copy
+ * failed, relaunches onto the fresh database still marked corrupt.
  */
 export async function resolveCorruptDb(deps: CorruptDeps): Promise<'restored' | 'fresh'> {
   const backup = await deps.latestBackup();
   const kept = `The data file looks damaged, so StudyAt set it aside. It is kept, untouched, as ${deps.keptAs} in your data folder.`;
+  const intro = deps.restoreFailed ? `${kept}\n\n${RESTORE_UNFINISHED}` : kept;
   const base: MessageBoxOptions = {
     type: 'warning',
     title: 'StudyAt',
@@ -303,19 +371,24 @@ export async function resolveCorruptDb(deps: CorruptDeps): Promise<'restored' | 
     defaultId: 0,
     cancelId: 0,
   };
+  const fresh = async (): Promise<'fresh'> => {
+    await deps.resolveFresh();
+    return 'fresh';
+  };
   if (!backup) {
     await deps.showMessageBox({
       ...base,
-      detail: `${kept}\n\nNo backup was found, so StudyAt will start fresh.`,
+      detail: `${intro}\n\nNo backup was found, so StudyAt will start fresh.`,
       buttons: [START_FRESH],
     });
-    return 'fresh';
+    return fresh();
   }
   const { response } = await deps.showMessageBox({
     ...base,
-    detail: `${kept}\n\nRestore the latest backup, from ${localStamp(backup.createdAt)}, or start fresh with empty data.`,
+    detail: `${intro}\n\nRestore the latest backup, from ${localStamp(backup.createdAt)}, or start fresh with empty data.`,
     buttons: [RESTORE_LATEST, START_FRESH],
   });
-  if (response !== 0) return 'fresh';
-  return (await deps.restore(backup.name)) ? 'restored' : 'fresh';
+  if (response !== 0) return fresh();
+  await deps.markRestoreAttempt();
+  return (await deps.restore(backup.name)) ? 'restored' : fresh();
 }

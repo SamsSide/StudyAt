@@ -6,9 +6,13 @@ import { FakeWindow, fakeSettings, fakeTimers } from './test-electron';
 import {
   applyLoginItem,
   createMainWindow,
+  guarded,
   installQuit,
   onceUntilFailure,
+  QUIT_LIMIT_MS,
+  RESTORE_UNFINISHED,
   resolveCorruptDb,
+  runShutdown,
   restorableBounds,
   RESTORE_LATEST,
   SAVE_DEBOUNCE_MS,
@@ -256,6 +260,89 @@ describe('installQuit', () => {
     expect(app.exited).toBe(true);
     expect(shutdown).toHaveBeenCalledTimes(1);
   });
+  // Review finding 4: a save that never settles can't keep StudyAt running.
+  it('quits after QUIT_LIMIT_MS when saving hangs', () => {
+    vi.useFakeTimers();
+    try {
+      const app = new FakeApp();
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      installQuit(app, () => new Promise<void>(() => undefined));
+      app.quit();
+      vi.advanceTimersByTime(QUIT_LIMIT_MS - 1);
+      expect(app.exited).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(app.exited).toBe(true);
+      expect(app.quit).toHaveBeenCalledTimes(2);
+      expect(errors).toHaveBeenCalled();
+      expect(QUIT_LIMIT_MS).toBe(5000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a save that finishes in time quits once and cancels the limit', async () => {
+    const app = new FakeApp();
+    installQuit(app, () => Promise.resolve());
+    app.quit();
+    await flushPromises();
+    expect(app.exited).toBe(true);
+    expect(app.quit).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Review finding 1 (A1: quitting while away discards the away time): the timer always stops.
+describe('runShutdown', () => {
+  it('a step that throws never skips stopping the timer and closing the database', async () => {
+    const order: string[] = [];
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stop = vi.fn(() => {
+      order.push('timer.quit');
+      return Promise.resolve();
+    });
+    await runShutdown(
+      [
+        () => {
+          order.push('main.flush');
+          throw new Error('window destroyed');
+        },
+        () => {
+          order.push('mini.flush');
+          throw new Error('settings write failed');
+        },
+        () => order.push('hotkey.dispose'),
+      ],
+      stop,
+    );
+    expect(order).toEqual(['main.flush', 'mini.flush', 'hotkey.dispose', 'timer.quit']);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(errors).toHaveBeenCalledTimes(2);
+    errors.mockRestore();
+  });
+
+  it('a failure to stop still rejects, so installQuit logs it', async () => {
+    await expect(runShutdown([], () => Promise.reject(new Error('disk full')))).rejects.toThrow('disk full');
+  });
+});
+
+// Review finding 5: a tray click that fails is logged, never an uncaught exception in main.
+describe('guarded', () => {
+  it('logs a throw instead of passing it on', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fn = guarded('the tray could not toggle the timer', () => {
+      throw new Error('db closed');
+    });
+    expect(() => fn()).not.toThrow();
+    expect(errors).toHaveBeenCalledWith('StudyAt: the tray could not toggle the timer', expect.any(Error));
+    errors.mockRestore();
+  });
+
+  it('logs a rejection too', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    guarded('the tray could not show the mini timer', () => Promise.reject(new Error('gone')))();
+    await flushPromises();
+    expect(errors).toHaveBeenCalledWith('StudyAt: the tray could not show the mini timer', expect.any(Error));
+    errors.mockRestore();
+  });
 });
 
 describe('senderIsFrom', () => {
@@ -305,9 +392,21 @@ describe('applyLoginItem', () => {
 
 describe('resolveCorruptDb (spec §3.3)', () => {
   const backup: BackupInfo = { name: 'daily-2026-11-07.sqlite', size: 1, createdAt: new Date(2026, 10, 7, 9, 5).getTime() };
-  const run = (response: number, latest: BackupInfo | null = backup, restored = true) => {
+  const run = (response: number, latest: BackupInfo | null = backup, restored = true, restoreFailed = false) => {
     const boxes: MessageBoxOptions[] = [];
-    const restore = vi.fn(() => Promise.resolve(restored));
+    const order: string[] = [];
+    const restore = vi.fn(() => {
+      order.push('restore');
+      return Promise.resolve(restored);
+    });
+    const markRestoreAttempt = vi.fn(() => {
+      order.push('markRestoreAttempt');
+      return Promise.resolve();
+    });
+    const resolveFresh = vi.fn(() => {
+      order.push('resolveFresh');
+      return Promise.resolve();
+    });
     const result = resolveCorruptDb({
       showMessageBox: (opts) => {
         boxes.push(opts);
@@ -316,8 +415,11 @@ describe('resolveCorruptDb (spec §3.3)', () => {
       keptAs: 'studyat.corrupt-2026-11-08_120000.sqlite',
       latestBackup: () => Promise.resolve(latest),
       restore,
+      restoreFailed,
+      markRestoreAttempt,
+      resolveFresh,
     });
-    return { result, boxes, restore };
+    return { result, boxes, restore, order };
   };
 
   it('offers Restore latest backup (the default, also on Esc) or Start fresh', async () => {
@@ -331,10 +433,34 @@ describe('resolveCorruptDb (spec §3.3)', () => {
     expect(restore).toHaveBeenCalledWith('daily-2026-11-07.sqlite');
   });
 
-  it('Start fresh restores nothing', async () => {
-    const { result, restore } = run(1);
+  // R32: the attempt is on disk before the restore closes the database; nothing is resolved.
+  it('records the restore attempt before restoring and leaves the corrupt state unresolved', async () => {
+    const { result, order } = run(0);
+    expect(await result).toBe('restored');
+    expect(order).toEqual(['markRestoreAttempt', 'restore']);
+  });
+
+  it('Start fresh restores nothing and resolves the corrupt state', async () => {
+    const { result, restore, order } = run(1);
     expect(await result).toBe('fresh');
     expect(restore).not.toHaveBeenCalled();
+    expect(order).toEqual(['resolveFresh']);
+  });
+
+  it('a restore that declines carries on fresh and resolves', async () => {
+    const { result, order } = run(0, backup, false);
+    expect(await result).toBe('fresh');
+    expect(order).toEqual(['markRestoreAttempt', 'restore', 'resolveFresh']);
+  });
+
+  it('after a failed restore the box says the last restore did not finish', async () => {
+    const again = run(1, backup, true, true);
+    await again.result;
+    expect(again.boxes[0]?.detail).toContain(RESTORE_UNFINISHED);
+    expect(RESTORE_UNFINISHED).toBe('The last restore didn’t finish. Nothing was deleted.');
+    const first = run(1);
+    await first.result;
+    expect(first.boxes[0]?.detail).not.toContain(RESTORE_UNFINISHED);
   });
 
   it('says so when there is no backup, and starts fresh', async () => {
@@ -343,5 +469,11 @@ describe('resolveCorruptDb (spec §3.3)', () => {
     expect(boxes[0]?.buttons).toEqual([START_FRESH]);
     expect(boxes[0]?.detail).toContain('No backup was found');
     expect(restore).not.toHaveBeenCalled();
+  });
+
+  it('with no backup, the only choice (Start fresh) resolves the corrupt state', async () => {
+    const { result, order } = run(0, null);
+    expect(await result).toBe('fresh');
+    expect(order).toEqual(['resolveFresh']);
   });
 });

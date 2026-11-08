@@ -23,6 +23,7 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 import { dailyBackup, fileStamp, latestBackupBefore } from './db/backup';
+import { corruptState, markCorruptRestoreAttempt, resolveCorrupt } from './db/corrupt';
 import { NewerSchemaError, openDatabase, type Db } from './db/db';
 import { settingsRepo } from './db/repos/settings';
 import { GlobalHotkey, guardHotkeySetting } from './hotkey';
@@ -44,9 +45,11 @@ import { createTray, type AppTray } from './tray';
 import {
   applyLoginItem,
   createMainWindow,
+  guarded,
   installQuit,
   onceUntilFailure,
   resolveCorruptDb,
+  runShutdown,
   senderIsFrom,
   type MainWindow,
 } from './windows';
@@ -150,6 +153,7 @@ async function openDb(paths: { assets: string; wasm: string }): Promise<Db | nul
 /**
  * Spec §3.3: the damaged file was set aside; before any window shows, Sam restores the latest
  * backup (the app relaunches onto it) or starts fresh. True to carry on with the fresh database.
+ * R32: the fresh file stays marked corrupt (no daily backup, this dialog again) until Start fresh.
  */
 async function recoverCorruptDb(db: Db): Promise<boolean> {
   const corruptAt = db.corruptAt ?? Date.now();
@@ -168,6 +172,11 @@ async function recoverCorruptDb(db: Db): Promise<boolean> {
       keptAs: `studyat.corrupt-${fileStamp(corruptAt)}.sqlite`,
       latestBackup: () => latestBackupBefore(userData, corruptAt),
       restore: (name) => data.restoreBackup(name),
+      restoreFailed: corruptState(db.raw).restoreFailed,
+      markRestoreAttempt: () => markCorruptRestoreAttempt(db),
+      // Cleared in memory at once; if this write fails the next flush carries it.
+      resolveFresh: () =>
+        resolveCorrupt(db).catch((err: unknown) => console.error('StudyAt: could not save the Start fresh choice', err)),
     });
     return outcome === 'fresh';
   } catch (err) {
@@ -256,18 +265,13 @@ async function boot(): Promise<void> {
   // Ctrl+Alt+P from anywhere: one toggle per press (Review Focus 5), whatever paused the timer.
   const hotkey = new GlobalHotkey(
     globalShortcut,
-    () => {
-      try {
-        timer.toggle();
-      } catch (err) {
-        console.error('StudyAt: the hotkey could not toggle the timer', err);
-      }
-    },
+    guarded('the hotkey could not toggle the timer', () => timer.toggle()),
     Date.now,
   );
 
   // Quit: bounds and positions, then the running row closed and flushed (rule 9), then the server,
-  // exactly once; the app quits whatever fails on the way.
+  // exactly once; the app quits whatever fails on the way, within QUIT_LIMIT_MS. A failed step
+  // never skips timer.quit(): quitting while away discards the away time (Sam's A1).
   // A failed attempt is retried by the next quit or restore rather than remembered.
   const stopTimerAndDb = onceUntilFailure(async () => {
     await timer.quit();
@@ -275,12 +279,11 @@ async function boot(): Promise<void> {
   });
   const quitting = installQuit(
     app,
-    async () => {
-      main?.flush();
-      mini?.flush();
-      hotkey.dispose();
-      await stopTimerAndDb();
-    },
+    () =>
+      runShutdown(
+        [() => main?.flush(), () => mini?.flush(), () => hotkey.dispose()],
+        stopTimerAndDb,
+      ),
     async () => {
       tray?.destroy();
       await rendererServer?.close();
@@ -386,8 +389,8 @@ async function boot(): Promise<void> {
       isMiniShown: () => mini?.isShown() ?? false,
       showMain: () => main?.reveal(),
       toggleMain: () => main?.toggle(),
-      toggleTimer: () => void timer.toggle(),
-      toggleMini: () => void mini?.toggle(),
+      toggleTimer: guarded('the tray could not toggle the timer', () => timer.toggle()),
+      toggleMini: guarded('the tray could not toggle the mini timer', () => mini?.toggle()),
       quit: () => app.quit(),
     });
   } catch (err) {
