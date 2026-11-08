@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -42,40 +42,85 @@ describe('TimerWidget', () => {
   it('shows 25:00 idle focus', () => {
     render(<TimerWidget />);
     expect(screen.getByRole('timer')).toHaveTextContent('25:00');
-    expect(screen.getByRole('radio', { name: 'Pomodoro' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: 'Pomodoro' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
   });
 
-  it('mode radios call setMode', async () => {
+  it('mode buttons call setMode on click', async () => {
     render(<TimerWidget />);
-    expect(screen.getByRole('radiogroup', { name: 'Timer mode' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: 'Short break' }));
-    await userEvent.click(screen.getByRole('radio', { name: 'Long break' }));
+    expect(screen.getByRole('toolbar', { name: 'Timer mode' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Short break' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Long break' }));
     expect(api.timer.setMode).toHaveBeenNthCalledWith(1, 'short');
     expect(api.timer.setMode).toHaveBeenNthCalledWith(2, 'long');
   });
 
-  it('the mode radios are one tab stop, and the arrow keys move and select', async () => {
+  const modeButtons = (): HTMLElement[] => {
+    const bar = screen.getByRole('toolbar', { name: 'Timer mode' });
+    return ['Pomodoro', 'Short break', 'Long break'].map((name) => within(bar).getByRole('button', { name }));
+  };
+
+  it('arrow keys only move focus round the modes, so a stray key never ends a focus session', async () => {
     const user = userEvent.setup();
-    setup({ mode: 'short' });
+    setup({ status: 'running', mode: 'focus' });
     render(<TimerWidget />);
-    const [focus, short, long] = screen.getAllByRole('radio');
-    expect(focus).toHaveAttribute('tabindex', '-1');
-    expect(short).toHaveAttribute('tabindex', '0');
+    const [focus, short, long] = modeButtons();
+    expect(focus).toHaveAttribute('tabindex', '0');
+    expect(short).toHaveAttribute('tabindex', '-1');
     expect(long).toHaveAttribute('tabindex', '-1');
     await user.tab();
+    expect(focus).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
     expect(short).toHaveFocus();
     await user.keyboard('{ArrowRight}');
     expect(long).toHaveFocus();
-    expect(api.timer.setMode).toHaveBeenLastCalledWith('long');
     await user.keyboard('{ArrowRight}');
     expect(focus).toHaveFocus();
-    expect(api.timer.setMode).toHaveBeenLastCalledWith('focus');
     await user.keyboard('{ArrowLeft}');
     expect(long).toHaveFocus();
-    await user.keyboard('{ArrowUp}');
+    await user.keyboard('{ArrowUp}{ArrowDown}{Home}');
+    expect(focus).toHaveFocus();
+    await user.keyboard('{End}');
+    expect(long).toHaveFocus();
+    expect(api.timer.setMode).not.toHaveBeenCalled();
+    expect(focus).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('the arrowed-to mode is the tab stop until the mode changes', async () => {
+    const user = userEvent.setup();
+    setup({ status: 'running', mode: 'focus' });
+    render(<TimerWidget />);
+    const [focus, short, long] = modeButtons();
+    await user.tab();
+    await user.keyboard('{ArrowRight}');
+    expect(short).toHaveAttribute('tabindex', '0');
+    expect(focus).toHaveAttribute('tabindex', '-1');
+    await user.tab();
+    expect(short).not.toHaveFocus();
+    await user.tab({ shift: true });
     expect(short).toHaveFocus();
+    push({ ...idleTimerState(), mode: 'long' });
+    expect(long).toHaveAttribute('tabindex', '0');
+    expect(short).toHaveAttribute('tabindex', '-1');
+    expect(long).toHaveAttribute('aria-pressed', 'true');
+    // Back to the first mode: the old arrowed-to stop doesn't come back.
+    push({ ...idleTimerState(), mode: 'focus' });
+    expect(focus).toHaveAttribute('tabindex', '0');
+    expect(short).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('Enter or Space on the focused mode picks it', async () => {
+    const user = userEvent.setup();
+    setup({ status: 'running', mode: 'focus' });
+    render(<TimerWidget />);
+    await user.tab();
+    await user.keyboard('{ArrowRight}{Enter}');
+    expect(api.timer.setMode).toHaveBeenCalledTimes(1);
     expect(api.timer.setMode).toHaveBeenLastCalledWith('short');
+    await user.keyboard('{ArrowRight} ');
+    expect(api.timer.setMode).toHaveBeenCalledTimes(2);
+    expect(api.timer.setMode).toHaveBeenLastCalledWith('long');
   });
 
   it('start, pause, resume, reset and skip call the API', async () => {
@@ -231,6 +276,20 @@ describe('SubjectSelect', () => {
     await user.keyboard(' ');
     expect(api.timer.setSubject).toHaveBeenLastCalledWith(subjects[0]!.id);
     expect(box).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('Tab closes the list without picking and lets focus move on', async () => {
+    const user = userEvent.setup();
+    setup({ status: 'running', mode: 'focus' });
+    render(<TimerWidget />);
+    const box = screen.getByRole('combobox', { name: 'Subject' });
+    act(() => box.focus());
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+    expect(box).toHaveAttribute('aria-expanded', 'true');
+    await user.tab();
+    expect(api.timer.setSubject).not.toHaveBeenCalled();
+    expect(box).toHaveAttribute('aria-expanded', 'false');
+    expect(box).not.toHaveFocus();
   });
 
   it('keeps its keys from the shortcuts while it has focus', async () => {

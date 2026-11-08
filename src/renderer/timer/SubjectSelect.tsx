@@ -102,7 +102,8 @@ export function SubjectSelect() {
     else if (key === 'Enter' || (key === ' ' && typed.current.text === '')) pick(active);
     else if (key === 'Escape') close();
     else if (key === 'Tab') {
-      pick(active);
+      // Close without picking: a stray Tab must never split a focus session (appplan §5).
+      close();
       return; // let Tab move focus on as usual
     } else if (key.length === 1 && !e.altKey) typeAhead(key);
     else return;

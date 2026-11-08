@@ -1,6 +1,6 @@
 // The timer widget's body (spec §4); the frosted frame and title come from WidgetFrame. Main owns
 // the clock: this only shows `timer` from the store and sends commands (appplan §5).
-import { type KeyboardEvent, useRef } from 'react';
+import { type KeyboardEvent, useRef, useState } from 'react';
 import type { Mode } from '../../shared/types';
 import { Icon } from '../shell/icons';
 import { useStudyStore } from '../shell/store';
@@ -18,34 +18,41 @@ export function TimerWidget() {
   const setOverlay = useStudyStore((s) => s.setOverlay);
   const miniShown = useStudyStore((s) => s.miniShown);
   const toggleMini = useStudyStore((s) => s.toggleMini);
-  const radios = useRef<(HTMLButtonElement | null)[]>([]);
+  const buttons = useRef<(HTMLButtonElement | null)[]>([]);
+  // The roving tab stop: the mode last arrowed to, until main reports a mode change.
+  const [roving, setRoving] = useState<{ base: Mode; at: Mode } | null>(null);
+  if (roving && roving.base !== timer.mode) setRoving(null);
+  const tabStop = roving?.base === timer.mode ? roving.at : timer.mode;
   const api = window.studyat.timer;
   const message = timer.status === 'paused' ? pauseMessage(timer.pauseReason) : null;
 
-  // A radio group is one tab stop; the arrow keys move round it and pick as they go.
+  // The modes are one tab stop. The arrow keys (and Home/End) only move focus: changing mode
+  // mid-focus ends the session (appplan §5), so only Enter, Space or a click picks one.
   const onModeKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const from = buttons.current.findIndex((el) => el === document.activeElement);
     const step = STEP[e.key];
-    if (step === undefined) return;
+    let next: number;
+    if (step !== undefined) next = (Math.max(0, from) + step + MODES.length) % MODES.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = MODES.length - 1;
+    else return;
     e.preventDefault();
-    const from = radios.current.findIndex((el) => el === document.activeElement);
-    const next = (Math.max(0, from) + step + MODES.length) % MODES.length;
-    radios.current[next]?.focus();
-    void api.setMode(MODES[next]!);
+    buttons.current[next]?.focus();
+    setRoving({ base: timer.mode, at: MODES[next]! });
   };
 
   return (
     <div className={styles.timer}>
-      <div className={styles.tabs} role="radiogroup" aria-label="Timer mode" onKeyDown={onModeKey}>
+      <div className={styles.tabs} role="toolbar" aria-label="Timer mode" onKeyDown={onModeKey}>
         {MODES.map((mode, i) => (
           <button
             key={mode}
             ref={(el) => {
-              radios.current[i] = el;
+              buttons.current[i] = el;
             }}
             type="button"
-            role="radio"
-            aria-checked={timer.mode === mode}
-            tabIndex={timer.mode === mode ? 0 : -1}
+            aria-pressed={timer.mode === mode}
+            tabIndex={tabStop === mode ? 0 : -1}
             className={styles.tab}
             onClick={() => void api.setMode(mode)}
           >
