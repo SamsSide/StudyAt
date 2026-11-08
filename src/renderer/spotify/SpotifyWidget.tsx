@@ -1,5 +1,5 @@
 // Spotify widget body (spec §3.10, appplan §4.6). Rendered inside the shell's WidgetFrame.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import type { Device, NowPlaying, Playlist } from "../../shared/types";
 import { useStudyStore } from "../shell/store";
 import styles from "./SpotifyWidget.module.css";
@@ -86,7 +86,8 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
 
   if (state === "unconfigured") {
     return (
-      <div className={styles.root}>
+      <div className={`${styles.root} ${styles.state}`}>
+        <StateIcon />
         <p className={styles.message}>Set up Spotify in Settings</p>
         <button
           type="button"
@@ -100,7 +101,8 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
   }
   if (state === "disconnected") {
     return (
-      <div className={styles.root}>
+      <div className={`${styles.root} ${styles.state}`}>
+        <StateIcon />
         <button
           type="button"
           className={styles.textButton}
@@ -113,7 +115,8 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
   }
   if (state === "offline") {
     return (
-      <div className={styles.root}>
+      <div className={`${styles.root} ${styles.state}`}>
+        <StateIcon />
         <p className={styles.message} role="status">
           Spotify is offline
         </p>
@@ -126,121 +129,225 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
     track && track.durationMs > 0
       ? Math.min(100, (track.progressMs / track.durationMs) * 100)
       : 0;
+  const isPlaying = state === "playing";
 
   return (
-    <div className="spotify">
+    <div className={styles.root}>
       {noDevice ? (
-        <div className="spotify__nodevice">
-          <p>Open Spotify on any device, then press play</p>
-          <ul aria-label="Devices">
-            {devices.map((d) => (
-              <li key={d.id}>
-                <button
-                  type="button"
-                  onClick={() => void control(() => api().transfer(d.id))}
-                >
-                  {d.name}
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className={styles.noDevice}>
+          <StateIcon />
+          <p className={styles.message}>
+            Open Spotify on any device, then press play
+          </p>
+          {devices.length > 0 && (
+            <ul className={styles.deviceList} aria-label="Devices">
+              {devices.map((d) => (
+                <li key={d.id}>
+                  <button
+                    type="button"
+                    className={styles.textButton}
+                    onClick={() => void control(() => api().transfer(d.id))}
+                  >
+                    {d.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : (
-        <div className="spotify__track">
+        <div className={styles.track}>
           {track?.artUrl ? (
-            <img src={track.artUrl} alt="Album art" width={64} height={64} />
-          ) : null}
-          <div>
-            <div className="spotify__title">
+            <img
+              className={styles.art}
+              src={track.artUrl}
+              alt="Album art"
+              width={56}
+              height={56}
+            />
+          ) : (
+            <div className={styles.art} aria-hidden="true">
+              <Glyph name="note" />
+            </div>
+          )}
+          <div className={styles.meta}>
+            <div className={styles.title}>
               {track?.title ?? "Nothing playing"}
             </div>
-            {track && <div className="spotify__artist">{track.artist}</div>}
+            {track && <div className={styles.artist}>{track.artist}</div>}
           </div>
           {track && (
-            <div
-              role="progressbar"
-              aria-label="Track progress"
-              aria-valuemin={0}
-              aria-valuemax={track.durationMs}
-              aria-valuenow={track.progressMs}
-              className="spotify__progress"
-            >
+            <div className={styles.timeline}>
               <div
-                className="spotify__progress-fill"
-                style={{ width: `${pct}%` }}
-              />
+                role="progressbar"
+                aria-label="Track progress"
+                aria-valuemin={0}
+                aria-valuemax={track.durationMs}
+                aria-valuenow={track.progressMs}
+                aria-valuetext={`${clock(track.progressMs)} of ${clock(track.durationMs)}`}
+                className={styles.progress}
+              >
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className={styles.times} aria-hidden="true">
+                <span>{clock(track.progressMs)}</span>
+                <span>{clock(track.durationMs)}</span>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      <div className="spotify__controls">
+      <div className={styles.controls}>
         <button
           type="button"
+          className={styles.iconButton}
           aria-label="Previous"
           onClick={() => void control(() => api().previous())}
         >
-          ⏮
+          <Glyph name="previous" />
         </button>
         <button
           type="button"
-          aria-label={state === "playing" ? "Pause" : "Play"}
+          className={`${styles.iconButton} ${styles.primary}`}
+          aria-label={isPlaying ? "Pause" : "Play"}
           onClick={() =>
-            void control(() =>
-              state === "playing" ? api().pause() : api().play(),
-            )
+            void control(() => (isPlaying ? api().pause() : api().play()))
           }
         >
-          ⏯
+          <Glyph name={isPlaying ? "pause" : "play"} />
         </button>
         <button
           type="button"
+          className={styles.iconButton}
           aria-label="Next"
           onClick={() => void control(() => api().next())}
         >
-          ⏭
+          <Glyph name="next" />
         </button>
       </div>
 
-      <label>
-        Playlist
-        <select
-          value=""
-          onChange={(e) => {
-            const uri = e.target.value;
-            if (uri) void control(() => api().playContext(uri));
-          }}
-        >
-          <option value="">Choose a playlist</option>
-          {playlists.map((p) => (
-            <option key={p.id} value={p.uri}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {!noDevice && devices.length > 0 && (
-        <label>
-          Device
+      <label className={styles.field}>
+        <span className={styles.label}>Playlist</span>
+        <span className={styles.selectWrap}>
           <select
-            value={devices.find((d) => d.active)?.id ?? ""}
+            className={styles.select}
+            value=""
             onChange={(e) => {
-              const id = e.target.value;
-              if (id) void control(() => api().transfer(id));
+              const uri = e.target.value;
+              if (uri) void control(() => api().playContext(uri));
             }}
           >
-            {!devices.some((d) => d.active) && (
-              <option value="">Choose a device</option>
-            )}
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
+            <option value="">Choose a playlist</option>
+            {playlists.map((p) => (
+              <option key={p.id} value={p.uri}>
+                {p.name}
               </option>
             ))}
           </select>
+        </span>
+      </label>
+
+      {!noDevice && devices.length > 0 && (
+        <label className={styles.field}>
+          <span className={styles.label}>Device</span>
+          <span className={styles.selectWrap}>
+            <select
+              className={styles.select}
+              value={devices.find((d) => d.active)?.id ?? ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (id) void control(() => api().transfer(id));
+              }}
+            >
+              {!devices.some((d) => d.active) && (
+                <option value="">Choose a device</option>
+              )}
+              {devices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </span>
         </label>
       )}
     </div>
+  );
+}
+
+/** Track time as m:ss for the progress labels. */
+function clock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const s = total % 60;
+  return `${Math.floor(total / 60)}:${s < 10 ? "0" : ""}${s}`;
+}
+
+type GlyphName = "previous" | "play" | "pause" | "next" | "note";
+
+// Drawn in the shell's icon style (24-unit grid, 1.75 stroke); the transport shapes are filled.
+const GLYPHS: Record<GlyphName, ReactNode> = {
+  previous: (
+    <>
+      <path d="M6 5.5v13" />
+      <path d="M18 6.5v11L9.5 12z" fill="currentColor" />
+    </>
+  ),
+  play: <path d="M8.5 5.5v13L19 12z" fill="currentColor" />,
+  pause: (
+    <>
+      <rect
+        x="6.5"
+        y="5.5"
+        width="3.5"
+        height="13"
+        rx="1"
+        fill="currentColor"
+      />
+      <rect x="14" y="5.5" width="3.5" height="13" rx="1" fill="currentColor" />
+    </>
+  ),
+  next: (
+    <>
+      <path d="M18 5.5v13" />
+      <path d="M6 6.5v11l8.5-5.5z" fill="currentColor" />
+    </>
+  ),
+  note: (
+    <>
+      <path d="M9 18V6l11-2v12" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="17.5" cy="16" r="2.5" />
+    </>
+  ),
+};
+
+function Glyph({ name }: { name: GlyphName }) {
+  return (
+    <svg
+      className={styles.glyph}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {GLYPHS[name]}
+    </svg>
+  );
+}
+
+/** The quiet note shown above a state message. */
+function StateIcon() {
+  return (
+    <span className={styles.stateIcon} aria-hidden="true">
+      <Glyph name="note" />
+    </span>
   );
 }

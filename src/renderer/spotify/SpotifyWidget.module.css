@@ -2,11 +2,36 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  min-width: 240px;
+  gap: var(--space-4);
+  width: 304px;
+  max-width: 100%;
   color: var(--text);
   font-family: var(--font);
   font-size: var(--text-md);
+}
+
+/* Not set up, reconnect, offline: a centred message with one clear action */
+.state {
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+}
+
+.stateIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--hover);
+  color: var(--text-muted);
+}
+
+.stateIcon .glyph {
+  width: 20px;
+  height: 20px;
 }
 
 .message {
@@ -14,27 +39,64 @@
   color: var(--text-muted);
 }
 
+/* No active device */
+.noDevice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  text-align: center;
+}
+
+.deviceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deviceList .textButton {
+  width: 100%;
+}
+
+/* Now playing */
 .track {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 56px minmax(0, 1fr);
   grid-template-areas:
     "art meta"
-    "bar bar";
-  gap: var(--space-2) var(--space-3);
+    "line line";
+  gap: var(--space-3);
   align-items: center;
 }
 
 .art {
   grid-area: art;
-  width: 64px;
-  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-sm);
   object-fit: cover;
   background: var(--hover);
+  color: var(--text-faint);
+}
+
+.art .glyph {
+  width: 24px;
+  height: 24px;
 }
 
 .meta {
   grid-area: meta;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -54,55 +116,113 @@
   color: var(--text-muted);
 }
 
+.timeline {
+  grid-area: line;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 .progress {
-  grid-area: bar;
   height: 4px;
   overflow: hidden;
-  border-radius: 999px;
-  background: var(--border);
+  border-radius: 2px;
+  background: var(--hover);
 }
 
 .progressFill {
   height: 100%;
+  border-radius: 2px;
   background: var(--accent);
   transition: width var(--duration) var(--ease);
 }
 
-.controls {
+.times {
   display: flex;
-  justify-content: center;
-  gap: var(--space-2);
+  justify-content: space-between;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
 }
 
-.iconButton,
-.textButton {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--hover);
-  cursor: pointer;
-  transition: background var(--duration) var(--ease);
+/* Transport */
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
 }
 
 .iconButton {
-  width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
   height: 36px;
   padding: 0;
-  font-size: var(--text-lg);
-  line-height: 1;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    transform var(--duration) var(--ease);
 }
 
-.textButton {
-  padding: var(--space-2) var(--space-3);
+.iconButton:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.iconButton:active {
+  transform: scale(0.94);
 }
 
 .primary {
-  background: var(--active);
-  border-color: var(--accent);
+  width: 44px;
+  height: 44px;
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
-.iconButton:hover,
+.primary:hover {
+  background: var(--accent);
+  color: var(--accent-text);
+  filter: brightness(1.1);
+}
+
+.glyph {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.primary .glyph {
+  width: 20px;
+  height: 20px;
+}
+
+/* State action and device buttons */
+.textButton {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--hover);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease);
+}
+
 .textButton:hover {
   background: var(--active);
+}
+
+.textButton:active {
+  background: var(--active);
+  border-color: var(--accent);
 }
 
 .iconButton:focus-visible,
@@ -112,36 +232,62 @@
   box-shadow: var(--focus-ring);
 }
 
+/* Pickers: label above a dark select with a drawn chevron */
 .field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+
+.label {
   font-size: var(--text-sm);
+  font-weight: 600;
   color: var(--text-muted);
+}
+
+.selectWrap {
+  position: relative;
+  display: block;
+}
+
+.selectWrap::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  width: 6px;
+  height: 6px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+  transform: rotate(45deg);
+  pointer-events: none;
 }
 
 .select {
   width: 100%;
-  padding: var(--space-2);
+  height: 36px;
+  padding: 0 calc(var(--space-3) * 2 + 6px) 0 var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--panel-strong);
   color: var(--text);
   font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  appearance: none;
   color-scheme: dark;
+  transition:
+    background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
 }
 
-.noDevice {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+.select:hover {
+  background-color: var(--bg);
+  border-color: var(--text-faint);
 }
 
-.deviceList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
+.select option {
+  background: var(--bg);
+  color: var(--text);
 }

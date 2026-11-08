@@ -205,6 +205,30 @@ describe("SpotifyWidget", () => {
     );
   });
 
+  it("styles the playing view with module classes, not global ones", async () => {
+    setup({ state: "playing", track });
+    const { container } = render(<SpotifyWidget />);
+    await screen.findByText("Song A");
+    const moduleClass = (el: Element | null) => {
+      const c = el?.getAttribute("class") ?? "";
+      expect(c).not.toBe("");
+      expect(c.startsWith("spotify")).toBe(false);
+    };
+    const bar = screen.getByRole("progressbar");
+    moduleClass(bar);
+    moduleClass(bar.firstElementChild);
+    const pause = screen.getByRole("button", { name: "Pause" });
+    moduleClass(pause.parentElement);
+    for (const name of ["Previous", "Pause", "Next"]) {
+      moduleClass(screen.getByRole("button", { name }));
+    }
+    expect(pause.className).not.toBe(
+      screen.getByRole("button", { name: "Next" }).className,
+    );
+    moduleClass(screen.getByLabelText("Playlist"));
+    expect(container.querySelector('[class^="spotify"]')).toBeNull();
+  });
+
   it("buttons call previous/pause/next", async () => {
     const api = setup({ state: "playing", track });
     render(<SpotifyWidget />);
