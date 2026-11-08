@@ -23,4 +23,15 @@ scripts/win-sync.sh >/dev/null
 scripts/win.sh node -e "process.exit(3)" >/dev/null 2>&1; code=$?
 [ "$code" -eq 3 ] && ok "propagates exit code" || fail "expected exit 3, got $code"
 
+# Arguments reach the program byte-for-byte, including cmd metacharacters.
+want='["50%","%PATH%","c^d","q\"r&s","a b","x!y","(z)"]'
+got=$(scripts/win.sh node -e "process.stdout.write(JSON.stringify(process.argv.slice(1)))" 50% %PATH% 'c^d' 'q"r&s' 'a b' 'x!y' '(z)' 2>/dev/null | tail -1)
+[ "$got" = "$want" ] && ok "arguments pass through unchanged" || fail "argv mangled: got $got want $want"
+
+# Two runs at once: the second sync must not break the first run.
+( scripts/win.sh node -e "setTimeout(()=>process.exit(4),4000)" >/dev/null 2>&1; echo $? > "$STUDYAT_WIN_DIR.code" ) &
+sleep 2; scripts/win.sh node -e "0" >/dev/null 2>&1; wait
+[ "$(cat "$STUDYAT_WIN_DIR.code" 2>/dev/null)" = "4" ] && ok "concurrent runs don't clobber each other" || fail "first run exited $(cat "$STUDYAT_WIN_DIR.code" 2>/dev/null), want 4"
+rm -f "$STUDYAT_WIN_DIR.code"
+
 [ "$fails" -eq 0 ] && echo "test-win-scripts: all passed" || { echo "test-win-scripts: $fails failure(s)"; exit 1; }

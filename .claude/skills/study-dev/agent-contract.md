@@ -29,7 +29,9 @@ minimal code, run it and see it pass. Anything touching time uses an injected cl
 ## Lanes
 
 - **Disk lane** (`study-core`, `study-ui`, `study-media`): never run `scripts/win.sh`, never launch
-  Electron, never install packages on Windows. Unit tests, typecheck and lint in WSL only.
+  Electron. Unit tests, typecheck and lint in WSL only. A new dependency is added with
+  `npm install <pkg>` in WSL (study-dev rule 8), only if your brief names it; otherwise it's a
+  ruling you log.
 - **Run lane** (`study-testing`): the only agent that runs `scripts/win.sh`. One at a time. Stop
   every process you started before reporting.
 - **Review** (`study-review`): read-only. Never edits, never commits.

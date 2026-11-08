@@ -67,9 +67,18 @@ recorded in appplan; read it there rather than guessing.
    Windows with plain `npm`. Storage is pure JS/WASM.
 7. **Nothing from LifeAt:** no name, logo, look-alike branding, or any of their audio, video or
    images. Bundled media is CC0 or similarly permissive and recorded in `assets/CREDITS.md`.
-8. **It runs on Windows.** Electron doesn't run usefully inside WSL. Launch, install and package via
-   `scripts/win.sh <cmd>` (syncs the repo to `C:\Users\samue\dev\StudyAt`, runs there). Unit
-   tests, typecheck and lint run in WSL via `./check.sh`.
+8. **It runs on Windows; the repo lives in WSL.** Electron doesn't run usefully inside WSL.
+   - **Dependencies are added and changed in WSL only** (`npm install <pkg>` in the repo), so
+     `package.json` and `package-lock.json` are committed. Unit tests, typecheck and lint run in
+     WSL via `./check.sh` against WSL's `node_modules`.
+   - **The Windows mirror is a disposable copy.** `scripts/win.sh <cmd>` syncs the repo to
+     `C:\Users\samue\dev\StudyAt` (overwriting and deleting anything that differs, except
+     `node_modules/`, `out/`, `dist/`, `release/`) and runs there. On Windows run only
+     `scripts/win.sh npm ci` (Windows binaries from the committed lockfile), `npm run dev`,
+     e2e and packaging. **Never `npm install <pkg>` through `win.sh`**: the change lands only in
+     the mirror and the next sync deletes it.
+   - Anything produced on Windows that must be kept (screenshots, e2e reports) is written to an
+     absolute path outside the mirror, e.g. a scratch dir, never inside it.
 9. **Secrets stay local.** Spotify tokens live in the app's data folder, never in git, logs or
    test fixtures. The Spotify Client ID is user-entered in Settings.
 10. **Copy is British English**, calm and short. Questions to Sam always go through

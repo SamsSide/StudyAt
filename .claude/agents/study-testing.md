@@ -10,7 +10,12 @@ sections your brief names.
 Your domain rules, beyond the contract:
 
 - You hold the run lane: you are the only agent using `scripts/win.sh`, and only one of you runs
-  at a time. `npm install` and Electron run on Windows through it, never in WSL.
+  at a time. Electron runs on Windows through it, never in WSL.
+- The mirror is disposable (study-dev rule 8): install with `scripts/win.sh npm ci` from the
+  committed lockfile, never `npm install <pkg>` there. A missing dependency is a finding for
+  the dispatcher, not something you add on Windows.
+- Write screenshots and e2e output to an absolute path outside the mirror (your scratch dir);
+  anything inside it is wiped by the next sync.
 - Prove behaviour in the running app, and assert provenance: that the path under test actually
   ran (a recorded session row, a log line), not just that an element exists.
 - Never touch Sam's real data folder. Launch with a throwaway user-data directory (an env var or
