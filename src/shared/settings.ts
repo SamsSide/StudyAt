@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   widgets: {
     timer: { open: true, x: 0.5, y: 0.12, autoHide: false },
     tasks: { open: false, x: 0.82, y: 0.14, autoHide: false },
-    spotify: { open: false, x: 0.18, y: 0.14, autoHide: false },
+    spotify: { open: false, x: 0.82, y: 0.62, autoHide: false },
   },
   spotifyClientId: '',
   spotifyTokens: null,
