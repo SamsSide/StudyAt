@@ -55,6 +55,8 @@ export interface SpacePatch {
   name?: string;
   favourite?: boolean;
   opts?: Partial<SpaceOpts>;
+  /** A captured video frame (`data:image/jpeg;base64,…`) or a YouTube thumb URL (spec §3.8). */
+  thumb?: string | null;
 }
 
 export interface StudyAtApi {
@@ -113,6 +115,8 @@ export interface StudyAtApi {
     list(): Promise<Sound[]>;
     addFiles(): Promise<Sound[]>;
     remove(id: number): Promise<Sound[]>;
+    /** Opens a file dialog and points a moved sound at its new path, keeping its id. */
+    relocate(id: number): Promise<Sound[]>;
   };
   mixes: {
     list(): Promise<Mix[]>;
@@ -200,7 +204,7 @@ export const CHANNELS = {
     relocate: 'spaces:relocate',
     setActive: 'spaces:setActive',
   },
-  sounds: { list: 'sounds:list', addFiles: 'sounds:addFiles', remove: 'sounds:remove' },
+  sounds: { list: 'sounds:list', addFiles: 'sounds:addFiles', remove: 'sounds:remove', relocate: 'sounds:relocate' },
   mixes: { list: 'mixes:list', save: 'mixes:save', remove: 'mixes:remove' },
   settings: { get: 'settings:get', set: 'settings:set' },
   data: {

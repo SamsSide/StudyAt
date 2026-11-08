@@ -152,6 +152,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       list: resolves([]),
       addFiles: resolves([]),
       remove: resolves([]),
+      relocate: resolves([]),
     },
     mixes: {
       list: resolves([]),
