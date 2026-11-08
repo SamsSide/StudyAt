@@ -1,6 +1,9 @@
 // First-run seeding (spec §3.3): the six subjects of §3.12, the built-in spaces (§3.8) and sounds
-// (§3.9) from assets/builtin.json, and the active space. Each table is seeded only while empty.
+// (§3.9) from assets/builtin.json, the timer and accounting settings, and the active space. Each
+// table is seeded only while empty; a stored setting is never overwritten.
+import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
+import type { Settings } from '../../shared/types';
 import type { Db } from './db';
 import { settingsRepo } from './repos/settings';
 import { DEFAULT_SPACE_OPTS, youTubeThumb } from './repos/spaces';
@@ -12,12 +15,29 @@ export interface BuiltinAssets {
   sounds: { name: string; kind: 'noise' | 'file'; source: string }[];
 }
 
+/**
+ * Settings stored explicitly at first seed (R17): the timer lengths and every value accounting,
+ * streaks and stats read. Stored, not served live from DEFAULT_SETTINGS, so a later change to a
+ * default never changes Sam's numbers; such a change also needs a migration (migrations.ts).
+ */
+const PINNED_SETTINGS: readonly (keyof Settings)[] = [
+  'focusMinutes',
+  'shortMinutes',
+  'longMinutes',
+  'longEvery',
+  'streakMinutes',
+  'goalMinutes',
+  'rolloverHour',
+  'idleMinutes',
+];
+
 const isEmpty = (db: Db, table: 'subjects' | 'spaces' | 'sounds'): boolean =>
   Number(one(db.raw, `SELECT count(*) AS n FROM ${table}`)!.n) === 0;
 
 /**
- * Settings defaults are not written: `settingsRepo.get` serves `DEFAULT_SETTINGS` for any key not
- * stored. Only `activeSpaceId` is set, to the first built-in space, and only while it is null.
+ * The pinned settings are written from `DEFAULT_SETTINGS` where not already stored; every other
+ * key is served by `settingsRepo.get` from `DEFAULT_SETTINGS` while unstored. `activeSpaceId` is
+ * set to the first built-in space, only while it is null.
  */
 export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
   const raw = db.raw;
@@ -41,6 +61,9 @@ export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
       builtin.sounds.forEach((s, i) => {
         raw.run('INSERT INTO sounds (name, kind, source, builtin, sort) VALUES (?, ?, ?, 1, ?)', [s.name, s.kind, s.source, i]);
       });
+    }
+    for (const key of PINNED_SETTINGS) {
+      raw.run('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, JSON.stringify(DEFAULT_SETTINGS[key])]);
     }
   });
 

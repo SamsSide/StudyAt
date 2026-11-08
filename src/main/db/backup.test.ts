@@ -1,8 +1,8 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { dailyBackup, fileStamp, listBackups, localDateKey } from './backup';
-import { DB_FILE } from './db';
+import { dailyBackup, fileStamp, latestBackupBefore, listBackups, localDateKey } from './backup';
+import { DB_FILE, nodeFs, type DbFs } from './db';
 import { NOW, tempDir } from './test-helpers';
 
 describe('backups', () => {
@@ -79,5 +79,74 @@ describe('backups', () => {
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ name: 'daily-2026-11-08.sqlite', size: 5 });
     expect(typeof list[0]!.createdAt).toBe('number');
+  });
+  // R16: on a corrupt launch the file on disk is a fresh, empty database; it must not become a
+  // daily backup nor evict an old good one.
+  it('skip: copies nothing and prunes nothing', async () => {
+    const backups = join(dir, 'backups');
+    mkdirSync(backups);
+    for (let d = 0; d < 14; d++) {
+      writeFileSync(join(backups, `daily-${localDateKey(new Date(2026, 9, 20 + d, 12).getTime())}.sqlite`), 'good');
+    }
+    const before = readdirSync(backups).sort();
+    await dailyBackup(dir, NOW, { skip: true });
+    expect(readdirSync(backups).sort()).toEqual(before);
+  });
+
+  // Finding 4: a crash mid-copy must not leave a truncated daily under its final name.
+  it('a daily copy that fails part-way leaves no daily file, and a later call copies it', async () => {
+    const failingFs: DbFs = {
+      ...nodeFs,
+      async copyFile(_from, to) {
+        writeFileSync(to, 'tod');
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+      },
+    };
+    await expect(dailyBackup(dir, NOW, { fs: failingFs })).rejects.toThrow('ENOSPC');
+    const file = join(dir, 'backups', 'daily-2026-11-08.sqlite');
+    expect(existsSync(file)).toBe(false);
+    expect(await listBackups(dir)).toEqual([]);
+    await dailyBackup(dir, NOW);
+    expect(readFileSync(file, 'utf8')).toBe('today');
+  });
+
+  // Finding 5: the time comes from the name, so it is the same on Windows and Linux.
+  it('createdAt comes from the stamp in the file name, not the mtime', async () => {
+    const backups = join(dir, 'backups');
+    mkdirSync(backups);
+    const daily = join(backups, 'daily-2026-11-06.sqlite');
+    const pre = join(backups, 'pre-migration-v1-2026-11-07-093015.sqlite');
+    writeFileSync(daily, 'a');
+    writeFileSync(pre, 'b');
+    const jan = new Date(2020, 0, 1);
+    utimesSync(daily, jan, jan);
+    utimesSync(pre, jan, jan);
+    const list = await listBackups(dir);
+    expect(list.map((b) => [b.name, b.createdAt])).toEqual([
+      ['pre-migration-v1-2026-11-07-093015.sqlite', new Date(2026, 10, 7, 9, 30, 15).getTime()],
+      ['daily-2026-11-06.sqlite', new Date(2026, 10, 6).getTime()],
+    ]);
+  });
+
+  // R16: "Restore latest backup" on the corrupt dialog restores the newest backup made before
+  // the corruption was found.
+  it('latestBackupBefore returns the newest daily or pre-migration backup before a time', async () => {
+    expect(await latestBackupBefore(dir, NOW)).toBeNull();
+    const backups = join(dir, 'backups');
+    mkdirSync(backups);
+    for (const name of [
+      'daily-2026-11-06.sqlite',
+      'daily-2026-11-08.sqlite',
+      'pre-migration-v1-2026-11-08-110000.sqlite',
+      'daily-2026-11-09.sqlite',
+      'daily-2026-11-07.sqlite.tmp',
+      'notes.txt',
+    ]) {
+      writeFileSync(join(backups, name), 'x');
+    }
+    expect((await latestBackupBefore(dir, NOW))?.name).toBe('pre-migration-v1-2026-11-08-110000.sqlite');
+    expect((await latestBackupBefore(dir, new Date(2026, 10, 8, 10).getTime()))?.name).toBe('daily-2026-11-08.sqlite');
+    expect((await latestBackupBefore(dir, new Date(2026, 10, 8).getTime()))?.name).toBe('daily-2026-11-06.sqlite');
+    expect(await latestBackupBefore(dir, new Date(2026, 10, 6).getTime())).toBeNull();
   });
 });

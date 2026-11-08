@@ -47,3 +47,37 @@ export const nodeFs: DbFs = {
     }
   },
 };
+
+/**
+ * Waits between rename attempts, about 2 s in all. On Windows, Defender or the search indexer
+ * briefly opening the file makes a rename fail with EPERM, EACCES or EBUSY; giving up at once
+ * would lose a checkpoint of focus time at quit (study-dev rule 2).
+ */
+export const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400, 500, 750];
+
+const TRANSIENT_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/** `fs.rename`, retried with backoff while it fails with a transient Windows error. */
+export async function renameWithRetry(fs: DbFs, from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const delay = RENAME_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || code === undefined || !TRANSIENT_CODES.has(code)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+/**
+ * Copies `from` to `<to>.tmp`, then renames it to `to`, so a crash mid-copy never leaves a
+ * truncated file under the final name (a backup that would be offered for restore).
+ */
+export async function copyAtomic(fs: DbFs, from: string, to: string): Promise<void> {
+  const tmp = `${to}.tmp`;
+  await fs.copyFile(from, tmp);
+  await renameWithRetry(fs, tmp, to);
+}

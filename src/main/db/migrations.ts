@@ -1,9 +1,14 @@
 // Schema migrations (spec §3.3, appplan §5). Every schema change is a new numbered entry here,
 // with a test that migrates a fixture of the previous version. Never edit a shipped migration.
+//
+// Changing any DEFAULT_SETTINGS value (src/shared/settings.ts) needs a migration that pins the old
+// value for existing users (`INSERT OR IGNORE` the old value as a settings row): a default must
+// never silently change Sam's numbers (appplan §5). Seeding stores the timer and accounting keys
+// only where missing, and runs after migrations, so the pinned old value wins (seed.ts).
 import { dirname, join } from 'node:path';
 import type { Database as SqlJsDatabase } from 'sql.js';
 import { fileStamp } from './backup';
-import { nodeFs, type DbFs } from './db-fs';
+import { copyAtomic, nodeFs, type DbFs } from './db-fs';
 import { one, transaction } from './sql';
 
 export interface Migration {
@@ -86,6 +91,20 @@ export const MIGRATIONS: Migration[] = [
 
 export const LATEST_VERSION = MIGRATIONS.length;
 
+/**
+ * The database was written by a newer StudyAt (its `schema_version` is above what this build
+ * knows). Nothing is migrated, backed up or written; the caller shows a dialog and quits.
+ */
+export class NewerSchemaError extends Error {
+  constructor(
+    readonly found: number,
+    readonly supported: number,
+  ) {
+    super(`The database is schema version ${found}; this StudyAt supports up to ${supported}.`);
+    this.name = 'NewerSchemaError';
+  }
+}
+
 /** The stored `schema_version`; 0 for a file with no schema yet. */
 export function schemaVersion(db: SqlJsDatabase): number {
   const hasMeta = one(db, "SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'meta'");
@@ -98,7 +117,8 @@ export function schemaVersion(db: SqlJsDatabase): number {
  * Brings `db` up to the latest version. If anything is pending and `file` exists, it is first
  * copied to `backups/pre-migration-v<from>-<stamp>.sqlite` beside it (study-dev rule 2). Each
  * migration runs in its own transaction and records its version, so a failure leaves the
- * database at the last version that completed. The caller flushes afterwards.
+ * database at the last version that completed. The caller flushes afterwards. Throws
+ * `NewerSchemaError`, before touching anything, for a version newer than `migrations` knows.
  */
 export async function migrate(
   db: SqlJsDatabase,
@@ -108,6 +128,8 @@ export async function migrate(
   fs: DbFs = nodeFs,
 ): Promise<{ from: number; to: number }> {
   const from = schemaVersion(db);
+  const latest = Math.max(0, ...migrations.map((m) => m.version));
+  if (from > latest) throw new NewerSchemaError(from, latest);
   const pending = migrations.filter((m) => m.version > from).sort((a, b) => a.version - b.version);
   if (pending.length === 0) return { from, to: from };
 
@@ -115,7 +137,7 @@ export async function migrate(
     const backups = join(dirname(file), 'backups');
     await fs.mkdir(backups);
     // Throws if the copy fails, so nothing is migrated without a backup.
-    await fs.copyFile(file, join(backups, `pre-migration-v${from}-${fileStamp(now)}.sqlite`));
+    await copyAtomic(fs, file, join(backups, `pre-migration-v${from}-${fileStamp(now)}.sqlite`));
   }
 
   let to = from;

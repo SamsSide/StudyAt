@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
 import type { Db } from './db';
 import { settingsRepo } from './repos/settings';
@@ -7,6 +8,7 @@ import { soundsRepo } from './repos/sounds';
 import { spacesRepo } from './repos/spaces';
 import { subjectsRepo } from './repos/subjects';
 import { seedIfEmpty, type BuiltinAssets } from './seed';
+import { all } from './sql';
 import { BUILTIN_PATH, NOW, openTestDb, tempDir } from './test-helpers';
 
 const builtin = JSON.parse(readFileSync(BUILTIN_PATH, 'utf8')) as BuiltinAssets;
@@ -65,5 +67,29 @@ describe('seedIfEmpty', () => {
     seedIfEmpty(db, builtin, NOW);
     expect(soundsRepo(db).list()).toHaveLength(builtin.sounds.length);
     expect(subjectsRepo(db).list()).toHaveLength(6);
+  });
+  // R17: accounting-relevant defaults are stored at first seed, so a later change to
+  // DEFAULT_SETTINGS can never silently change Sam's numbers.
+  it('stores the accounting and timer defaults explicitly', () => {
+    const pinned = [
+      'focusMinutes',
+      'shortMinutes',
+      'longMinutes',
+      'longEvery',
+      'streakMinutes',
+      'goalMinutes',
+      'rolloverHour',
+      'idleMinutes',
+    ] as const;
+    const stored = new Map(
+      all(db.raw, 'SELECT key, value FROM settings').map((r) => [String(r.key), JSON.parse(String(r.value)) as unknown]),
+    );
+    for (const key of pinned) expect(stored.get(key), key).toBe(DEFAULT_SETTINGS[key]);
+  });
+
+  it('never overwrites a stored setting when seeding again', () => {
+    settingsRepo(db).set({ focusMinutes: 50, rolloverHour: 5 });
+    seedIfEmpty(db, builtin, NOW);
+    expect(settingsRepo(db).get()).toMatchObject({ focusMinutes: 50, rolloverHour: 5, streakMinutes: 25 });
   });
 });
