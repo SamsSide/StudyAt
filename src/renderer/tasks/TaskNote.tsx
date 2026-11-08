@@ -17,8 +17,8 @@ export interface TaskNoteProps {
     onPointerMove(e: PointerEvent<HTMLButtonElement>): void;
     onPointerEnd(e: PointerEvent<HTMLButtonElement>): void;
   };
-  /** Open notes only: Alt+ArrowUp/Down on the focused note. */
-  onMove?(task: Task, delta: -1 | 1): void;
+  /** Open notes only: Alt+ArrowUp/Down; `control` names the control that had focus so it can be refocused. */
+  onMove?(task: Task, delta: -1 | 1, control: string): void;
 }
 
 export function ColourSwatches({
@@ -52,22 +52,34 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
   const [draft, setDraft] = useState(task.text);
   const [picking, setPicking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Esc unmounts the input, which must not then count as a "blur saves".
-  const cancelled = useRef(false);
+  const textRef = useRef<HTMLButtonElement>(null);
+  const colourRef = useRef<HTMLButtonElement>(null);
+  // An edit ends once: Enter removes the input, whose blur must not then save a second time, and Esc
+  // must not count as a "blur saves".
+  const ended = useRef(true);
+  // Enter and Esc hand focus back to the text; a blur by Tab or click leaves it where the person put it.
+  const returnFocus = useRef(false);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
+    else if (returnFocus.current) {
+      returnFocus.current = false;
+      textRef.current?.focus();
+    }
   }, [editing]);
 
   const startEdit = () => {
-    cancelled.current = false;
+    ended.current = false;
     setDraft(task.text);
     setEditing(true);
   };
 
-  const finishEdit = () => {
+  const finishEdit = (save: boolean, keepFocus: boolean) => {
+    if (ended.current) return;
+    ended.current = true;
+    returnFocus.current = keepFocus;
     setEditing(false);
-    if (cancelled.current) return;
+    if (!save) return;
     const text = clampTaskText(draft);
     if (text && text !== task.text) onEditText(task, text);
   };
@@ -75,20 +87,26 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
   const onEditKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      finishEdit();
+      finishEdit(true, true);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation(); // Esc here cancels the edit, not whatever the shell would close
-      cancelled.current = true;
-      setEditing(false);
+      finishEdit(false, true);
     }
   };
 
   const onNoteKey = (e: KeyboardEvent<HTMLLIElement>) => {
+    if (e.key === 'Escape' && picking) {
+      e.preventDefault();
+      e.stopPropagation();
+      setPicking(false);
+      colourRef.current?.focus();
+      return;
+    }
     if (!onMove || !e.altKey || editing) return;
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
-      onMove(task, e.key === 'ArrowUp' ? -1 : 1);
+      onMove(task, e.key === 'ArrowUp' ? -1 : 1, (e.target as HTMLElement).dataset.control ?? 'check');
     }
   };
 
@@ -103,12 +121,14 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
           <button
             type="button"
             className={styles.handle}
+            data-control="handle"
             aria-label={`Drag to reorder: ${task.text}`}
             title="Drag to reorder, or Alt + Up / Down"
             onPointerDown={(e) => dragHandlers.onPointerDown(e, task)}
             onPointerMove={dragHandlers.onPointerMove}
             onPointerUp={dragHandlers.onPointerEnd}
             onPointerCancel={dragHandlers.onPointerEnd}
+            onLostPointerCapture={dragHandlers.onPointerEnd}
           >
             <span aria-hidden="true">⋮⋮</span>
           </button>
@@ -116,6 +136,7 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
         <input
           type="checkbox"
           className={styles.check}
+          data-control="check"
           checked={task.done}
           aria-label={task.done ? `Mark "${task.text}" as not done` : `Mark "${task.text}" as done`}
           onChange={() => onToggle(task)}
@@ -129,18 +150,27 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
             aria-label="Edit task"
             onChange={(e) => setDraft(e.target.value.slice(0, MAX_TASK_LENGTH))}
             onKeyDown={onEditKey}
-            onBlur={finishEdit}
+            onBlur={() => finishEdit(true, false)}
           />
         ) : task.done ? (
           <span className={styles.text}>{task.text}</span>
         ) : (
-          <button type="button" className={styles.textButton} onClick={startEdit} title="Click to edit">
+          <button
+            type="button"
+            ref={textRef}
+            className={styles.textButton}
+            data-control="text"
+            onClick={startEdit}
+            title="Click to edit"
+          >
             {task.text}
           </button>
         )}
         <button
           type="button"
+          ref={colourRef}
           className={styles.iconButton}
+          data-control="colour"
           aria-label={`Change colour of "${task.text}"`}
           aria-expanded={picking}
           onClick={() => setPicking((p) => !p)}
@@ -154,6 +184,7 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
           value={task.colour}
           onPick={(c) => {
             setPicking(false);
+            colourRef.current?.focus();
             if (c !== task.colour) onColour(task, c);
           }}
         />
