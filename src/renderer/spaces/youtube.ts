@@ -57,8 +57,12 @@ export function loadYouTubeApi(): Promise<YTNamespace> {
   return pending;
 }
 
-/** The §3.8 player parameters: muted, no controls, looping, inline, no related, minimal brand. */
+/**
+ * The §3.8 player parameters: muted, no controls, looping, inline, no related, minimal brand.
+ * `origin` tells the player which page hosts it, so its postMessage traffic is accepted.
+ */
 export const playerVars = (videoId: string) => ({
+  origin: window.location.origin,
   autoplay: 1,
   mute: 1,
   controls: 0,

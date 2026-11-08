@@ -8,6 +8,9 @@ export function thumbTime(duration: number): number {
   return Math.min(Math.max(duration * 0.1, 1), duration / 2);
 }
 
+/** A clip that hasn't produced a frame by then (a codec Chromium can't seek, a stalled read) is skipped. */
+export const THUMB_TIMEOUT_MS = 10_000;
+
 export function captureThumbnail(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -15,16 +18,23 @@ export function captureThumbnail(url: string): Promise<string> {
     video.crossOrigin = 'anonymous';
     video.muted = true;
     video.preload = 'metadata';
+    let settled = false;
+    // Settles once, then releases the decoder; anything the video fires later is ignored.
     const done = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       video.removeAttribute('src');
       video.load();
       fn();
     };
+    const timer = setTimeout(() => done(() => reject(new Error('thumbnail: timed out'))), THUMB_TIMEOUT_MS);
     video.addEventListener('error', () => done(() => reject(new Error('thumbnail: video failed to load'))));
     video.addEventListener('loadedmetadata', () => {
       video.currentTime = thumbTime(video.duration);
     });
     video.addEventListener('seeked', () => {
+      if (settled) return;
       try {
         const w = video.videoWidth || THUMB_WIDTH;
         const h = video.videoHeight || Math.round((THUMB_WIDTH * 9) / 16);

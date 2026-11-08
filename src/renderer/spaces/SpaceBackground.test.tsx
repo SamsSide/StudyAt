@@ -7,7 +7,8 @@ import { makeSpace } from './fixtures';
 import { resetSpacesStore, useSpacesStore } from './spacesStore';
 import { spaceAudio } from './spaceAudio';
 import { SpaceBackground } from './SpaceBackground';
-import type { YTPlayerOptions } from './youtube';
+import { useWindowVisibility } from './windowVisibility';
+import { YT_SCRIPT, type YTPlayerOptions } from './youtube';
 
 const mount = async (spaces: Space[], activeId: number | null = spaces[0]?.id ?? null) => {
   const { spotifyTokens: _t, ...pub } = structuredClone(DEFAULT_SETTINGS);
@@ -21,10 +22,14 @@ const mount = async (spaces: Space[], activeId: number | null = spaces[0]?.id ??
   return api;
 };
 
-beforeEach(() => resetSpacesStore());
+beforeEach(() => {
+  resetSpacesStore();
+  useWindowVisibility.setState({ visible: true });
+});
 afterEach(() => {
   delete window.YT;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('SpaceBackground', () => {
@@ -48,6 +53,29 @@ describe('SpaceBackground', () => {
     const api = await mount([makeSpace({ id: 1, missing: true })]);
     await act(async () => screen.getByRole('button', { name: 'File moved — Relocate…' }).click());
     expect(api.spaces.relocate).toHaveBeenCalledWith(1);
+  });
+
+  it('the relocate notice sits above the blurred media and the dim, even with a thumbnail', async () => {
+    const thumb = 'data:image/jpeg;base64,AAA';
+    await mount([makeSpace({ id: 1, missing: true, thumb, opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6 } })]);
+    const button = screen.getByRole('button', { name: 'File moved — Relocate…' });
+    const layer = screen.getByTestId('space-layer');
+    const dim = screen.getByTestId('space-dim');
+    expect(layer.querySelector(`img[src="${thumb}"]`)).not.toBeNull();
+    expect(layer).not.toContainElement(button);
+    // Painted after the dim, so the dim and the blur never cover it.
+    expect(dim.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('pauses a video while the window is minimised or hidden to the tray', async () => {
+    await mount([makeSpace({ id: 1 })]);
+    const v = (await screen.findByTestId('space-video')) as HTMLVideoElement;
+    const pause = vi.spyOn(v, 'pause').mockImplementation(() => undefined);
+    const play = vi.spyOn(v, 'play').mockImplementation(() => Promise.resolve());
+    act(() => useWindowVisibility.getState().setVisible(false));
+    expect(pause).toHaveBeenCalled();
+    act(() => useWindowVisibility.getState().setVisible(true));
+    expect(play).toHaveBeenCalled();
   });
 
   it('pauses a video while the document is hidden', async () => {
@@ -79,7 +107,37 @@ describe('SpaceBackground', () => {
       await mount([space]);
       await waitFor(() => expect(h.opts()).toBeDefined());
       expect(h.opts()?.videoId).toBe('dQw4w9WgXcQ');
-      expect(h.opts()?.playerVars).toMatchObject({ mute: 1, controls: 0, loop: 1, playlist: 'dQw4w9WgXcQ', playsinline: 1, rel: 0, modestbranding: 1 });
+      expect(h.opts()?.playerVars).toMatchObject({
+        mute: 1,
+        controls: 0,
+        loop: 1,
+        playlist: 'dQw4w9WgXcQ',
+        playsinline: 1,
+        rel: 0,
+        modestbranding: 1,
+        origin: window.location.origin,
+      });
+    });
+
+    it.each([2, 5, 100])('error %i shows the thumbnail and "This video can\'t be played."', async (code) => {
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onError?.({ data: code }));
+      expect(await screen.findByText("This video can't be played.")).toBeInTheDocument();
+      expect(screen.getByTestId('space-layer').querySelector('img[src="data:x"]')).not.toBeNull();
+    });
+
+    it('a failed API script load shows "This video can\'t be played."', async () => {
+      await mount([space]);
+      const script = await waitFor(() => {
+        const el = document.head.querySelector(`script[src="${YT_SCRIPT}"]`);
+        expect(el).not.toBeNull();
+        return el as HTMLScriptElement;
+      });
+      act(() => void script.dispatchEvent(new Event('error')));
+      expect(await screen.findByText("This video can't be played.")).toBeInTheDocument();
+      script.remove();
     });
 
     it('error 150 shows the embed message', async () => {
@@ -117,7 +175,16 @@ describe('SpaceBackground', () => {
       expect(screen.queryByTestId('space-video')).not.toBeInTheDocument();
       act(() => screen.getByRole('button', { name: 'Play background' }).click());
       expect(await screen.findByTestId('space-video')).toBeInTheDocument();
-      vi.unstubAllGlobals();
+    });
+
+    it('the footer toggles back to the still', async () => {
+      vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+      await mount([makeSpace({ id: 1, thumb: 'data:image/jpeg;base64,AAA' })]);
+      act(() => screen.getByRole('button', { name: 'Play background' }).click());
+      expect(await screen.findByTestId('space-video')).toBeInTheDocument();
+      act(() => screen.getByRole('button', { name: 'Pause background' }).click());
+      expect(screen.queryByTestId('space-video')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Play background' })).toBeInTheDocument();
     });
   });
 });

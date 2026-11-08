@@ -5,9 +5,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
 import { mediaUrl, useSpacesStore } from './spacesStore';
+import { useWindowVisibility } from './windowVisibility';
 import { EMBED_BLOCKED, loadYouTubeApi, playerVars, type YTPlayer } from './youtube';
 
-function useHidden(): boolean {
+function useDocumentHidden(): boolean {
   const [hidden, setHidden] = useState(() => document.hidden);
   useEffect(() => {
     const on = () => setHidden(document.hidden);
@@ -45,10 +46,6 @@ function useReducedMotion(): boolean {
     return () => mq.removeEventListener('change', on);
   }, []);
   return reduced;
-}
-
-function Notice({ children }: { children: ReactNode }) {
-  return <div className={styles.notice}>{children}</div>;
 }
 
 function Thumb({ space }: { space: Space }) {
@@ -107,13 +104,17 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
             onReady: () => {
               if (!dead) setReady(true);
             },
+            // 101/150: the owner blocked embedding. Anything else (2 bad id, 5 HTML5 player,
+            // 100 removed or private) still leaves a black frame, so it gets a message too.
             onError: (e) => {
-              if (EMBED_BLOCKED.has(e.data)) markEmbedError(space.id);
+              if (!dead) markEmbedError(space.id, EMBED_BLOCKED.has(e.data) ? 'embed' : 'play');
             },
           },
         });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!dead) markEmbedError(space.id, 'play');
+      });
     return () => {
       dead = true;
       setReady(false);
@@ -140,13 +141,7 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
   }, [ready, paused]);
 
   // A 16:9 frame scaled to cover the window.
-  return (
-    <div
-      ref={host}
-      data-testid="space-youtube"
-      className={styles.youtube}
-    />
-  );
+  return <div ref={host} data-testid="space-youtube" className={styles.youtube} />;
 }
 
 export function SpaceBackground() {
@@ -154,7 +149,9 @@ export function SpaceBackground() {
   const activeId = useSpacesStore((s) => s.activeId);
   const loaded = useSpacesStore((s) => s.loaded);
   const embedErrors = useSpacesStore((s) => s.embedErrors);
-  const hidden = useHidden();
+  // Minimised or in the tray: main says so (document.hidden stays false there, see windowVisibility).
+  const windowVisible = useWindowVisibility((s) => s.visible);
+  const documentHidden = useDocumentHidden();
   const online = useOnline();
   const reduced = useReducedMotion();
   const [playId, setPlayId] = useState<number | null>(null);
@@ -169,39 +166,40 @@ export function SpaceBackground() {
   if (!space) return <div data-testid="space-background" className={styles.bg} />;
 
   const stillFirst = reduced && !userPlay && space.kind !== 'image';
-  const paused = hidden || stillFirst;
+  const paused = !windowVisible || documentHidden || stillFirst;
   const { dim, blur } = space.opts;
+  const videoError = embedErrors[space.id];
 
-  const relocate = () => void window.studyat.spaces.relocate(space.id).then(useSpacesStore.getState().apply);
+  const relocate = () =>
+    void window.studyat.spaces
+      .relocate(space.id)
+      .then(useSpacesStore.getState().apply)
+      .catch(() => undefined);
 
+  // `media` sits under the blur and dim; `notice` (messages, the relocate button) sits above
+  // both, so it stays sharp, readable and clickable whatever the space's settings.
   let media: ReactNode;
+  let notice: ReactNode = null;
   if (space.missing) {
-    media = (
-      <Notice>
-        <Thumb space={space} />
-        <button type="button" className={`${styles.btn} ${styles.primary}`} onClick={relocate}>
-          File moved — Relocate…
-        </button>
-      </Notice>
+    media = <Thumb space={space} />;
+    notice = (
+      <button type="button" className={`${styles.btn} ${styles.primary}`} onClick={relocate}>
+        File moved — Relocate…
+      </button>
     );
   } else if (space.kind === 'image') {
     media = <img src={mediaUrl(space.id)} alt="" data-testid="space-image" className={styles.media} />;
   } else if (space.kind === 'video') {
     media = stillFirst && space.thumb ? <Thumb space={space} /> : <LocalVideo space={space} paused={paused} />;
-  } else if (embedErrors[space.id]) {
-    media = (
-      <Notice>
-        <Thumb space={space} />
-        <p>This video can't be embedded.</p>
-      </Notice>
-    );
+  } else if (videoError === 'embed') {
+    media = <Thumb space={space} />;
+    notice = <p>This video can't be embedded.</p>;
   } else if (!online) {
-    media = (
-      <Notice>
-        <Thumb space={space} />
-        <p data-testid="space-offline">Offline</p>
-      </Notice>
-    );
+    media = <Thumb space={space} />;
+    notice = <p data-testid="space-offline">Offline</p>;
+  } else if (videoError === 'play') {
+    media = <Thumb space={space} />;
+    notice = <p>This video can't be played.</p>;
   } else if (stillFirst) {
     media = <Thumb space={space} />;
   } else {
@@ -211,6 +209,7 @@ export function SpaceBackground() {
   return (
     <div data-testid="space-background" className={styles.bg}>
       <div
+        data-testid="space-layer"
         className={styles.layer}
         style={{
           filter: blur > 0 ? `blur(${blur}px)` : undefined,
@@ -220,6 +219,7 @@ export function SpaceBackground() {
         {media}
       </div>
       <div data-testid="space-dim" className={styles.dim} style={{ opacity: dim }} />
+      {notice && <div className={styles.notice}>{notice}</div>}
       {reduced && space.kind !== 'image' && !space.missing && (
         <div className={styles.footer}>
           <button type="button" className={styles.btn} onClick={() => setPlayId(userPlay ? null : space.id)}>
