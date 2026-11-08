@@ -62,4 +62,21 @@ describe('preload api', () => {
     emit(CHANNELS.events.appFullscreen, true);
     expect(fs).toHaveBeenCalledWith(true);
   });
+
+  it('pushes mini-window and main-window visibility changes (R24)', () => {
+    const { ipc, emit } = fakeIpc();
+    const api = buildApi(ipc);
+    const mini = vi.fn();
+    const offMini = api.app.onMini(mini);
+    emit(CHANNELS.events.appMini, true);
+    offMini();
+    emit(CHANNELS.events.appMini, false);
+    expect(mini.mock.calls).toEqual([[true]]);
+
+    const vis = vi.fn();
+    api.app.onVisibility(vis);
+    emit(CHANNELS.events.appVisibility, false);
+    emit(CHANNELS.events.appVisibility, true);
+    expect(vis.mock.calls).toEqual([[false], [true]]);
+  });
 });

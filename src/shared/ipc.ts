@@ -152,6 +152,10 @@ export interface StudyAtApi {
     toggleFullscreen(): Promise<void>;
     showMini(show: boolean): Promise<void>;
     onFullscreen(cb: (fullscreen: boolean) => void): Unsubscribe;
+    /** The mini timer window was shown (true) or hidden (false), whatever the cause (spec §3.7). */
+    onMini(cb: (shown: boolean) => void): Unsubscribe;
+    /** The main window became visible (shown, restored) or not (hidden to the tray, minimised). */
+    onVisibility(cb: (visible: boolean) => void): Unsubscribe;
   };
 }
 
@@ -234,6 +238,8 @@ export const CHANNELS = {
     timerAway: 'timer:away',
     timerSegmentEnd: 'timer:segmentEnd',
     appFullscreen: 'app:fullscreen',
+    appMini: 'app:mini',
+    appVisibility: 'app:visibility',
   },
 } as const;
 

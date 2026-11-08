@@ -22,6 +22,8 @@ export type MockApi = StudyAtApi & {
   emitAway(p: AwayPrompt | null): void;
   emitSegmentEnd(e: SegmentEnd): void;
   emitFullscreen(on: boolean): void;
+  emitMini(shown: boolean): void;
+  emitVisibility(visible: boolean): void;
 };
 
 const MINUTE = 60_000;
@@ -93,6 +95,8 @@ export function mockApi(overrides: Overrides = {}): MockApi {
   const away = channel<AwayPrompt | null>();
   const segmentEnd = channel<SegmentEnd>();
   const fullscreen = channel<boolean>();
+  const mini = channel<boolean>();
+  const visibility = channel<boolean>();
   const timer = (): Promise<TimerState> => Promise.resolve(idleTimerState());
   const resolves = <T>(value: T) => vi.fn(() => Promise.resolve(value));
 
@@ -190,6 +194,8 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       toggleFullscreen: resolves(undefined),
       showMini: resolves(undefined),
       onFullscreen: vi.fn(fullscreen.subscribe),
+      onMini: vi.fn(mini.subscribe),
+      onVisibility: vi.fn(visibility.subscribe),
     },
   };
 
@@ -213,6 +219,8 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     emitAway: away.emit,
     emitSegmentEnd: segmentEnd.emit,
     emitFullscreen: fullscreen.emit,
+    emitMini: mini.emit,
+    emitVisibility: visibility.emit,
   });
 }
 

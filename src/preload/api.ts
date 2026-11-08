@@ -15,6 +15,8 @@ export const EVENT_METHODS = {
   'timer.onAwayPrompt': CHANNELS.events.timerAway,
   'timer.onSegmentEnd': CHANNELS.events.timerSegmentEnd,
   'app.onFullscreen': CHANNELS.events.appFullscreen,
+  'app.onMini': CHANNELS.events.appMini,
+  'app.onVisibility': CHANNELS.events.appVisibility,
 } as const;
 
 type Fn = (...args: unknown[]) => unknown;

@@ -1,23 +1,55 @@
-// App bootstrap (Task 10; Task 13 adds the tray, mini window, hotkey and windows.ts). Order:
-// userData override → media scheme → single instance → ready → database (migrate, seed) → daily
-// backup → timer and orphan recovery → pending recaps → media protocol → IPC → power → window.
+// App bootstrap (Task 10, Task 13). Order: userData override → media scheme → single instance →
+// ready → database (migrate, seed; the corrupt dialog, spec §3.3) → daily backup → timer and orphan
+// recovery → pending recaps → media protocol → IPC → power → main window → tray → hotkey and login
+// item. Closing the window hides to the tray (appplan §4.4); only Quit ends the app, saving first.
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, powerMonitor, safeStorage, session, shell } from 'electron';
-import { dailyBackup } from './db/backup';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  nativeImage,
+  Notification,
+  powerMonitor,
+  safeStorage,
+  screen,
+  session,
+  shell,
+  Tray,
+  type IpcMainInvokeEvent,
+} from 'electron';
+import { dailyBackup, fileStamp, latestBackupBefore } from './db/backup';
 import { NewerSchemaError, openDatabase, type Db } from './db/db';
 import { settingsRepo } from './db/repos/settings';
+import { GlobalHotkey, guardHotkeySetting } from './hotkey';
 import { createBroadcaster, registerIpc, type Dialogs } from './ipc';
+import { MiniWindow } from './mini';
+import { createNotifier } from './notify';
 import { applyUserDataOverride } from './paths';
 import { installMediaProtocol, registerMediaScheme } from './protocol';
 import { CSP, DEV_CSP, hardenWebContents, shouldApplyCsp } from './security';
 import { startRendererServer } from './server';
+import { dataService } from './services/data';
 import { safeTokenStore } from './services/spotify';
 import { SpotifyApi } from './spotify/api';
 import { SpotifyAuth } from './spotify/auth';
 import { listenForCallback } from './spotify/listener';
 import { TimerController } from './timer/controller';
 import { systemIdleSeconds, wirePower } from './timer/power';
+import { createTray, type AppTray } from './tray';
+import {
+  applyLoginItem,
+  createMainWindow,
+  installQuit,
+  onceUntilFailure,
+  resolveCorruptDb,
+  senderIsFrom,
+  type MainWindow,
+} from './windows';
 import { CHANNELS } from '../shared/ipc';
 
 const userData = applyUserDataOverride(app, process.env);
@@ -27,8 +59,11 @@ registerMediaScheme();
 const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 let rendererServer: { url: string; close(): Promise<void> } | null = null;
 let mainWindow: BrowserWindow | null = null;
+let main: MainWindow | null = null;
+let tray: AppTray | null = null;
+let mini: MiniWindow | null = null;
 
-/** Every live renderer window gets main's pushes; Task 13 adds the mini window here. */
+/** Every live renderer window gets main's pushes: the main window and the mini window. */
 export const broadcaster = createBroadcaster();
 
 /**
@@ -50,6 +85,16 @@ function rendererOrigin(): string | null {
   const url = devUrl ?? rendererServer?.url;
   return url ? new URL(url).origin : null;
 }
+
+/** A page of the renderer build (`''` the main view, `'mini.html'` the mini timer). */
+async function rendererUrl(page: string): Promise<string> {
+  if (devUrl) return new URL(page, devUrl).href;
+  rendererServer ??= await startRendererServer(join(__dirname, '../renderer'));
+  return new URL(page, rendererServer.url).href;
+}
+
+/** IPC only from the app's own pages (main and mini windows). */
+const isTrustedSender = (event: IpcMainInvokeEvent): boolean => senderIsFrom(event, rendererOrigin());
 
 const dialogs: Dialogs = {
   async openFiles(filters, multi = true) {
@@ -76,39 +121,15 @@ const dialogs: Dialogs = {
   },
 };
 
-async function createWindow(): Promise<void> {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 960,
-    minHeight: 600,
-    title: 'StudyAt',
-    backgroundColor: '#0f1115',
-    show: false,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-      backgroundThrottling: false,
-    },
-  });
-  mainWindow = win;
-  hardenWebContents(win.webContents);
-  broadcaster.add(win.webContents);
-  win.on('enter-full-screen', () => broadcaster.send(CHANNELS.events.appFullscreen, true));
-  win.on('leave-full-screen', () => broadcaster.send(CHANNELS.events.appFullscreen, false));
-  win.once('ready-to-show', () => win.show());
-  win.on('closed', () => {
-    mainWindow = null;
-  });
-
-  if (devUrl) {
-    await win.loadURL(devUrl);
-  } else {
-    rendererServer ??= await startRendererServer(join(__dirname, '../renderer'));
-    await win.loadURL(rendererServer.url);
-  }
+/** The tray icon at 16 px with its 32 px variant for high-DPI (spec §7), read without blocking. */
+async function trayImage(assets: string): Promise<Electron.NativeImage> {
+  const [small, large] = await Promise.all([
+    readFile(join(assets, 'icons', 'tray-16.png')),
+    readFile(join(assets, 'icons', 'tray-32.png')),
+  ]);
+  const image = nativeImage.createFromBuffer(small, { scaleFactor: 1 });
+  image.addRepresentation({ scaleFactor: 2, buffer: large });
+  return image;
 }
 
 /** Opens the database; a newer schema is explained calmly and the app quits (nothing written). */
@@ -126,7 +147,44 @@ async function openDb(paths: { assets: string; wasm: string }): Promise<Db | nul
   }
 }
 
+/**
+ * Spec §3.3: the damaged file was set aside; before any window shows, Sam restores the latest
+ * backup (the app relaunches onto it) or starts fresh. True to carry on with the fresh database.
+ */
+async function recoverCorruptDb(db: Db): Promise<boolean> {
+  const corruptAt = db.corruptAt ?? Date.now();
+  // The dialog is the confirmation, so the restore path's own confirm box is skipped.
+  const data = dataService({
+    db,
+    dir: userData,
+    now: Date.now,
+    confirm: () => Promise.resolve(true),
+    beforeRestore: () => db.close(),
+    app,
+  });
+  try {
+    const outcome = await resolveCorruptDb({
+      showMessageBox: (opts) => dialog.showMessageBox(opts),
+      keptAs: `studyat.corrupt-${fileStamp(corruptAt)}.sqlite`,
+      latestBackup: () => latestBackupBefore(userData, corruptAt),
+      restore: (name) => data.restoreBackup(name),
+    });
+    return outcome === 'fresh';
+  } catch (err) {
+    console.error('StudyAt: restoring after a corrupt database failed', err);
+    dialog.showErrorBox(
+      'StudyAt couldn’t restore the backup',
+      `Nothing was deleted: the damaged file and every backup are still in your data folder. Open StudyAt again to retry.\n\n${err instanceof Error ? err.message : String(err)}`,
+    );
+    app.quit();
+    return false;
+  }
+}
+
 async function boot(): Promise<void> {
+  // Windows ties notifications to this id; unpackaged, the Electron binary stands in for the app.
+  if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'io.studyat.app' : process.execPath);
+
   const csp = devUrl ? DEV_CSP : CSP;
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (!shouldApplyCsp(details.url, rendererOrigin())) {
@@ -137,15 +195,18 @@ async function boot(): Promise<void> {
   });
 
   const paths = resourcePaths();
+  const icon = join(paths.assets, 'icons', 'icon.png');
   // openDatabase runs the migrations (with their backup) and the first-run seed.
   const db = await openDb(paths);
   if (!db) return;
+  if (db.recovered === 'corrupt' && !(await recoverCorruptDb(db))) return;
   // After a corrupt launch the file is a fresh database: it must not become today's daily (R16).
   await dailyBackup(userData, Date.now(), { skip: db.recovered === 'corrupt' }).catch((err: unknown) =>
     console.error('StudyAt: daily backup failed', err),
   );
 
-  const settings = settingsRepo(db).get();
+  const settingsStore = settingsRepo(db);
+  const settings = settingsStore.get();
   const auth = new SpotifyAuth({
     fetch,
     store: safeTokenStore(db, safeStorage),
@@ -156,6 +217,15 @@ async function boot(): Promise<void> {
   auth.setClientId(settings.spotifyClientId);
   const spotifyApi = new SpotifyApi(auth, fetch, Date.now);
 
+  const notifier = createNotifier({
+    create: (opts) => new Notification(opts),
+    isSupported: () => Notification.isSupported(),
+    icon,
+    settings: () => settingsStore.get(),
+    isMainFocused: () => Boolean(main?.isVisible() && mainWindow?.isFocused()),
+    onClick: () => main?.reveal(),
+  });
+
   const timer = new TimerController({
     db,
     now: Date.now,
@@ -164,37 +234,62 @@ async function boot(): Promise<void> {
     uuid: randomUUID,
     idleSeconds: systemIdleSeconds(powerMonitor),
     emit: {
-      state: (s) => broadcaster.send(CHANNELS.events.timerState, s),
-      away: (p) => broadcaster.send(CHANNELS.events.timerAway, p),
-      segmentEnd: (e) => broadcaster.send(CHANNELS.events.timerSegmentEnd, e),
+      state: (s) => {
+        broadcaster.send(CHANNELS.events.timerState, s);
+        main?.setTimerState(s);
+        tray?.refresh(s);
+        if (main) mini?.syncWithMain(main.isVisible(), s.status === 'running');
+      },
+      away: (p) => {
+        broadcaster.send(CHANNELS.events.timerAway, p);
+        // Review Focus 1: the prompt lives in the main window, so a hidden one comes back.
+        main?.onAwayPrompt(p);
+      },
+      segmentEnd: (e) => {
+        broadcaster.send(CHANNELS.events.timerSegmentEnd, e);
+        notifier.notifySegmentEnd(e);
+      },
     },
   });
   timer.recoverOrphans();
 
-  // Quit: close the running row and flush (rule 9) before Electron exits, exactly once.
-  let shutdown: Promise<void> | null = null;
-  const stopTimerAndDb = (): Promise<void> => {
-    shutdown ??= (async () => {
-      await timer.quit();
-      await db.close();
-    })();
-    return shutdown;
-  };
-  let readyToQuit = false;
-  app.on('before-quit', (event) => {
-    if (readyToQuit) return;
-    event.preventDefault();
-    void stopTimerAndDb()
-      .catch((err: unknown) => console.error('StudyAt: could not save on quit', err))
-      .finally(async () => {
-        readyToQuit = true;
-        await rendererServer?.close();
-        app.quit();
-      });
+  // Ctrl+Alt+P from anywhere: one toggle per press (Review Focus 5), whatever paused the timer.
+  const hotkey = new GlobalHotkey(
+    globalShortcut,
+    () => {
+      try {
+        timer.toggle();
+      } catch (err) {
+        console.error('StudyAt: the hotkey could not toggle the timer', err);
+      }
+    },
+    Date.now,
+  );
+
+  // Quit: bounds and positions, then the running row closed and flushed (rule 9), then the server,
+  // exactly once; the app quits whatever fails on the way.
+  // A failed attempt is retried by the next quit or restore rather than remembered.
+  const stopTimerAndDb = onceUntilFailure(async () => {
+    await timer.quit();
+    await db.close();
   });
+  const quitting = installQuit(
+    app,
+    async () => {
+      main?.flush();
+      mini?.flush();
+      hotkey.dispose();
+      await stopTimerAndDb();
+    },
+    async () => {
+      tray?.destroy();
+      await rendererServer?.close();
+    },
+  );
 
   const services = registerIpc({
-    ipc: ipcMain,
+    // settings:set with a new globalHotkey registers it before anything is saved (spec §7).
+    ipc: guardHotkeySetting<IpcMainInvokeEvent>(ipcMain, CHANNELS.settings.set, hotkey, isTrustedSender),
     db,
     timer,
     spotify: { api: spotifyApi, auth },
@@ -205,6 +300,19 @@ async function boot(): Promise<void> {
     paths: { userData, assets: paths.assets },
     now: Date.now,
     beforeRestore: stopTimerAndDb,
+    isTrustedSender,
+    onSettingsChanged: (_next, patch) => {
+      if (patch.launchAtStartup !== undefined) applyLoginItem(app, patch.launchAtStartup);
+    },
+    showMini: (show) => {
+      if (show) {
+        void mini?.show();
+        return;
+      }
+      // R24: "open StudyAt" in the mini brings the main window forward.
+      mini?.hide();
+      main?.reveal();
+    },
   });
   // Spec §3.5: every finished week is recapped on launch; the renderer asks for the pending one.
   services.recaps.computePending(Date.now());
@@ -216,18 +324,88 @@ async function boot(): Promise<void> {
   // suspend/lock pause the timer; resume/unlock route to onResume/onUnlock (spec §3.4 rules 3–4).
   wirePower(powerMonitor, timer);
 
-  await createWindow();
+  const workAreas = (): Electron.Rectangle[] => screen.getAllDisplays().map((d) => d.workArea);
+  const timeouts = {
+    setTimeout: (fn: () => void, ms: number): unknown => setTimeout(fn, ms),
+    clearTimeout: (h: unknown): void => clearTimeout(h as NodeJS.Timeout),
+  };
+
+  mini = new MiniWindow({
+    create: (opts) => new BrowserWindow(opts),
+    preload: join(__dirname, '../preload/index.js'),
+    url: () => rendererUrl('mini.html'),
+    harden: hardenWebContents,
+    addTarget: (wc) => broadcaster.add(wc),
+    settings: settingsStore,
+    screen: { workAreas, primaryWorkArea: () => screen.getPrimaryDisplay().workArea },
+    isQuitting: quitting.isQuitting,
+    onShown: (shown) => {
+      broadcaster.send(CHANNELS.events.appMini, shown);
+      tray?.refresh();
+    },
+    ...timeouts,
+  });
+
+  main = createMainWindow({
+    create: (opts) => new BrowserWindow(opts),
+    preload: join(__dirname, '../preload/index.js'),
+    icon,
+    settings: settingsStore,
+    workAreas,
+    isQuitting: quitting.isQuitting,
+    trayNotice: () => notifier.notifyTrayNotice(),
+    onVisibility: (visible) => {
+      broadcaster.send(CHANNELS.events.appVisibility, visible);
+      tray?.refresh();
+      mini?.syncWithMain(visible, timer.getState().status === 'running');
+    },
+    ...timeouts,
+  });
+  const win = main.win;
+  mainWindow = win;
+  hardenWebContents(win.webContents);
+  broadcaster.add(win.webContents);
+  win.on('enter-full-screen', () => broadcaster.send(CHANNELS.events.appFullscreen, true));
+  win.on('leave-full-screen', () => broadcaster.send(CHANNELS.events.appFullscreen, false));
+  // Windows sign-out or shutdown: quit properly (saving first) rather than hiding to the tray.
+  win.on('session-end', () => app.quit());
+  win.on('closed', () => {
+    mainWindow = null;
+  });
+
+  try {
+    const image = await trayImage(paths.assets).catch((err: unknown) => {
+      console.error('StudyAt: tray icons missing, using the app icon', err);
+      return nativeImage.createFromPath(icon);
+    });
+    tray = createTray({
+      create: () => new Tray(image),
+      buildMenu: (template) => Menu.buildFromTemplate(template),
+      getState: () => timer.getState(),
+      isMainVisible: () => main?.isVisible() ?? false,
+      isMiniShown: () => mini?.isShown() ?? false,
+      showMain: () => main?.reveal(),
+      toggleMain: () => main?.toggle(),
+      toggleTimer: () => void timer.toggle(),
+      toggleMini: () => void mini?.toggle(),
+      quit: () => app.quit(),
+    });
+  } catch (err) {
+    console.error('StudyAt: could not create the tray icon', err);
+  }
+
+  const registered = hotkey.register(settings.globalHotkey);
+  if (!registered.ok) console.warn(`StudyAt: global hotkey not registered. ${registered.error}`);
+  applyLoginItem(app, settings.launchAtStartup);
+
+  await win.loadURL(await rendererUrl(''));
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  });
+  // Spec §3.7: a second launch brings the running app forward.
+  app.on('second-instance', () => main?.reveal());
 
   void app
     .whenReady()
@@ -238,6 +416,7 @@ if (!app.requestSingleInstanceLock()) {
       app.quit();
     });
 
-  // Until Task 13's tray, closing the window quits (before-quit saves first).
-  app.on('window-all-closed', () => app.quit());
+  // Closing the window hides it to the tray (appplan §4.4); only Quit ends the app.
+  app.on('window-all-closed', () => undefined);
+  app.on('will-quit', () => globalShortcut.unregisterAll());
 }

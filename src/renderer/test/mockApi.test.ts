@@ -44,6 +44,18 @@ describe('mockApi', () => {
     api.app.onFullscreen(fs)();
     api.emitFullscreen(true);
     expect(fs).not.toHaveBeenCalled();
+
+    const mini = vi.fn();
+    const offMini = api.app.onMini(mini);
+    api.emitMini(true);
+    offMini();
+    api.emitMini(false);
+    expect(mini.mock.calls).toEqual([[true]]);
+
+    const vis = vi.fn();
+    api.app.onVisibility(vis);
+    api.emitVisibility(false);
+    expect(vis).toHaveBeenCalledWith(false);
   });
 
   it('honours overrides and installs on window', () => {
