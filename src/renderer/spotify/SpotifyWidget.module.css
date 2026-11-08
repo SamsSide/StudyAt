@@ -1,0 +1,147 @@
+/* The Spotify widget's contents; the frosted container and title come from the shell's WidgetFrame. */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 240px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.message {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.track {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-areas:
+    "art meta"
+    "bar bar";
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.art {
+  grid-area: art;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--hover);
+}
+
+.meta {
+  grid-area: meta;
+  min-width: 0;
+}
+
+.title,
+.artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.artist {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.progress {
+  grid-area: bar;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--duration) var(--ease);
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.iconButton,
+.textButton {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--hover);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.iconButton {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.textButton {
+  padding: var(--space-2) var(--space-3);
+}
+
+.primary {
+  background: var(--active);
+  border-color: var(--accent);
+}
+
+.iconButton:hover,
+.textButton:hover {
+  background: var(--active);
+}
+
+.iconButton:focus-visible,
+.textButton:focus-visible,
+.select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.select {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+  color: var(--text);
+  font: inherit;
+  color-scheme: dark;
+}
+
+.noDevice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.deviceList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
