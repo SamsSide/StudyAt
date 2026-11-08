@@ -7,7 +7,7 @@ import type { Db } from '../db';
 import { all, transaction } from '../sql';
 
 /** A sanitised renderer patch, plus the main-owned tokens. */
-export type MainSettingsPatch = SettingsPatch & { spotifyTokens?: string | null };
+export type MainSettingsPatch = SettingsPatch & { spotifyTokens?: string | null; activeSpaceId?: number | null };
 
 export interface SettingsRepo {
   get(): Settings;

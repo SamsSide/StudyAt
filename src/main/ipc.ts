@@ -9,7 +9,7 @@ import type { Mode, PublicSettings, Settings, SettingsPatch, SubjectRange, TaskC
 import { localDateKey } from './db/backup';
 import type { Db } from './db/db';
 import { mixesRepo } from './db/repos/mixes';
-import { settingsRepo } from './db/repos/settings';
+import { type MainSettingsPatch, settingsRepo } from './db/repos/settings';
 import { subjectsRepo } from './db/repos/subjects';
 import { tasksRepo } from './db/repos/tasks';
 import type { MediaKind, MediaResolver } from './protocol';
@@ -92,7 +92,7 @@ export interface IpcDeps {
   /** Before a restore copies over the database: `await timer.quit()`, then `await db.close()`. */
   beforeRestore(): Promise<void>;
   /** After every `settings:set` (Task 13 re-registers the global hotkey and login item here). */
-  onSettingsChanged?(settings: Settings, patch: SettingsPatch): void;
+  onSettingsChanged?(settings: Settings, patch: MainSettingsPatch): void;
   /** `app:showMini` (Task 13's mini window). */
   showMini?(show: boolean): void;
   exists?: (path: string) => boolean;

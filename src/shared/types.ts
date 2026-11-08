@@ -216,8 +216,11 @@ export interface Settings {
 /** What the renderer sees: tokens are main-owned (spec §3.10, study-dev rule 9) and never cross the bridge. */
 export type PublicSettings = Omit<Settings, 'spotifyTokens'>;
 
-/** A renderer settings patch: any public key, and `widgets` may name just some widgets. */
-export type SettingsPatch = Partial<Omit<Settings, 'widgets' | 'spotifyTokens'>> & {
+/**
+ * A renderer settings patch: any public key except `activeSpaceId` (only `spaces:setActive`
+ * changes it), and `widgets` may name just some widgets.
+ */
+export type SettingsPatch = Partial<Omit<Settings, 'widgets' | 'spotifyTokens' | 'activeSpaceId'>> & {
   widgets?: Partial<Record<WidgetId, WidgetPos>>;
 };
 

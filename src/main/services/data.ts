@@ -106,11 +106,13 @@ export function dataService(deps: DataServiceDeps) {
         `StudyAt will restart with the data from ${localStamp(backup.createdAt)}. Your current data is kept as a backup first.`,
       );
       if (!ok) return false;
+      // If the shutdown itself fails the database keeps its unflushed data in memory so a later
+      // close can retry: rethrow, with no copy, no relaunch and no exit.
+      await deps.beforeRestore();
       // Once the timer is stopped and the database closed this process can't carry on, so it
       // always relaunches: onto the backup if the copy worked, onto the untouched original if not
       // (copyAtomic only replaces the file by rename). No safety copy, no restore.
       try {
-        await deps.beforeRestore();
         const file = join(deps.dir, DB_FILE);
         const backups = join(deps.dir, BACKUPS_DIR);
         if (await fs.exists(file)) await copyAtomic(fs, file, join(backups, `pre-restore-${fileStamp(deps.now())}.sqlite`));

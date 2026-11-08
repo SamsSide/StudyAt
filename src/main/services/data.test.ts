@@ -148,4 +148,18 @@ describe('dataService', () => {
     expect(app.relaunch).toHaveBeenCalledTimes(1);
     expect(app.exit).toHaveBeenCalledWith(0);
   });
+
+  it('restoreBackup rethrows a failed shutdown without copying, relaunching or exiting', async () => {
+    mkdirSync(join(dir, 'backups'), { recursive: true });
+    writeFileSync(join(dir, 'backups', 'daily-2026-11-07.sqlite'), 'old data');
+    const before = readFileSync(join(dir, 'studyat.sqlite'));
+    const { svc, app, beforeRestore } = service();
+    beforeRestore.mockRejectedValueOnce(new Error('flush failed'));
+
+    await expect(svc.restoreBackup('daily-2026-11-07.sqlite')).rejects.toThrow('flush failed');
+    expect(app.relaunch).not.toHaveBeenCalled();
+    expect(app.exit).not.toHaveBeenCalled();
+    expect(readdirSync(join(dir, 'backups')).filter((n) => n.startsWith('pre-restore-'))).toEqual([]);
+    expect(readFileSync(join(dir, 'studyat.sqlite'))).toEqual(before);
+  });
 });
