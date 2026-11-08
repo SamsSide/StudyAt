@@ -1,9 +1,12 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { formatClock as sharedFormatClock } from '../../shared/clock';
 import type { TimerState } from '../../shared/types';
 import { MiniTimer } from '../mini/MiniTimer';
 import { resetStudyStore, useStudyStore } from '../shell/store';
+import { useShortcuts } from '../shell/useShortcuts';
 import { idleTimerState, installMockApi, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
 import { AwayPrompt } from './AwayPrompt';
 import { formatClock } from './format';
@@ -21,14 +24,17 @@ function setup(timer: Partial<TimerState> = {}) {
 /** Stands in for main's timer push, which the store only hears after initStudyStore(). */
 const push = (timer: TimerState): void => act(() => useStudyStore.setState({ timer }));
 
+/** Mounts the in-app shortcuts around the component under test, as the shell does. */
+function Shortcuts({ children }: { children: ReactNode }) {
+  useShortcuts();
+  return <>{children}</>;
+}
+
 beforeEach(() => setup());
 
 describe('formatClock', () => {
-  it('formats minutes and hours', () => {
-    expect(formatClock(3_725_000)).toBe('1:02:05');
-    expect(formatClock(25 * 60_000)).toBe('25:00');
-    expect(formatClock(59_001)).toBe('01:00');
-    expect(formatClock(-5)).toBe('00:00');
+  it('is the shared clock, so the widget reads the same as the title and tray', () => {
+    expect(formatClock).toBe(sharedFormatClock);
   });
 });
 
@@ -36,16 +42,40 @@ describe('TimerWidget', () => {
   it('shows 25:00 idle focus', () => {
     render(<TimerWidget />);
     expect(screen.getByRole('timer')).toHaveTextContent('25:00');
-    expect(screen.getByRole('tab', { name: 'Pomodoro' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('radio', { name: 'Pomodoro' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
   });
 
-  it('mode tabs call setMode', async () => {
+  it('mode radios call setMode', async () => {
     render(<TimerWidget />);
-    await userEvent.click(screen.getByRole('tab', { name: 'Short break' }));
-    await userEvent.click(screen.getByRole('tab', { name: 'Long break' }));
+    expect(screen.getByRole('radiogroup', { name: 'Timer mode' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: 'Short break' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Long break' }));
     expect(api.timer.setMode).toHaveBeenNthCalledWith(1, 'short');
     expect(api.timer.setMode).toHaveBeenNthCalledWith(2, 'long');
+  });
+
+  it('the mode radios are one tab stop, and the arrow keys move and select', async () => {
+    const user = userEvent.setup();
+    setup({ mode: 'short' });
+    render(<TimerWidget />);
+    const [focus, short, long] = screen.getAllByRole('radio');
+    expect(focus).toHaveAttribute('tabindex', '-1');
+    expect(short).toHaveAttribute('tabindex', '0');
+    expect(long).toHaveAttribute('tabindex', '-1');
+    await user.tab();
+    expect(short).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(long).toHaveFocus();
+    expect(api.timer.setMode).toHaveBeenLastCalledWith('long');
+    await user.keyboard('{ArrowRight}');
+    expect(focus).toHaveFocus();
+    expect(api.timer.setMode).toHaveBeenLastCalledWith('focus');
+    await user.keyboard('{ArrowLeft}');
+    expect(long).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(short).toHaveFocus();
+    expect(api.timer.setMode).toHaveBeenLastCalledWith('short');
   });
 
   it('start, pause, resume, reset and skip call the API', async () => {
@@ -64,19 +94,18 @@ describe('TimerWidget', () => {
     expect(api.timer.skip).toHaveBeenCalledTimes(1);
   });
 
-  it('subject select lists non-archived subjects with "No subject"', async () => {
-    const subjects = seedSubjects();
-    subjects[1] = { ...subjects[1]!, archived: true };
-    useStudyStore.setState({ subjects });
+  it('the mini toggle shows and hides the mini timer', async () => {
+    const user = userEvent.setup();
     render(<TimerWidget />);
-    const names = screen.getAllByRole('option').map((o) => o.textContent);
-    expect(names[0]).toBe('No subject');
-    expect(names).not.toContain(subjects[1]!.name);
-    expect(names).toContain(subjects[0]!.name);
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), String(subjects[0]!.id));
-    expect(api.timer.setSubject).toHaveBeenCalledWith(subjects[0]!.id);
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), 'No subject');
-    expect(api.timer.setSubject).toHaveBeenLastCalledWith(null);
+    const show = screen.getByRole('button', { name: 'Show mini timer' });
+    expect(show).toHaveAttribute('aria-pressed', 'false');
+    await user.click(show);
+    expect(api.app.showMini).toHaveBeenLastCalledWith(true);
+    const hide = screen.getByRole('button', { name: 'Hide mini timer' });
+    expect(hide).toHaveAttribute('aria-pressed', 'true');
+    await user.click(hide);
+    expect(api.app.showMini).toHaveBeenLastCalledWith(false);
+    expect(useStudyStore.getState().miniShown).toBe(false);
   });
 
   it('shows the system-pause messages', () => {
@@ -106,6 +135,123 @@ describe('TimerWidget', () => {
   });
 });
 
+const optionNames = (): string[] => screen.getAllByRole('option').map((o) => o.textContent ?? '');
+
+describe('SubjectSelect', () => {
+  it('lists "No subject" first, then the live subjects, each with its colour dot', async () => {
+    const user = userEvent.setup();
+    const subjects = seedSubjects();
+    subjects[1] = { ...subjects[1]!, archived: true };
+    useStudyStore.setState({ subjects });
+    render(<TimerWidget />);
+    const box = screen.getByRole('combobox', { name: 'Subject' });
+    expect(box).toHaveTextContent('No subject');
+    expect(box).toHaveAttribute('aria-expanded', 'false');
+    await user.click(box);
+    expect(box).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('listbox', { name: 'Subject' })).toBeInTheDocument();
+    const names = optionNames();
+    expect(names[0]).toBe('No subject');
+    expect(names).not.toContain(subjects[1]!.name);
+    expect(names).toContain(subjects[0]!.name);
+    expect(screen.getByRole('option', { name: 'No subject' })).toHaveAttribute('aria-selected', 'true');
+    const dot = screen.getByRole('option', { name: subjects[0]!.name }).querySelector('[data-dot]');
+    expect(dot).toHaveStyle({ background: subjects[0]!.colour });
+  });
+
+  it('clicking an option sets the subject and closes the list', async () => {
+    const user = userEvent.setup();
+    const subjects = seedSubjects();
+    render(<TimerWidget />);
+    await user.click(screen.getByRole('combobox', { name: 'Subject' }));
+    await user.click(screen.getByRole('option', { name: subjects[2]!.name }));
+    expect(api.timer.setSubject).toHaveBeenLastCalledWith(subjects[2]!.id);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Subject' })).toHaveFocus();
+  });
+
+  it('lists an archived subject only while it is the one selected', async () => {
+    const user = userEvent.setup();
+    const subjects = seedSubjects();
+    subjects[1] = { ...subjects[1]!, archived: true };
+    setup({ subjectId: subjects[1]!.id });
+    useStudyStore.setState({ subjects });
+    render(<TimerWidget />);
+    const box = screen.getByRole('combobox', { name: 'Subject' });
+    expect(box).toHaveTextContent(subjects[1]!.name);
+    await user.click(box);
+    expect(optionNames()).toContain(subjects[1]!.name);
+    expect(screen.getByRole('option', { name: subjects[1]!.name })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('option', { name: 'No subject' }));
+    expect(api.timer.setSubject).toHaveBeenLastCalledWith(null);
+    push({ ...idleTimerState(), subjectId: null });
+    await user.click(box);
+    expect(optionNames()).not.toContain(subjects[1]!.name);
+  });
+
+  it('works from the keyboard: arrows, Home/End, type-ahead, Enter and Escape', async () => {
+    const user = userEvent.setup();
+    const subjects = seedSubjects();
+    render(<TimerWidget />);
+    const box = screen.getByRole('combobox', { name: 'Subject' });
+    act(() => box.focus());
+    const active = (): string | null =>
+      document.getElementById(box.getAttribute('aria-activedescendant') ?? '')?.textContent ?? null;
+
+    await user.keyboard('{ArrowDown}');
+    expect(box).toHaveAttribute('aria-expanded', 'true');
+    expect(active()).toBe('No subject');
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(active()).toBe(subjects[1]!.name);
+    await user.keyboard('{Enter}');
+    expect(api.timer.setSubject).toHaveBeenLastCalledWith(subjects[1]!.id);
+    expect(box).toHaveAttribute('aria-expanded', 'false');
+
+    await user.keyboard('{End}');
+    expect(active()).toBe(subjects[5]!.name);
+    await user.keyboard('{Home}');
+    expect(active()).toBe('No subject');
+    await user.keyboard('{Escape}');
+    expect(box).toHaveAttribute('aria-expanded', 'false');
+    expect(api.timer.setSubject).toHaveBeenCalledTimes(1);
+
+    // Typing opens the list on the first name that starts with it (names hold spaces, so Space
+    // joins the search while typing is under way; Enter picks).
+    await user.keyboard('comp2221');
+    expect(box).toHaveAttribute('aria-expanded', 'true');
+    expect(active()).toBe(subjects[2]!.name);
+    await user.keyboard('{Enter}');
+    expect(api.timer.setSubject).toHaveBeenLastCalledWith(subjects[2]!.id);
+
+    // Space opens and, with no typing under way, picks.
+    await user.keyboard(' ');
+    expect(box).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{ArrowUp}{ArrowDown}');
+    expect(active()).toBe(subjects[0]!.name);
+    await user.keyboard(' ');
+    expect(api.timer.setSubject).toHaveBeenLastCalledWith(subjects[0]!.id);
+    expect(box).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('keeps its keys from the shortcuts while it has focus', async () => {
+    const user = userEvent.setup();
+    render(
+      <Shortcuts>
+        <TimerWidget />
+      </Shortcuts>,
+    );
+    act(() => useStudyStore.setState({ overlay: 'stats' }));
+    const box = screen.getByRole('combobox', { name: 'Subject' });
+    act(() => box.focus());
+    await user.keyboard(' ');
+    await user.keyboard('{Escape}');
+    expect(useStudyStore.getState().overlay).toBe('stats');
+    await user.keyboard('r');
+    expect(api.timer.start).not.toHaveBeenCalled();
+    expect(api.timer.reset).not.toHaveBeenCalled();
+  });
+});
+
 describe('AwayPrompt', () => {
   it('uses the spec copy, focuses Discard and answers through the API', async () => {
     render(<AwayPrompt />);
@@ -122,6 +268,63 @@ describe('AwayPrompt', () => {
     expect(screen.getByText('You were away for 1 min. Keep that time as study?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(api.timer.answerAway).toHaveBeenLastCalledWith('discard');
+  });
+
+  it('swallows the shortcuts while it is open, but its buttons still work from the keyboard', async () => {
+    const user = userEvent.setup();
+    render(
+      <Shortcuts>
+        <AwayPrompt />
+      </Shortcuts>,
+    );
+    act(() => api.emitAway({ awayMs: 600_000, deadline: 0 }));
+    await user.keyboard('rn1s?mf');
+    await user.keyboard('{Escape}');
+    expect(api.timer.reset).not.toHaveBeenCalled();
+    expect(api.timer.skip).not.toHaveBeenCalled();
+    expect(api.timer.setMode).not.toHaveBeenCalled();
+    expect(api.app.showMini).not.toHaveBeenCalled();
+    expect(api.app.toggleFullscreen).not.toHaveBeenCalled();
+    expect(useStudyStore.getState().overlay).toBeNull();
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+
+    // Even with focus knocked out of the dialog, keys don't reach the shortcuts.
+    act(() => (document.activeElement as HTMLElement).blur());
+    await user.keyboard('r');
+    expect(api.timer.reset).not.toHaveBeenCalled();
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Keep it' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(api.timer.answerAway).toHaveBeenCalledWith('keep');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await user.keyboard('r');
+    expect(api.timer.reset).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Tab inside the dialog and gives focus back when it closes', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <button type="button">Before</button>
+        <AwayPrompt />
+      </>,
+    );
+    const before = screen.getByRole('button', { name: 'Before' });
+    act(() => before.focus());
+    act(() => api.emitAway({ awayMs: 600_000, deadline: 0 }));
+    const discard = screen.getByRole('button', { name: 'Discard' });
+    const keep = screen.getByRole('button', { name: 'Keep it' });
+    expect(discard).toHaveFocus();
+    await user.tab();
+    expect(keep).toHaveFocus();
+    await user.tab();
+    expect(discard).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(keep).toHaveFocus();
+    await user.keyboard(' ');
+    expect(api.timer.answerAway).toHaveBeenCalledWith('keep');
+    expect(before).toHaveFocus();
   });
 
   it('closes when main sends null', () => {
@@ -145,9 +348,48 @@ describe('MiniTimer', () => {
     expect(api.timer.pause).toHaveBeenCalledTimes(1);
   });
 
+  it('names the subject for screen readers, not just as a colour', () => {
+    const subjects = seedSubjects();
+    setup({ subjectId: subjects[0]!.id });
+    const { unmount } = render(<MiniTimer />);
+    expect(screen.getByText(`Subject: ${subjects[0]!.name}`)).toBeInTheDocument();
+    unmount();
+    setup();
+    render(<MiniTimer />);
+    expect(screen.getByText('Subject: none')).toBeInTheDocument();
+  });
+
+  it('re-fetches the subjects when the timer names one it has not heard of', async () => {
+    render(<MiniTimer />);
+    push({ ...idleTimerState(), subjectId: 1 });
+    expect(api.subjects.list).not.toHaveBeenCalled();
+    const fresh = [...seedSubjects(), { id: 7, name: 'Revision', colour: '#ffffff', archived: false, sort: 6 }];
+    vi.mocked(api.subjects.list).mockResolvedValue(fresh);
+    push({ ...idleTimerState(), subjectId: 7 });
+    expect(api.subjects.list).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Subject: Revision')).toBeInTheDocument();
+  });
+
   it('"Open StudyAt" calls showMini(false)', async () => {
     render(<MiniTimer />);
     await userEvent.click(screen.getByRole('button', { name: 'Open StudyAt' }));
     expect(api.app.showMini).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('mini.tsx', () => {
+  afterEach(() => document.getElementById('root')?.remove());
+
+  it('mounts the mini timer into #root and loads the store', async () => {
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.append(root);
+    vi.resetModules();
+    await act(async () => {
+      await import('../mini');
+    });
+    expect(await screen.findByRole('timer')).toHaveTextContent('25:00');
+    expect(api.timer.get).toHaveBeenCalled();
+    expect(api.subjects.list).toHaveBeenCalled();
   });
 });

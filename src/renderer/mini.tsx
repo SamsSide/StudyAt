@@ -5,10 +5,10 @@ import { createRoot } from 'react-dom/client';
 import { MiniTimer } from './mini/MiniTimer';
 import { initStudyStore } from './shell/store';
 import './styles/tokens.css';
+import './mini/page.css';
 
 const root = document.getElementById('root');
 if (root) {
-  document.body.style.background = 'transparent';
   initStudyStore();
   createRoot(root).render(
     <StrictMode>

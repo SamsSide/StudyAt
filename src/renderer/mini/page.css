@@ -1,0 +1,11 @@
+/* The mini window's page (spec §3.7), imported by mini.tsx only, after tokens.css. The window is
+   frameless and transparent, so the page must paint nothing behind the rounded card: no body
+   background, and no dark colour-scheme canvas, which Chromium fills opaque. */
+:root {
+  color-scheme: normal;
+}
+
+html,
+body {
+  background: transparent;
+}
