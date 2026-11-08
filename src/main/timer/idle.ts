@@ -34,7 +34,7 @@ export class IdleWatch {
   }
 }
 
-interface Span {
+export interface Span {
   rowId: number;
   from: number;
   to: number;
@@ -55,9 +55,14 @@ export class FocusLedger {
     else this.spans.push({ rowId, from, to });
   }
 
-  /** Drops spans that ended before `before`. */
-  prune(before: number): void {
-    this.spans = this.spans.filter((s) => s.to >= before);
+  /** Drops every span `keep` rejects. */
+  prune(keep: (span: Readonly<Span>) => boolean): void {
+    this.spans = this.spans.filter(keep);
+  }
+
+  /** The rows that still have spans. */
+  rowIds(): Set<number> {
+    return new Set(this.spans.map((s) => s.rowId));
   }
 
   /** Focus ms per row inside `[from, to]`, newest row first. */

@@ -45,6 +45,15 @@ describe('sessionsRepo', () => {
     expect(repo.all()[0]).toMatchObject({ status: 'done', endedAt: NOW + 120_000, focusMs: 110_000, discardedMs: 10_000 });
   });
 
+  it('a checkpoint writes discarded time when given and leaves it alone otherwise', () => {
+    const repo = sessionsRepo(db);
+    const s = start();
+    repo.checkpoint(s.id, 60_000, NOW + 15_000, 30_000);
+    expect(repo.listRunning()[0]).toMatchObject({ focusMs: 60_000, discardedMs: 30_000, checkpointAt: NOW + 15_000 });
+    repo.checkpoint(s.id, 75_000, NOW + 30_000);
+    expect(repo.listRunning()[0]).toMatchObject({ focusMs: 75_000, discardedMs: 30_000, checkpointAt: NOW + 30_000 });
+  });
+
   it('ignores a checkpoint on a closed row', () => {
     const repo = sessionsRepo(db);
     const s = start();

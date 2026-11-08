@@ -36,12 +36,14 @@ describe('FocusLedger', () => {
     ]);
   });
 
-  it('prunes spans that ended before a time', () => {
+  it('prunes the spans a predicate rejects and lists the rows still referenced', () => {
     const l = new FocusLedger();
     l.add(1, 0, 100);
     l.add(2, 200, 300);
-    l.prune(150);
+    l.add(3, 300, 400);
+    l.prune((s) => s.to >= 150 && s.rowId !== 3);
     expect(l.covered(0, 1_000)).toEqual([{ rowId: 2, ms: 100 }]);
+    expect([...l.rowIds()]).toEqual([2]);
   });
 
   it('ignores empty spans', () => {

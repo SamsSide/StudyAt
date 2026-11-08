@@ -4,7 +4,7 @@ import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
-import { TimerController } from './controller';
+import { SLEEP_GAP_MS, TimerController } from './controller';
 import { FakeClock } from './test-clock';
 
 const MIN = 60_000;
@@ -207,7 +207,7 @@ describe('TimerController', () => {
     expect(aways.at(-1)).toBeNull();
     expect(s.remainingMs).toBe(FOCUS - (12 * MIN + 5_000) + away);
     expect(s.todayFocusMs).toBe(MIN);
-    expect(rows()[0]).toMatchObject({ focusMs: MIN, status: 'running' });
+    expect(rows()[0]).toMatchObject({ focusMs: MIN, discardedMs: away, status: 'running' }); // on disk before close
     c.reset();
     expect(rows()[0]).toMatchObject({ focusMs: MIN, discardedMs: away, status: 'done' });
   });
@@ -386,5 +386,158 @@ describe('TimerController', () => {
     const [a, b] = rows();
     expect(a).toMatchObject({ pomodoroId: 'p-1', status: 'done', focusMs: FOCUS });
     expect(b).toMatchObject({ pomodoroId: 'p-2', status: 'running', startedAt: NOW + FOCUS + 5 * MIN });
+  });
+  // ── Sam's answer A4: an unreported sleep (Modern Standby) is never accrued ──
+
+  it('a tick gap over 30 s with no suspend event pauses for suspend at the last tick', () => {
+    expect(SLEEP_GAP_MS).toBe(30_000);
+    c.start();
+    at(30_000);
+    clock.jump(31_000); // asleep, no suspend event
+    clock.advance(250);
+    expect(c.getState()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000, todayFocusMs: 30_000 });
+    expect(rows()[0]).toMatchObject({ status: 'running', focusMs: 30_000, checkpointAt: NOW + 30_000 });
+    expect(states.at(-1)).toMatchObject({ status: 'paused', pauseReason: 'suspend' });
+    expect(clock.periods()).toEqual([]);
+  });
+
+  it('a tick gap of 20 s (or exactly 30 s) is accrued normally', () => {
+    c.start();
+    at(30_000);
+    clock.jump(20_000);
+    clock.advance(250);
+    expect(c.getState()).toMatchObject({ status: 'running', remainingMs: FOCUS - 50_250 });
+    clock.jump(30_000);
+    clock.advance(0);
+    expect(c.getState()).toMatchObject({ status: 'running', remainingMs: FOCUS - 80_250 });
+  });
+
+  it('an unreported sleep past the segment end does not finish the segment', () => {
+    c.start();
+    at(24 * MIN);
+    clock.jump(10 * MIN);
+    clock.advance(250);
+    expect(ends).toEqual([]);
+    expect(c.getState()).toMatchObject({ mode: 'focus', status: 'paused', pauseReason: 'suspend', remainingMs: MIN });
+    expect(rows()[0]).toMatchObject({ focusMs: 24 * MIN });
+  });
+
+  it('a command after an unreported sleep pauses for suspend before it acts', () => {
+    c.start();
+    at(30_000);
+    clock.jump(5 * MIN);
+    expect(c.pause()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000 });
+    expect(rows()[0]).toMatchObject({ focusMs: 30_000 });
+  });
+
+  it('onResume on a still-running timer pauses for suspend at the last tick', () => {
+    c.start();
+    at(30_000);
+    clock.jump(10_000); // under the gap, but Electron says we slept
+    c.onResume();
+    expect(c.getState()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000 });
+    expect(rows()[0]).toMatchObject({ focusMs: 30_000, checkpointAt: NOW + 30_000 });
+  });
+
+  it('quit after an unreported sleep closes the row without the gap', async () => {
+    c.start();
+    at(2 * MIN);
+    clock.jump(20 * MIN);
+    await c.quit();
+    expect(rows()[0]).toMatchObject({ status: 'done', focusMs: 2 * MIN });
+  });
+
+  // ── Sam's answer A1: quit while away discards, even before the return is noticed ──
+
+  it('quit with an away period not yet noticed discards it', async () => {
+    c.start();
+    lastInput = NOW + MIN;
+    at(12 * MIN); // the 11:00 poll saw 10 min idle; Sam has not come back
+    expect(aways).toEqual([]);
+    await c.quit();
+    expect(rows()[0]).toMatchObject({ status: 'done', focusMs: MIN, discardedMs: 11 * MIN });
+  });
+
+  // ── Sam's answer A3: a pomodoro is credited to its start day ──
+
+  it('a subject change after the 04:00 rollover keeps the start day', async () => {
+    c.dispose();
+    await db.close();
+    cleanup();
+    await setup(new Date(2026, 10, 9, 3, 50, 0).getTime());
+    c.setSubject(1);
+    c.start();
+    clock.advance(15 * MIN); // 04:05
+    c.setSubject(2);
+    clock.advance(5 * MIN);
+    c.reset();
+    expect(rows().map((r) => [r.subjectId, r.dayKey])).toEqual([
+      [1, '2026-11-08'],
+      [2, '2026-11-08'],
+    ]);
+  });
+
+  // ── Finding 5: nothing steps or writes once disposed ──
+
+  it('ignores commands after quit', async () => {
+    c.start();
+    at(2 * MIN);
+    await c.quit();
+    const before = rows();
+    const flush = vi.spyOn(db, 'flushNow');
+    const insert = vi.spyOn(db, 'markDirty');
+    c.skip();
+    c.setMode('focus');
+    c.start();
+    c.setSubject(4);
+    c.onSuspend();
+    c.onResume();
+    c.answerAway('discard');
+    c.recoverOrphans();
+    await c.quit();
+    expect(rows()).toEqual(before);
+    expect(flush).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+    expect(clock.periods()).toEqual([]);
+  });
+
+  it('ignores commands after dispose', () => {
+    c.dispose();
+    c.start();
+    expect(rows()).toEqual([]);
+    expect(clock.periods()).toEqual([]);
+  });
+
+  // ── Findings 6 and 7: the ledger and row map stay bounded without under-charging ──
+
+  it('a lowered idle threshold still charges an earlier row of the same pomodoro', () => {
+    settingsRepo(db).set({ idleMinutes: 30, focusMinutes: 60 });
+    c.start();
+    at(2 * MIN);
+    c.setSubject(1); // tray, no input
+    at(14 * MIN);
+    settingsRepo(db).set({ idleMinutes: 10 });
+    c.applySettings();
+    at(14 * MIN + 5_000); // the poll notices 14:05 idle since 0:00
+    lastInput = clock.time + 1_000;
+    at(14 * MIN + 10_000);
+    expect(aways[0]?.awayMs).toBe(14 * MIN + 10_000);
+    expect(c.answerAway('discard')).toMatchObject({ remainingMs: 60 * MIN, todayFocusMs: 0 });
+    // The untagged row lost all of its 2 minutes and was deleted.
+    expect(rows()).toEqual([expect.objectContaining({ subjectId: 1, status: 'running', focusMs: 0, discardedMs: 12 * MIN + 10_000 })]);
+  });
+
+  it('forgets rows of older pomodoros once nothing can charge them', () => {
+    for (let i = 0; i < 5; i++) {
+      c.setMode('focus');
+      c.start();
+      clock.advance(3 * MIN);
+      lastInput = clock.time;
+      c.skip();
+    }
+    clock.advance(30 * MIN);
+    lastInput = clock.time;
+    c.applySettings();
+    expect((Reflect.get(c, 'rows') as Map<number, unknown>).size).toBe(2);
   });
 });

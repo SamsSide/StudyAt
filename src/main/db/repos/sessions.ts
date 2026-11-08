@@ -16,8 +16,11 @@ export const MIN_SESSION_MS = 60_000;
 export interface SessionsRepo {
   /** A new `running` row, checkpointed at its start (rule 1). */
   insertRunning(input: { pomodoroId: string; subjectId: number | null; startedAt: number; dayKey: string }): Session;
-  /** Records accrued focus time on a `running` row; ignored once the row is done. */
-  checkpoint(id: number, focusMs: number, at: number): void;
+  /**
+   * Records accrued focus time on a `running` row, and its discarded time when given (a discard on
+   * the open row reaches the disk before the row closes); ignored once the row is done.
+   */
+  checkpoint(id: number, focusMs: number, at: number, discardedMs?: number): void;
   /** Ends a row (`status done`). May be called again on a done row to apply a late discard (rule 4). */
   close(id: number, endedAt: number, focusMs: number, discardedMs: number): void;
   /** Deletes a done row with `focusMs < minMs`; true if it was deleted. Running rows are never touched. */
@@ -57,8 +60,17 @@ export function sessionsRepo(db: Db): SessionsRepo {
       db.markDirty();
       return toSession(one(db.raw, 'SELECT * FROM sessions WHERE id = ?', [id])!);
     },
-    checkpoint(id, focusMs, at) {
-      run(db.raw, "UPDATE sessions SET focus_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'", [focusMs, at, id]);
+    checkpoint(id, focusMs, at, discardedMs) {
+      if (discardedMs === undefined) {
+        run(db.raw, "UPDATE sessions SET focus_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'", [focusMs, at, id]);
+      } else {
+        run(db.raw, "UPDATE sessions SET focus_ms = ?, discarded_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'", [
+          focusMs,
+          discardedMs,
+          at,
+          id,
+        ]);
+      }
       db.markDirty();
     },
     close(id, endedAt, focusMs, discardedMs) {

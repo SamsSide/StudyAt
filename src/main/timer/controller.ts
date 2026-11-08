@@ -15,6 +15,12 @@ import { AWAY_AUTO_DISCARD_MS, FocusLedger, IDLE_POLL_MS, IdleWatch } from './id
 export const TICK_MS = 250;
 /** Running focus rows are written at least this often (≤ 15 s lost on a crash, spec §3.3). */
 export const CHECKPOINT_MS = 15_000;
+/**
+ * While running, a gap longer than this between two steps of the machine is a sleep Electron did
+ * not report (Modern Standby): the timer pauses for `suspend` at the last step and the gap never
+ * accrues (Sam's ruling A4, 2026-11-08). Ticks come every 250 ms, so a live process never gets near it.
+ */
+export const SLEEP_GAP_MS = 30_000;
 /** How often an open away prompt checks its deadline. */
 const AWAY_CHECK_MS = 1_000;
 /** While running, state is emitted on each new second, and at least this often. */
@@ -75,7 +81,10 @@ export class TimerController {
   private subjectId: number | null = null;
   /** The focus row of the current segment, open from focus start to its end. */
   private open: Row | null = null;
+  /** Rows the ledger or a pending prompt can still charge, plus the open one. */
   private readonly rows = new Map<number, Row>();
+  /** The current and previous pomodoro ids, newest last; their ledger spans are always kept. */
+  private recentPomodoros: string[] = [];
   private readonly ledger = new FocusLedger();
   private readonly idle = new IdleWatch();
   private pending: Pending | null = null;
@@ -96,6 +105,7 @@ export class TimerController {
 
   /** Spec §3.4 rule 7: closes every `running` row at its last checkpoint, then rule 6 applies. */
   recoverOrphans(): void {
+    if (this.disposed) return;
     for (const row of this.sessions.listRunning()) {
       if (row.id === this.open?.id) continue;
       this.sessions.close(row.id, row.checkpointAt, row.focusMs, row.discardedMs);
@@ -160,9 +170,11 @@ export class TimerController {
       if (id === this.subjectId) return;
       this.subjectId = id;
       if (!this.open) return;
-      const pomodoroId = this.open.pomodoroId;
+      // The whole pomodoro is credited to its start day, even if the change comes after the
+      // rollover (Sam's ruling A3, 2026-11-08).
+      const { pomodoroId, dayKey } = this.open;
       this.closeOpen(now);
-      this.openRow(pomodoroId, now);
+      this.openRow(pomodoroId, now, dayKey);
     });
   }
 
@@ -193,21 +205,28 @@ export class TimerController {
     this.command((now) => this.pauseFor('lock', now));
   }
 
-  /** Rule 3: the timer stays paused until Sam resumes it. */
+  /**
+   * Rule 3: the timer stays paused until Sam resumes it. A timer still running here missed the
+   * suspend event, so it pauses for `suspend` at the last step and the sleep is not accrued (A4).
+   */
   onResume(): void {
-    this.command(() => undefined);
+    this.command(() => undefined, true);
   }
 
   onUnlock(): void {
     this.command(() => undefined);
   }
 
-  /** Rule 9: ends the running row as in rule 6, flushes, and stops every interval. */
+  /**
+   * Rule 9: ends the running row as in rule 6, flushes, and stops every interval. Once quit (or
+   * disposed) the controller writes nothing more, so a second call is a no-op.
+   */
   async quit(): Promise<void> {
+    if (this.disposed) return;
     const now = this.deps.now();
-    this.apply({ type: 'tick' }, now);
-    // No answer is possible after quitting, so an away period still open is discarded (rule 4's
-    // honesty default).
+    this.tick(now);
+    // No answer is possible after quitting, so an away period still open, prompted or not yet
+    // noticed, is discarded (rule 4's honesty default; Sam's ruling A1, 2026-11-08).
     if (!this.pending && this.idle.since !== null) {
       this.pending = { prompt: { awayMs: 0, deadline: now }, charges: this.ledger.covered(this.idle.since, now) };
     }
@@ -226,10 +245,15 @@ export class TimerController {
 
   // ── Driving the machine ────────────────────────────────────────────────────
 
-  /** Every command first ticks at `now` (R8), so a segment that ran out between ticks ends properly. */
-  private command(fn: (now: number) => void): TimerState {
+  /**
+   * Every command first ticks at `now` (R8), so a segment that ran out between ticks ends properly.
+   * After quit or dispose nothing steps or writes: a late command would otherwise open a row that
+   * becomes an orphan.
+   */
+  private command(fn: (now: number) => void, slept = false): TimerState {
+    if (this.disposed) return this.getState();
     const now = this.deps.now();
-    this.apply({ type: 'tick' }, now);
+    this.tick(now, slept);
     fn(now);
     this.settle(now, true);
     return this.getState();
@@ -265,6 +289,19 @@ export class TimerController {
     }
   }
 
+  /**
+   * Steps the machine to `now`, unless the gap since its last step says the PC slept unreported
+   * (or `slept` says so): then it pauses for `suspend` at that last step, accruing nothing (A4).
+   */
+  private tick(now: number, slept = false): void {
+    const m = this.machine;
+    if (m.status === 'running' && m.runningSince !== null && (slept || now - m.runningSince > SLEEP_GAP_MS)) {
+      this.pauseFor('suspend', m.runningSince);
+      return;
+    }
+    this.apply({ type: 'tick' }, now);
+  }
+
   private willEnd(event: TimerEvent, now: number): boolean {
     const m = this.machine;
     return event.type === 'tick' && m.status === 'running' && m.runningSince !== null && now - m.runningSince >= m.remainingMs;
@@ -277,8 +314,9 @@ export class TimerController {
   }
 
   private onTick(): void {
+    if (this.disposed) return;
     const now = this.deps.now();
-    this.apply({ type: 'tick' }, now);
+    this.tick(now);
     // A clock set backwards must not hold checkpoints back until it catches up.
     const due = now - this.lastCheckpointAt >= CHECKPOINT_MS || now < this.lastCheckpointAt;
     if (this.open && this.machine.status === 'running' && due) this.checkpoint(now);
@@ -337,19 +375,20 @@ export class TimerController {
 
   // ── Session rows ───────────────────────────────────────────────────────────
 
-  private openRow(pomodoroId: string, now: number): void {
-    const dayKey = dayKeyOf(now, this.rolloverHour);
+  /** `dayKey` is given for a subject split, which stays on its pomodoro's start day (A3). */
+  private openRow(pomodoroId: string, now: number, dayKey = dayKeyOf(now, this.rolloverHour)): void {
     const s = this.sessions.insertRunning({ pomodoroId, subjectId: this.subjectId, startedAt: now, dayKey });
     const row: Row = { id: s.id, pomodoroId, dayKey, endedAt: null, focusMs: 0, discardedMs: 0, deleted: false };
     this.rows.set(row.id, row);
     this.open = row;
+    if (this.recentPomodoros.at(-1) !== pomodoroId) this.recentPomodoros = [...this.recentPomodoros, pomodoroId].slice(-2);
     this.lastCheckpointAt = now;
     this.dirty = true;
   }
 
   private checkpoint(now: number): void {
     if (!this.open) return;
-    this.sessions.checkpoint(this.open.id, this.open.focusMs, now);
+    this.sessions.checkpoint(this.open.id, this.open.focusMs, now, this.open.discardedMs);
     this.lastCheckpointAt = now;
     this.dirty = true;
   }
@@ -376,11 +415,12 @@ export class TimerController {
   // ── Idle and away (rule 4) ─────────────────────────────────────────────────
 
   private onPoll(): void {
+    if (this.disposed) return;
     const now = this.deps.now();
     if (this.pending) return;
     const result = this.idle.poll(this.deps.idleSeconds(), now, this.machine.status === 'running', this.idleThresholdMs);
     if (result.kind === 'back') {
-      this.apply({ type: 'tick' }, now);
+      this.tick(now);
       this.raiseAway(result.since, now);
       this.settle(now, true);
     } else {
@@ -389,8 +429,10 @@ export class TimerController {
   }
 
   /**
-   * The away time is the focus time that actually ran between `since` and now: `now − since` when
-   * the timer ran throughout, less if it was paused, locked or between segments meanwhile.
+   * The away time is the focus time at stake: the focus that actually ran between `since` and now,
+   * which is `now − since` when the timer ran throughout and less if it was paused, locked or
+   * between segments meanwhile. The prompt's "{n} min" shows this figure (Sam's ruling A2,
+   * 2026-11-08), not the wall-clock absence.
    */
   private raiseAway(since: number, now: number): void {
     const charges = this.ledger.covered(since, now);
@@ -401,9 +443,10 @@ export class TimerController {
   }
 
   private onAwayCheck(): void {
+    if (this.disposed) return;
     const now = this.deps.now();
     if (!this.pending || now < this.pending.prompt.deadline) return;
-    this.apply({ type: 'tick' }, now);
+    this.tick(now);
     this.resolveAway('discard', now);
     this.settle(now, true);
   }
@@ -442,11 +485,22 @@ export class TimerController {
     if (giveBack > 0) this.apply({ type: 'giveBack', ms: giveBack }, now);
   }
 
-  /** Keeps only the spans an away period could still reach back to. */
+  /**
+   * Keeps the spans an away period could still reach back to: every span of the current and the
+   * previous pomodoro (so a late poll or a lowered threshold can't reach past them), and every span
+   * inside the open away period or the idle window. Rows no span refers to are then forgotten.
+   * Nothing is dropped while a prompt is pending: its charges name rows.
+   */
   private pruneLedger(now: number): void {
     if (this.pending) return;
-    if (this.idle.since !== null) this.ledger.prune(this.idle.since);
-    else this.ledger.prune(now - this.idleThresholdMs - IDLE_POLL_MS - MINUTE);
+    const cutoff = this.idle.since ?? now - this.idleThresholdMs - IDLE_POLL_MS - MINUTE;
+    const recent = (rowId: number): boolean => {
+      const pomodoroId = this.rows.get(rowId)?.pomodoroId;
+      return pomodoroId !== undefined && this.recentPomodoros.includes(pomodoroId);
+    };
+    this.ledger.prune((span) => span.to >= cutoff || recent(span.rowId));
+    const charged = this.ledger.rowIds();
+    for (const id of this.rows.keys()) if (id !== this.open?.id && !charged.has(id)) this.rows.delete(id);
   }
 
   // ── Settings ───────────────────────────────────────────────────────────────
