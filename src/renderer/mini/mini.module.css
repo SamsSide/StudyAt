@@ -1,0 +1,74 @@
+/* The mini timer's 240x96 window: frameless and transparent, so the root is the frosted card.
+   The whole card drags the window; the buttons opt out. */
+.mini {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  width: 100vw;
+  height: 100vh;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.clock {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 300;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.primary,
+.link {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+
+.primary {
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.link {
+  justify-self: end;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.link:hover {
+  background: var(--hover);
+  color: var(--text);
+}
