@@ -149,4 +149,14 @@ describe('backups', () => {
     expect((await latestBackupBefore(dir, new Date(2026, 10, 8).getTime()))?.name).toBe('daily-2026-11-06.sqlite');
     expect(await latestBackupBefore(dir, new Date(2026, 10, 6).getTime())).toBeNull();
   });
+
+  // Corrupt, then a restore of a backup that is itself corrupt, so the relaunch is corrupt again.
+  // The pre-restore copy made then is the empty fresh database: never "the latest backup".
+  it('latestBackupBefore never offers a pre-restore copy', async () => {
+    const backups = join(dir, 'backups');
+    mkdirSync(backups);
+    writeFileSync(join(backups, 'daily-2026-11-07.sqlite'), 'x');
+    writeFileSync(join(backups, `pre-restore-${fileStamp(NOW + 1000)}.sqlite`), 'fresh');
+    expect((await latestBackupBefore(dir, NOW + 60_000))?.name).toBe('daily-2026-11-07.sqlite');
+  });
 });

@@ -114,15 +114,16 @@ export function schemaVersion(db: SqlJsDatabase): number {
 }
 
 /**
- * Brings `db` up to the latest version. If anything is pending and `file` exists, it is first
- * copied to `backups/pre-migration-v<from>-<stamp>.sqlite` beside it (study-dev rule 2). Each
+ * Brings `db` up to the latest version. If anything is pending and `file` (the file `db` was read
+ * from; null for a database made fresh in memory) exists, it is first copied to
+ * `backups/pre-migration-v<from>-<stamp>.sqlite` beside it (study-dev rule 2). Each
  * migration runs in its own transaction and records its version, so a failure leaves the
  * database at the last version that completed. The caller flushes afterwards. Throws
  * `NewerSchemaError`, before touching anything, for a version newer than `migrations` knows.
  */
 export async function migrate(
   db: SqlJsDatabase,
-  file: string,
+  file: string | null,
   now: number,
   migrations: Migration[] = MIGRATIONS,
   fs: DbFs = nodeFs,
@@ -133,7 +134,7 @@ export async function migrate(
   const pending = migrations.filter((m) => m.version > from).sort((a, b) => a.version - b.version);
   if (pending.length === 0) return { from, to: from };
 
-  if (await fs.exists(file)) {
+  if (file !== null && (await fs.exists(file))) {
     const backups = join(dirname(file), 'backups');
     await fs.mkdir(backups);
     // Throws if the copy fails, so nothing is migrated without a backup.

@@ -273,15 +273,19 @@ export function installQuit(
 
 /**
  * The quit's shutdown: each step (bounds, mini position, hotkey) is tried on its own and a failure
- * only logged, so `stop` (timer.quit, then db.close) always runs. Sam's A1: quitting while away
- * discards the away time, and only `timer.quit()` does that. `stop`'s own failure is passed on.
+ * (a throw or a rejected promise) only logged, so `stop` (timer.quit, then db.close) always runs.
+ * Sam's A1: quitting while away discards the away time, and only `timer.quit()` does that.
+ * `stop`'s own failure is passed on.
  */
 export async function runShutdown(steps: ReadonlyArray<() => unknown>, stop: () => Promise<void>): Promise<void> {
+  const log = (err: unknown): void => console.error('StudyAt: a quit step failed; saving anyway', err);
   for (const step of steps) {
     try {
-      step();
+      // A step that returns a promise is not waited for, but its rejection is logged the same way.
+      const out = step();
+      if (out instanceof Promise) out.catch(log);
     } catch (err) {
-      console.error('StudyAt: a quit step failed; saving anyway', err);
+      log(err);
     }
   }
   await stop();

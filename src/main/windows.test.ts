@@ -319,6 +319,16 @@ describe('runShutdown', () => {
     errors.mockRestore();
   });
 
+  it('a step whose promise rejects is logged, and stop still runs', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stop = vi.fn(() => Promise.resolve());
+    await runShutdown([() => Promise.reject(new Error('flush failed'))], stop);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(errors).toHaveBeenCalledWith('StudyAt: a quit step failed; saving anyway', expect.any(Error));
+    errors.mockRestore();
+  });
+
   it('a failure to stop still rejects, so installQuit logs it', async () => {
     await expect(runShutdown([], () => Promise.reject(new Error('disk full')))).rejects.toThrow('disk full');
   });

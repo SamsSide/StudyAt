@@ -96,7 +96,8 @@ export async function listBackups(dir: string): Promise<BackupInfo[]> {
 /**
  * The newest daily or pre-migration backup made before `ts`, or null. With `ts = db.corruptAt`
  * this is the backup the corrupt dialog's "Restore latest backup" restores (spec §3.3, R16):
- * anything made after the corruption was found is a copy of the fresh database.
+ * anything made after the corruption was found is a copy of the fresh database. `pre-restore-`
+ * copies are never offered: one made from the corrupt dialog is the empty fresh database.
  */
 export async function latestBackupBefore(dir: string, ts: number): Promise<BackupInfo | null> {
   const list = await listBackups(dir);
