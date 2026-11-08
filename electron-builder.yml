@@ -1,0 +1,25 @@
+appId: io.studyat.app
+productName: StudyAt
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: assets
+    to: assets
+    filter:
+      - '**/*'
+asarUnpack:
+  - node_modules/sql.js/dist/*.wasm
+win:
+  target:
+    - nsis
+  icon: assets/icons/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  artifactName: StudyAt Setup ${version}.exe
