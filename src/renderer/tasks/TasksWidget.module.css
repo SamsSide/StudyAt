@@ -1,0 +1,300 @@
+/* The Tasks widget's contents; the frosted container and title come from the shell's WidgetFrame.
+   Notes are muted pastel tints with dark text (all pairs clear WCAG AA) so they sit calmly on the
+   dark panel. */
+.widget {
+  --note-yellow: #e9d98f;
+  --note-pink: #eab3c6;
+  --note-blue: #a9c6ec;
+  --note-green: #b3d9b4;
+  --note-purple: #cdb8ea;
+  --note-grey: #cfd2d9;
+  --note-text: #1d2029;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 300px;
+  max-height: 420px;
+  box-sizing: border-box;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.addRow {
+  display: flex;
+}
+
+.addInput,
+.editInput {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--hover);
+  color: var(--text);
+  font: inherit;
+}
+
+.addInput::placeholder {
+  color: var(--text-faint);
+}
+
+.addInput:focus-visible,
+.editInput:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.editInput {
+  padding: 2px var(--space-2);
+  border-color: rgba(29, 32, 41, 0.35);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--note-text);
+}
+
+.swatches {
+  display: flex;
+  gap: var(--space-2);
+  padding: 2px;
+}
+
+.swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+  transition: transform var(--duration) var(--ease);
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+.swatch[aria-pressed='true'] {
+  border-color: var(--text);
+}
+
+.swatch:focus-visible,
+.handle:focus-visible,
+.textButton:focus-visible,
+.iconButton:focus-visible,
+.doneToggle:focus-visible,
+.clear:focus-visible,
+.check:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Colour classes set one variable that both notes (--tint) and swatches (--swatch) read. */
+.yellow {
+  --tint: var(--note-yellow);
+  --swatch: var(--note-yellow);
+}
+.pink {
+  --tint: var(--note-pink);
+  --swatch: var(--note-pink);
+}
+.blue {
+  --tint: var(--note-blue);
+  --swatch: var(--note-blue);
+}
+.green {
+  --tint: var(--note-green);
+  --swatch: var(--note-green);
+}
+.purple {
+  --tint: var(--note-purple);
+  --swatch: var(--note-purple);
+}
+.grey {
+  --tint: var(--note-grey);
+  --swatch: var(--note-grey);
+}
+
+.scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 4px 2px 2px;
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.error {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--tint);
+  color: var(--note-text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition:
+    transform var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.note:focus-within {
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.25),
+    0 0 0 2px var(--accent);
+}
+
+.dragging {
+  transform: scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  position: relative;
+  z-index: 1;
+}
+
+.doneNote {
+  opacity: 0.7;
+}
+
+.doneNote .text {
+  text-decoration: line-through;
+}
+
+.noteRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.handle {
+  flex: none;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(29, 32, 41, 0.6);
+  font-size: var(--text-sm);
+  letter-spacing: -2px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--note-text);
+  cursor: pointer;
+}
+
+.text,
+.textButton {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.textButton {
+  border-radius: 4px;
+  cursor: text;
+}
+
+.iconButton {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid rgba(29, 32, 41, 0.6);
+}
+
+.note .swatches {
+  margin-top: var(--space-2);
+  padding-left: 28px;
+}
+
+.note .swatch[aria-pressed='true'] {
+  border-color: var(--note-text);
+}
+
+.doneSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.doneHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.doneToggle,
+.clear {
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.doneToggle:hover,
+.clear:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.chevron,
+.chevronOpen {
+  display: inline-block;
+  margin-right: var(--space-1);
+  transition: transform var(--duration) var(--ease);
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
