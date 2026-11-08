@@ -1,10 +1,13 @@
 // "Last 12 weeks" (spec §3.5, §4): total focus time per Monday-to-Sunday week, oldest first, this
 // (partial) week last. The totals are main's `stats.trend()`.
+import { useId } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { TrendPoint } from '../../shared/types';
 import { formatHm } from '../shell/format';
 import { ACCENT, AXIS_TICK, CHART_HEIGHT, GRID_STROKE, INITIAL_SIZE, prefersReducedMotion } from './chartTheme';
 import { formatDayMonth, formatWeekRange, toHours } from './format';
+import { LoadError } from './LoadError';
+import { Skeleton } from './Skeleton';
 import styles from './stats.module.css';
 import { useStatsQuery } from './useStatsQuery';
 
@@ -16,18 +19,22 @@ interface Row {
   point: TrendPoint;
 }
 
-export function TrendChart({ revision }: { revision: number }) {
+export function TrendChart({ revision, className }: { revision: number; className?: string }) {
+  const titleId = useId();
   const query = useStatsQuery(loadTrend, undefined, revision);
   const points = query.status === 'ready' ? query.data : null;
   const rows: Row[] = (points ?? []).map((point) => ({ label: formatDayMonth(point.weekStart), hours: toHours(point.ms), point }));
   const summary = `Last 12 weeks, week by week: ${rows.map((r) => `${r.label} ${formatHm(r.point.ms)}`).join(', ')}`;
 
   return (
-    <>
+    <section className={className} aria-labelledby={titleId} aria-busy={query.status === 'loading'}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}>Last 12 weeks</h3>
+        <h3 id={titleId} className={styles.sectionTitle}>
+          Last 12 weeks
+        </h3>
       </div>
-      {query.status === 'error' && <p className={styles.empty}>Couldn’t load the trend.</p>}
+      {query.status === 'loading' && <Skeleton kind="chart" />}
+      {query.status === 'error' && <LoadError message="Couldn’t load the trend." onRetry={query.reload} />}
       {points && (
         <div className={styles.chart} role="img" aria-label={summary}>
           <ResponsiveContainer width="100%" height={CHART_HEIGHT} initialDimension={INITIAL_SIZE}>
@@ -69,6 +76,6 @@ export function TrendChart({ revision }: { revision: number }) {
           </ResponsiveContainer>
         </div>
       )}
-    </>
+    </section>
   );
 }

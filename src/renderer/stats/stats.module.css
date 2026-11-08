@@ -69,6 +69,14 @@
   text-align: center;
 }
 
+.loadError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+}
+
 .visuallyHidden {
   position: absolute;
   width: 1px;
@@ -696,5 +704,56 @@
   .popup,
   .scrim {
     animation: none;
+  }
+}
+
+/* Loading skeletons: one quiet panel per section, sized to what it stands in for, so nothing
+   jumps when main answers. The shimmer stops under prefers-reduced-motion. */
+.skeleton {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background-color: var(--border);
+  background-image: linear-gradient(90deg, transparent 0%, var(--hover) 50%, transparent 100%);
+  background-repeat: no-repeat;
+  background-size: 50% 100%;
+  animation: shimmer 1.8s var(--ease) infinite;
+}
+
+.skeletonTiles {
+  height: 86px;
+}
+
+/* The calendar scales with its width: a 769 × 111 grid plus the line under it. */
+.skeletonCalendar {
+  aspect-ratio: 769 / 131;
+}
+
+/* .chart's 200 px plus its legend. */
+.skeletonChart {
+  height: 228px;
+}
+
+.skeletonList {
+  height: 160px;
+}
+
+.skeletonTable {
+  height: 240px;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -100% 0;
+  }
+
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background-image: none;
   }
 }

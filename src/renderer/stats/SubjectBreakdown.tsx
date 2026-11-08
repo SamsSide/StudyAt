@@ -4,6 +4,8 @@
 import { useId, useState } from 'react';
 import type { SubjectRange, SubjectTotal } from '../../shared/types';
 import { formatHm } from '../shell/format';
+import { LoadError } from './LoadError';
+import { Skeleton } from './Skeleton';
 import styles from './stats.module.css';
 import { useStatsQuery } from './useStatsQuery';
 
@@ -15,7 +17,8 @@ const RANGES: { value: SubjectRange; label: string }[] = [
 
 const loadBySubject = (range: SubjectRange): Promise<SubjectTotal[]> => window.studyat.stats.bySubject(range);
 
-export function SubjectBreakdown({ revision }: { revision: number }) {
+export function SubjectBreakdown({ revision, className }: { revision: number; className?: string }) {
+  const titleId = useId();
   const [range, setRange] = useState<SubjectRange>('week');
   const query = useStatsQuery(loadBySubject, range, revision);
   const name = useId();
@@ -23,9 +26,11 @@ export function SubjectBreakdown({ revision }: { revision: number }) {
   const largest = Math.max(1, ...(totals ?? []).map((t) => t.ms));
 
   return (
-    <>
+    <section className={className} aria-labelledby={titleId} aria-busy={query.status === 'loading'}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}>By subject</h3>
+        <h3 id={titleId} className={styles.sectionTitle}>
+          By subject
+        </h3>
         <div className={styles.segmented} role="radiogroup" aria-label="Range">
           {RANGES.map((r) => (
             <label key={r.value} className={styles.segment}>
@@ -35,7 +40,8 @@ export function SubjectBreakdown({ revision }: { revision: number }) {
           ))}
         </div>
       </div>
-      {query.status === 'error' && <p className={styles.empty}>Couldn’t load your subjects.</p>}
+      {query.status === 'loading' && <Skeleton kind="list" />}
+      {query.status === 'error' && <LoadError message="Couldn’t load your subjects." onRetry={query.reload} />}
       {totals && totals.length === 0 && <p className={styles.empty}>No focus time in this range yet.</p>}
       {totals && totals.length > 0 && (
         <ul className={styles.subjects}>
@@ -53,6 +59,6 @@ export function SubjectBreakdown({ revision }: { revision: number }) {
           ))}
         </ul>
       )}
-    </>
+    </section>
   );
 }

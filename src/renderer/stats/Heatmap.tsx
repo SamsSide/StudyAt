@@ -42,8 +42,8 @@ function monthLabels(cells: HeatmapCell[], columns: number): { col: number; labe
   return labels;
 }
 
-/** "Less than 30 min" etc., from the one set of thresholds in core. */
-const shadeNames = (): string[] => [
+/** "Under 30 min" etc., from the one set of thresholds in core. */
+const SHADE_NAMES: readonly string[] = [
   'No focus time',
   `Under ${SHADE_MINUTES[1]} min`,
   `Under ${SHADE_MINUTES[2] / 60} h`,
@@ -141,7 +141,9 @@ export function Heatmap({ cells }: { cells: HeatmapCell[] }) {
         <span className={styles.legend}>
           Less
           {SHADES.map((shade, i) => (
-            <span key={shade} className={`${styles.legendSwatch} ${shade}`} title={shadeNames()[i]} />
+            <span key={shade} className={`${styles.legendSwatch} ${shade}`} title={SHADE_NAMES[i]}>
+              <span className={styles.visuallyHidden}>{SHADE_NAMES[i]}</span>
+            </span>
           ))}
           More
           <span className={styles.legendGoal} aria-hidden="true" />

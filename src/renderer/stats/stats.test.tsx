@@ -195,6 +195,13 @@ describe('Heatmap', () => {
     await userEvent.keyboard('{ArrowLeft}');
     expect(screen.getByTestId('heatmap-tip')).toHaveTextContent('31 Oct 2026');
   });
+
+  it('names every legend shade for screen readers, not only in a tooltip', () => {
+    render(<Heatmap cells={heatmapCells()} />);
+    for (const name of ['No focus time', 'Under 30 min', 'Under 1 h', 'Under 2 h', '2 h or more']) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+  });
 });
 
 describe('WeekChart', () => {
@@ -228,6 +235,51 @@ describe('WeekChart', () => {
     const items = within(legend).getAllByRole('listitem');
     expect(items.map((li) => li.textContent)).toEqual([SUBJECT_1, SUBJECT_2, 'No subject']);
     expect(items[2]?.querySelector('[data-colour]')).toHaveAttribute('data-colour', '#8a8f98');
+  });
+
+  it('steps from the week asked for, so two quick ‹ clicks go back two weeks, and never shows the old week meanwhile', async () => {
+    const weekFn = vi.fn((weekStart?: string) => (weekStart === undefined ? Promise.resolve(week('2026-11-02')) : new Promise<WeekBars>(() => {})));
+    api = mockApi({ stats: { week: weekFn } });
+    installMockApi(api);
+    const { container } = render(<WeekChart revision={0} />);
+    await screen.findByRole('img', { name: /^Focus time, 2 Nov–8 Nov/ });
+    const previous = screen.getByRole('button', { name: 'Previous week' });
+    await userEvent.click(previous);
+    await userEvent.click(previous);
+    expect(weekFn).toHaveBeenLastCalledWith('2026-10-19');
+    expect(screen.getByText('19 Oct–25 Oct')).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /^Focus time/ })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-skeleton]')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next week' })).toBeEnabled();
+  });
+
+  it('after a week fails to load, ‹ › and Try again still work', async () => {
+    let fail = true;
+    const weekFn = vi.fn((weekStart?: string) => {
+      if (weekStart === '2026-10-26' && fail) {
+        fail = false;
+        return Promise.reject(new Error('offline'));
+      }
+      return Promise.resolve(week(weekStart ?? '2026-11-02'));
+    });
+    api = mockApi({ stats: { week: weekFn } });
+    installMockApi(api);
+    render(<WeekChart revision={0} />);
+    await screen.findByText('2 Nov–8 Nov');
+    await userEvent.click(screen.getByRole('button', { name: 'Previous week' }));
+    expect(await screen.findByText('Couldn’t load this week.')).toBeInTheDocument();
+    expect(screen.getByText('26 Oct–1 Nov')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous week' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next week' })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(weekFn).toHaveBeenLastCalledWith('2026-10-26');
+    await screen.findByRole('img', { name: /^Focus time, 26 Oct–1 Nov/ });
+    expect(screen.queryByText('Couldn’t load this week.')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next week' }));
+    await screen.findByRole('img', { name: /^Focus time, 2 Nov–8 Nov/ });
+    expect(screen.getByRole('button', { name: 'Next week' })).toBeDisabled();
   });
 });
 
@@ -328,6 +380,34 @@ describe('SessionsTable', () => {
     setupSessions([]);
     expect(await screen.findByText('No sessions yet. Start a Pomodoro and they’ll appear here.')).toBeInTheDocument();
   });
+
+  it('names a subject it cannot find rather than showing "No subject"', async () => {
+    setupSessions([session({ id: 7, subjectId: 99 })]);
+    const select = await screen.findByRole('combobox', { name: 'Subject' });
+    expect(select).toHaveValue('99');
+    expect(select).toHaveDisplayValue('Unknown subject');
+  });
+
+  it('lets main\'s answer win once it lands, so a later change elsewhere shows', async () => {
+    let subjectId = 1;
+    const sessions = vi.fn(() => Promise.resolve([session({ id: 7, subjectId })]));
+    api = mockApi({ stats: { sessions } });
+    installMockApi(api);
+    const { rerender } = render(<SessionsTable revision={0} onChanged={vi.fn()} />);
+    const select = await screen.findByRole('combobox', { name: 'Subject' });
+    await userEvent.selectOptions(select, SUBJECT_2);
+    expect(select).toHaveDisplayValue(SUBJECT_2);
+
+    subjectId = 2;
+    rerender(<SessionsTable revision={1} onChanged={vi.fn()} />);
+    await waitFor(() => expect(sessions).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('combobox', { name: 'Subject' })).toHaveDisplayValue(SUBJECT_2);
+
+    // The timer (or another window) moves it back; the table follows main.
+    subjectId = 1;
+    rerender(<SessionsTable revision={2} onChanged={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Subject' })).toHaveDisplayValue(SUBJECT_1));
+  });
 });
 
 describe('RecapCard', () => {
@@ -349,7 +429,7 @@ describe('RecapCard', () => {
   it('empty-week copy from spec §3.14', () => {
     render(<RecapCard recap={emptyRecap()} />);
     expect(screen.getByRole('heading', { name: 'Your week: 2 Nov–8 Nov' })).toBeInTheDocument();
-    expect(screen.getByText('No focus time last week — that’s okay. A fresh week starts now.')).toBeInTheDocument();
+    expect(screen.getByText("No focus time last week — that's okay. A fresh week starts now.")).toBeInTheDocument();
     expect(screen.queryByText('Days studied')).not.toBeInTheDocument();
   });
 
@@ -412,7 +492,7 @@ describe('useRecapPopup', () => {
     const onWindowKey = vi.fn((e: KeyboardEvent) => e.defaultPrevented);
     window.addEventListener('keydown', onWindowKey);
     render(<PopupHost />);
-    await screen.findByText('No focus time last week — that’s okay. A fresh week starts now.');
+    await screen.findByText("No focus time last week — that's okay. A fresh week starts now.");
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(onWindowKey).toHaveReturnedWith(true);
@@ -429,6 +509,33 @@ describe('useRecapPopup', () => {
 });
 
 describe('StatsOverlay', () => {
+  it('holds each section\'s place with a quiet skeleton while it loads', async () => {
+    const never = <T,>() => vi.fn(() => new Promise<T>(() => {}));
+    api = mockApi({
+      stats: {
+        overview: never<StatsOverview>(),
+        heatmap: never<HeatmapCell[]>(),
+        week: never<WeekBars>(),
+        trend: never<{ weekStart: string; ms: number }[]>(),
+        bySubject: never<SubjectTotal[]>(),
+        sessions: never<Session[]>(),
+      },
+      recaps: { list: never<WeeklyRecap[]>() },
+    });
+    installMockApi(api);
+    const { container } = render(<StatsOverlay />);
+    await act(async () => {});
+    expect(container.querySelectorAll('[data-skeleton]')).toHaveLength(7);
+    expect(container.querySelectorAll('section[aria-busy="true"]')).toHaveLength(7);
+  });
+
+  it('drops the skeletons once main answers', async () => {
+    render(<StatsOverlay />);
+    await screen.findByText('No sessions yet. Start a Pomodoro and they’ll appear here.');
+    await waitFor(() => expect(document.querySelectorAll('[data-skeleton]')).toHaveLength(0));
+    expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(0);
+  });
+
   it('loads every section from main', async () => {
     api = mockApi({
       stats: {

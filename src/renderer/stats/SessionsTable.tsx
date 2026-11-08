@@ -2,16 +2,26 @@
 // or the session deleted (after a confirm inside the overlay), and nothing else: there is no way
 // to edit its time (spec §3.4 rule 10). A running session belongs to the timer and is left alone.
 // After a change the overlay's revision bumps, so every number reloads from main.
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { NO_SUBJECT_NAME } from '../../core/stats/totals';
 import type { Session } from '../../shared/types';
 import { formatHm } from '../shell/format';
 import { useStudyStore } from '../shell/store';
 import { formatClockTime, formatDayLabel } from './format';
+import { LoadError } from './LoadError';
+import { Skeleton } from './Skeleton';
 import styles from './stats.module.css';
 import { useStatsQuery } from './useStatsQuery';
 
 const PAGE = 50;
+/** Shown for a subject id the store doesn't know (deleted elsewhere, or subjects not loaded yet). */
+const UNKNOWN_SUBJECT_NAME = 'Unknown subject';
+
+/** A subject change shown before main's answer reloads the table; `saved` once main has it. */
+interface Edit {
+  subjectId: number | null;
+  saved: boolean;
+}
 
 const loadSessions = (): Promise<Session[]> => window.studyat.stats.sessions();
 
@@ -23,11 +33,12 @@ function TrashIcon() {
   );
 }
 
-export function SessionsTable({ revision, onChanged }: { revision: number; onChanged: () => void }) {
+export function SessionsTable({ revision, onChanged, className }: { revision: number; onChanged: () => void; className?: string }) {
+  const titleId = useId();
   const subjects = useStudyStore((s) => s.subjects);
   const query = useStatsQuery(loadSessions, undefined, revision);
   // Subject changes show at once, before main's answer reloads the table.
-  const [edits, setEdits] = useState<ReadonlyMap<number, number | null>>(new Map());
+  const [edits, setEdits] = useState<ReadonlyMap<number, Edit>>(new Map());
   const [confirming, setConfirming] = useState<number | null>(null);
   // Deleted rows leave at once, before main's answer reloads the table.
   const [gone, setGone] = useState<ReadonlySet<number>>(new Set());
@@ -40,23 +51,49 @@ export function SessionsTable({ revision, onChanged }: { revision: number; onCha
     if (confirming !== null) wrap.current?.querySelector<HTMLButtonElement>('[data-cancel]')?.focus();
   }, [confirming]);
 
+  // When main's rows land, they win: drop every edit main has saved or already agrees with, and
+  // every deleted id it no longer returns. Only a change still on its way stays on top.
+  const data = query.status === 'ready' ? query.data : null;
+  const [seen, setSeen] = useState(data);
+  if (data !== seen) {
+    setSeen(data);
+    if (data) {
+      const byId = new Map(data.map((s) => [s.id, s]));
+      setEdits((m) => new Map([...m].filter(([id, e]) => !e.saved && byId.get(id)?.subjectId !== e.subjectId)));
+      setGone((g) => new Set([...g].filter((id) => byId.has(id))));
+    }
+  }
+
   const sessions = query.status === 'ready' ? query.data.filter((s) => !gone.has(s.id)).sort((a, b) => b.startedAt - a.startedAt) : null;
   const live = subjects.filter((s) => !s.archived).sort((a, b) => a.sort - b.sort);
 
-  const subjectOf = (s: Session): number | null => (edits.has(s.id) ? (edits.get(s.id) ?? null) : s.subjectId);
+  const subjectOf = (s: Session): number | null => {
+    const edit = edits.get(s.id);
+    return edit ? edit.subjectId : s.subjectId;
+  };
+
+  /** Applies `change` to this session's edit only if it is still the one for `subjectId`. */
+  const settle = (id: number, subjectId: number | null, change: (e: Edit) => Edit | null): void => {
+    setEdits((m) => {
+      const edit = m.get(id);
+      if (!edit || edit.subjectId !== subjectId) return m;
+      const next = new Map(m);
+      const changed = change(edit);
+      if (changed) next.set(id, changed);
+      else next.delete(id);
+      return next;
+    });
+  };
 
   const changeSubject = async (s: Session, subjectId: number | null): Promise<void> => {
-    setEdits((m) => new Map(m).set(s.id, subjectId));
+    setEdits((m) => new Map(m).set(s.id, { subjectId, saved: false }));
     setError(null);
     try {
       await window.studyat.stats.updateSession(s.id, { subjectId });
+      settle(s.id, subjectId, (e) => ({ ...e, saved: true }));
       onChanged();
     } catch {
-      setEdits((m) => {
-        const next = new Map(m);
-        next.delete(s.id);
-        return next;
-      });
+      settle(s.id, subjectId, () => null);
       setError('Couldn’t change that session’s subject. Please try again.');
     }
   };
@@ -93,12 +130,15 @@ export function SessionsTable({ revision, onChanged }: { revision: number; onCha
   };
 
   return (
-    <>
+    <section className={className} aria-labelledby={titleId} aria-busy={query.status === 'loading'}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}>Sessions</h3>
+        <h3 id={titleId} className={styles.sectionTitle}>
+          Sessions
+        </h3>
         {sessions && sessions.length > 0 && <p className={styles.muted}>Change a subject, or delete a session.</p>}
       </div>
-      {query.status === 'error' && <p className={styles.empty}>Couldn’t load your sessions.</p>}
+      {query.status === 'loading' && <Skeleton kind="table" />}
+      {query.status === 'error' && <LoadError message="Couldn’t load your sessions." onRetry={query.reload} />}
       {error && (
         <p className={styles.muted} role="alert">
           {error}
@@ -125,7 +165,7 @@ export function SessionsTable({ revision, onChanged }: { revision: number; onCha
               {sessions.slice(0, shown).map((s) => {
                 const running = s.status === 'running';
                 const subjectId = subjectOf(s);
-                const archived = subjects.find((x) => x.id === subjectId && x.archived);
+                const known = subjects.find((x) => x.id === subjectId);
                 return [
                   <tr key={s.id}>
                     <td>{formatDayLabel(s.dayKey)}</td>
@@ -147,7 +187,8 @@ export function SessionsTable({ revision, onChanged }: { revision: number; onCha
                             {x.name}
                           </option>
                         ))}
-                        {archived && <option value={archived.id}>{archived.name}</option>}
+                        {subjectId !== null && known?.archived && <option value={known.id}>{known.name}</option>}
+                        {subjectId !== null && !known && <option value={subjectId}>{UNKNOWN_SUBJECT_NAME}</option>}
                       </select>
                     </td>
                     <td className={styles.numeric}>
@@ -199,6 +240,6 @@ export function SessionsTable({ revision, onChanged }: { revision: number; onCha
           Show more
         </button>
       )}
-    </>
+    </section>
   );
 }

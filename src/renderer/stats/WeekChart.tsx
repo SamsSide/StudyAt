@@ -2,7 +2,7 @@
 // subjects' colours with untagged time grey and on top. ‹ › step a week at a time through
 // `stats.week(weekStart)`; › stops at the current week, which is whatever `stats.week()` with no
 // argument answers. Day totals and per-subject splits are main's; this only draws them.
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { addDays } from '../../core/time';
 import type { DayTotal, WeekBars } from '../../shared/types';
@@ -19,6 +19,8 @@ import {
   subjectLook,
 } from './chartTheme';
 import { formatDayLabel, formatWeekRange, formatWeekday, toHours } from './format';
+import { LoadError } from './LoadError';
+import { Skeleton } from './Skeleton';
 import styles from './stats.module.css';
 import { useStatsQuery } from './useStatsQuery';
 
@@ -54,8 +56,9 @@ function DayTooltip({ day, series }: { day: DayTotal; series: SubjectLook[] }) {
   );
 }
 
-export function WeekChart({ revision }: { revision: number }) {
+export function WeekChart({ revision, className }: { revision: number; className?: string }) {
   const subjects = useStudyStore((s) => s.subjects);
+  const titleId = useId();
   // undefined asks main for the current week.
   const [requested, setRequested] = useState<string | undefined>(undefined);
   const [currentWeek, setCurrentWeek] = useState<string | null>(null);
@@ -64,12 +67,12 @@ export function WeekChart({ revision }: { revision: number }) {
   const bars = query.status === 'ready' ? query.data : null;
   if (bars && requested === undefined && currentWeek !== bars.weekStart) setCurrentWeek(bars.weekStart);
 
-  const shown = bars?.weekStart;
+  // The week on screen is the one asked for, loaded or not, so ‹ › step from it: two quick clicks
+  // go back two weeks, and a week that failed to load can still be left either way.
+  const shown = requested ?? currentWeek ?? undefined;
   const atCurrent = shown === undefined || shown === currentWeek;
   const step = (days: number): void => {
-    if (!shown) return;
-    const next = addDays(shown, days);
-    setRequested(next === currentWeek ? currentWeek : next);
+    if (shown) setRequested(addDays(shown, days));
   };
 
   const series = bars ? seriesFor(bars, (key) => subjectLook(key, subjects)) : [];
@@ -84,9 +87,11 @@ export function WeekChart({ revision }: { revision: number }) {
   const animate = !prefersReducedMotion();
 
   return (
-    <>
+    <section className={className} aria-labelledby={titleId} aria-busy={query.status === 'loading'}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}>This week</h3>
+        <h3 id={titleId} className={styles.sectionTitle}>
+          This week
+        </h3>
         <div className={styles.weekNav}>
           <button type="button" className={styles.iconButton} aria-label="Previous week" disabled={!shown} onClick={() => step(-7)}>
             ‹
@@ -97,7 +102,8 @@ export function WeekChart({ revision }: { revision: number }) {
           </button>
         </div>
       </div>
-      {query.status === 'error' && <p className={styles.empty}>Couldn’t load this week.</p>}
+      {query.status === 'loading' && <Skeleton kind="chart" />}
+      {query.status === 'error' && <LoadError message="Couldn’t load this week." onRetry={query.reload} />}
       {bars && (
         <>
           <div className={styles.chart} role="img" aria-label={summary}>
@@ -134,6 +140,6 @@ export function WeekChart({ revision }: { revision: number }) {
           )}
         </>
       )}
-    </>
+    </section>
   );
 }

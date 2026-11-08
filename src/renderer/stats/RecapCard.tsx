@@ -10,8 +10,8 @@ import { subjectColour } from './chartTheme';
 import { formatDayLabel, formatDays, recapTitle } from './format';
 import styles from './stats.module.css';
 
-/** Spec §3.14 verbatim. */
-export const EMPTY_WEEK_COPY = 'No focus time last week — that’s okay. A fresh week starts now.';
+/** Spec §3.14 verbatim, byte for byte (its straight apostrophe included). */
+export const EMPTY_WEEK_COPY = "No focus time last week — that's okay. A fresh week starts now.";
 
 function Fact({ term, children }: { term: string; children: string }) {
   return (
