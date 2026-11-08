@@ -62,4 +62,12 @@ describe('listenForCallback', () => {
       await new Promise<void>((r) => blocker.close(() => r()));
     }
   });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'EACCES (a reserved or privileged port) → PortInUseError',
+    async () => {
+      const err = await listenForCallback(80, 1_000).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(PortInUseError);
+    },
+  );
 });

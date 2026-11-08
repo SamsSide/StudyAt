@@ -155,6 +155,44 @@ describe('SpotifyAuth.accessToken', () => {
     expect(store.value).toEqual(stored);
   });
 
+  it('a 429 from the token endpoint keeps the tokens and throws', async () => {
+    const { auth, store } = setup(() => 999_999, () => json({}, 429));
+    await expect(auth.accessToken()).rejects.toThrow();
+    expect(store.value).toEqual(stored);
+  });
+
+  it('a 401 from the token endpoint clears the tokens', async () => {
+    const { auth, store } = setup(() => 999_999, () => json({ error: 'invalid_client' }, 401));
+    expect(await auth.accessToken()).toBeNull();
+    expect(store.value).toBeNull();
+  });
+
+  it('concurrent refreshes share one token request', async () => {
+    let release: (r: Response) => void = () => undefined;
+    const { auth, store, fetchMock } = setup(
+      () => 999_999,
+      () => new Promise<Response>((r) => (release = r)),
+    );
+    const a = auth.accessToken();
+    const b = auth.refreshNow();
+    release(json({ access_token: 'fake-new', refresh_token: 'fake-rotated', expires_in: 3600 }));
+    expect(await Promise.all([a, b])).toEqual(['fake-new', 'fake-new']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(store.value?.refresh).toBe('fake-rotated');
+    // settled: the next refresh starts a new request
+    void auth.refreshNow();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('a blank client id skips the network and keeps the tokens', async () => {
+    const { auth, store, fetchMock } = setup(() => 999_999, () => json({}));
+    auth.setClientId('  ');
+    expect(await auth.accessToken()).toBeNull();
+    expect(await auth.refreshNow()).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(store.value).toEqual(stored);
+  });
+
   it('disconnect deletes the tokens; status reports unconfigured for a blank id', () => {
     const { auth, store } = setup(() => 0, () => json({}));
     auth.disconnect();

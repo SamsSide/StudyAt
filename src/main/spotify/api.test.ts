@@ -95,6 +95,27 @@ describe('SpotifyApi.nowPlaying', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('200 with no item maps to idle with the device', async () => {
+    const { api } = setup(() => json({ is_playing: false, device: { name: 'Desk' }, item: null }));
+    expect(await api.nowPlaying()).toEqual({ state: 'idle', device: 'Desk' });
+  });
+
+  it('a 429 on the very first poll is not reported as idle', async () => {
+    const { api } = setup(() => empty(429, { 'Retry-After': '3' }));
+    expect((await api.nowPlaying()).state).toBe('offline');
+  });
+
+  it('404 and 403 map to no-device, 500 to offline', async () => {
+    expect(await setup(() => empty(404)).api.nowPlaying()).toEqual({ state: 'no-device' });
+    expect(await setup(() => empty(403)).api.nowPlaying()).toEqual({ state: 'no-device' });
+    expect(await setup(() => empty(500)).api.nowPlaying()).toEqual({ state: 'offline' });
+  });
+
+  it('an unparsable 200 body maps to offline instead of throwing', async () => {
+    const { api } = setup(() => new Response('not json', { status: 200 }));
+    expect(await api.nowPlaying()).toEqual({ state: 'offline' });
+  });
+
   it('network error → offline', async () => {
     const { api } = setup(() => Promise.reject(new TypeError('network')));
     expect(await api.nowPlaying()).toEqual({ state: 'offline' });

@@ -37,6 +37,7 @@ interface TokenResponse {
 
 export class SpotifyAuth {
   private clientId = '';
+  private inFlight: Promise<string | null> | null = null;
 
   constructor(private readonly deps: SpotifyAuthDeps) {}
 
@@ -86,8 +87,9 @@ export class SpotifyAuth {
 
   /**
    * A valid access token, refreshing 60 s before expiry. Null when not connected or the
-   * refresh was rejected (tokens are then cleared). A network failure throws and keeps
-   * the tokens so the caller can report "offline".
+   * refresh was refused (400/401: tokens are then cleared) or no Client ID is set (tokens
+   * kept). A network failure, 408/429 or 5xx throws and keeps the tokens so the caller can
+   * report "offline".
    */
   async accessToken(): Promise<string | null> {
     const t = this.deps.store.load();
@@ -106,7 +108,16 @@ export class SpotifyAuth {
     return { configured: clientId.trim().length > 0, connected: this.deps.store.load() !== null };
   }
 
-  private async refresh(t: Tokens): Promise<string | null> {
+  /** Single-flight: Spotify rotates refresh tokens, so a second concurrent grant would be refused. */
+  private refresh(t: Tokens): Promise<string | null> {
+    if (this.clientId.trim() === '') return Promise.resolve(null);
+    this.inFlight ??= this.doRefresh(t).finally(() => {
+      this.inFlight = null;
+    });
+    return this.inFlight;
+  }
+
+  private async doRefresh(t: Tokens): Promise<string | null> {
     const res = await this.deps.fetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -116,11 +127,11 @@ export class SpotifyAuth {
         client_id: this.clientId,
       }),
     });
-    if (res.status >= 500) throw new Error(`Spotify token service error (${res.status})`);
-    if (!res.ok) {
-      this.deps.store.save(null);
+    if (res.status === 400 || res.status === 401) {
+      this.deps.store.save(null); // the grant was refused
       return null;
     }
+    if (!res.ok) throw new Error(`Spotify token service error (${res.status})`);
     const body = (await res.json()) as TokenResponse;
     const next: Tokens = {
       access: body.access_token,

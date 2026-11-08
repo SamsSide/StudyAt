@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 
-/** Spec §7 copy, shown by Settings when connect fails on a busy port. */
+/** Spec §7 copy, shown by Settings when connect fails on a busy or reserved port (EACCES). */
 export class PortInUseError extends Error {
   constructor(port: number) {
     super(`Port ${port} is in use — close the other app and retry`);
@@ -42,7 +42,7 @@ export const listenForCallback: CallbackListener = (port, timeoutMs) =>
       timeoutMs,
     );
     server.on('error', (err: NodeJS.ErrnoException) => {
-      finish(() => reject(err.code === 'EADDRINUSE' ? new PortInUseError(port) : err));
+      finish(() => reject(err.code === 'EADDRINUSE' || err.code === 'EACCES' ? new PortInUseError(port) : err));
     });
     server.listen(port, '127.0.0.1');
   });

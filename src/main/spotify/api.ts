@@ -31,7 +31,8 @@ interface PlayerBody {
 
 export class SpotifyApi {
   private blockedUntil = 0;
-  private last: NowPlaying = { state: 'idle' };
+  // Neutral until a poll succeeds, so a first-poll 429 never claims "idle".
+  private last: NowPlaying = { state: 'offline' };
 
   constructor(
     private readonly auth: SpotifyAuth,
@@ -52,8 +53,15 @@ export class SpotifyApi {
     if (res.status === 429) return this.last;
     if (res.status === 204) return (this.last = { state: 'no-device' });
     if (res.status === 401) return (this.last = { state: 'disconnected' });
+    // 404 and 403 (e.g. non-Premium) mean nothing can be controlled; other 4xx the same.
+    if (res.status >= 400 && res.status < 500) return (this.last = { state: 'no-device' });
     if (!res.ok) return (this.last = { state: 'offline' });
-    const body = (await res.json()) as PlayerBody;
+    let body: PlayerBody;
+    try {
+      body = (await res.json()) as PlayerBody;
+    } catch {
+      return (this.last = { state: 'offline' });
+    }
     const device = body.device?.name;
     if (!body.item) {
       return (this.last = device ? { state: 'idle', device } : { state: 'idle' });
