@@ -1,0 +1,130 @@
+// Schema migrations (spec §3.3, appplan §5). Every schema change is a new numbered entry here,
+// with a test that migrates a fixture of the previous version. Never edit a shipped migration.
+import { dirname, join } from 'node:path';
+import type { Database as SqlJsDatabase } from 'sql.js';
+import { fileStamp } from './backup';
+import { nodeFs, type DbFs } from './db-fs';
+import { one, transaction } from './sql';
+
+export interface Migration {
+  version: number;
+  up(db: SqlJsDatabase): void;
+}
+
+export const MIGRATIONS: Migration[] = [
+  {
+    // v1: every table of spec §3.3. AUTOINCREMENT so a deleted id is never reused: sound ids are
+    // referenced by chime settings and mixes, space ids by `activeSpaceId`.
+    version: 1,
+    up(db) {
+      db.exec(`
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE subjects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          colour TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          sort INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pomodoro_id TEXT NOT NULL,
+          subject_id INTEGER NULL,
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER NULL,
+          checkpoint_at INTEGER NOT NULL,
+          focus_ms INTEGER NOT NULL DEFAULT 0,
+          discarded_ms INTEGER NOT NULL DEFAULT 0,
+          day_key TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('running', 'done'))
+        );
+        CREATE INDEX sessions_day_key ON sessions (day_key);
+        CREATE INDEX sessions_status ON sessions (status);
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL,
+          colour TEXT NOT NULL,
+          done INTEGER NOT NULL DEFAULT 0,
+          sort INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          done_at INTEGER NULL
+        );
+        CREATE TABLE spaces (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL CHECK (kind IN ('video', 'image', 'youtube')),
+          name TEXT NOT NULL,
+          source TEXT NOT NULL,
+          thumb TEXT NULL,
+          favourite INTEGER NOT NULL DEFAULT 0,
+          builtin INTEGER NOT NULL DEFAULT 0,
+          opts TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+        CREATE TABLE sounds (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('noise', 'file')),
+          source TEXT NOT NULL,
+          builtin INTEGER NOT NULL DEFAULT 0,
+          sort INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE mixes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          levels TEXT NOT NULL
+        );
+        CREATE TABLE recaps (
+          week_start TEXT PRIMARY KEY,
+          data TEXT NOT NULL,
+          shown_at INTEGER NULL
+        );
+      `);
+    },
+  },
+];
+
+export const LATEST_VERSION = MIGRATIONS.length;
+
+/** The stored `schema_version`; 0 for a file with no schema yet. */
+export function schemaVersion(db: SqlJsDatabase): number {
+  const hasMeta = one(db, "SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'meta'");
+  if (!hasMeta) return 0;
+  const row = one(db, "SELECT value FROM meta WHERE key = 'schema_version'");
+  return row ? Number(row.value) : 0;
+}
+
+/**
+ * Brings `db` up to the latest version. If anything is pending and `file` exists, it is first
+ * copied to `backups/pre-migration-v<from>-<stamp>.sqlite` beside it (study-dev rule 2). Each
+ * migration runs in its own transaction and records its version, so a failure leaves the
+ * database at the last version that completed. The caller flushes afterwards.
+ */
+export async function migrate(
+  db: SqlJsDatabase,
+  file: string,
+  now: number,
+  migrations: Migration[] = MIGRATIONS,
+  fs: DbFs = nodeFs,
+): Promise<{ from: number; to: number }> {
+  const from = schemaVersion(db);
+  const pending = migrations.filter((m) => m.version > from).sort((a, b) => a.version - b.version);
+  if (pending.length === 0) return { from, to: from };
+
+  if (await fs.exists(file)) {
+    const backups = join(dirname(file), 'backups');
+    await fs.mkdir(backups);
+    // Throws if the copy fails, so nothing is migrated without a backup.
+    await fs.copyFile(file, join(backups, `pre-migration-v${from}-${fileStamp(now)}.sqlite`));
+  }
+
+  let to = from;
+  for (const m of pending) {
+    transaction(db, () => {
+      m.up(db);
+      db.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", [String(m.version)]);
+    });
+    to = m.version;
+  }
+  return { from, to };
+}
