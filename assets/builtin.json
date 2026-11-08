@@ -1,0 +1,27 @@
+{
+  "spaces": [
+    { "kind": "youtube", "name": "Rain on the window", "source": "WDR-5eFoxuQ" },
+    { "kind": "youtube", "name": "Rainy café", "source": "wFW2_nzAFv8" },
+    { "kind": "youtube", "name": "Forest birdsong", "source": "XxP8kxUn5bc" },
+    { "kind": "youtube", "name": "Night city balcony", "source": "kTMja8RgJXk" },
+    { "kind": "image", "name": "Forest path", "source": "images/forest-path.jpg" },
+    { "kind": "image", "name": "Lake shore", "source": "images/lake-shore.jpg" },
+    { "kind": "image", "name": "Autumn canopy", "source": "images/autumn-canopy.jpg" },
+    { "kind": "image", "name": "Rainy window", "source": "images/rainy-window.jpg" }
+  ],
+  "sounds": [
+    { "name": "White noise", "kind": "noise", "source": "white" },
+    { "name": "Pink noise", "kind": "noise", "source": "pink" },
+    { "name": "Brown noise", "kind": "noise", "source": "brown" },
+    { "name": "Rain", "kind": "file", "source": "sounds/rain.ogg" },
+    { "name": "Thunderstorm", "kind": "file", "source": "sounds/thunderstorm.ogg" },
+    { "name": "Café", "kind": "file", "source": "sounds/cafe.ogg" },
+    { "name": "Fireplace", "kind": "file", "source": "sounds/fireplace.ogg" },
+    { "name": "Ocean waves", "kind": "file", "source": "sounds/ocean-waves.ogg" },
+    { "name": "Forest birds", "kind": "file", "source": "sounds/forest-birds.ogg" },
+    { "name": "Wind", "kind": "file", "source": "sounds/wind.ogg" },
+    { "name": "Keyboard typing", "kind": "file", "source": "sounds/keyboard-typing.ogg" },
+    { "name": "City street", "kind": "file", "source": "sounds/city-street.ogg" },
+    { "name": "Wind chimes", "kind": "file", "source": "sounds/wind-chimes.ogg" }
+  ]
+}
