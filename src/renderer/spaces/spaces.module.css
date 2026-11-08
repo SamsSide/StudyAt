@@ -1,0 +1,310 @@
+/* Spaces: the background and the side panel (spec §3.8, §4 visual direction). Tokens from styles/tokens.css. */
+
+/* ---- Background: always covers the window ---- */
+.bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.layer {
+  position: absolute;
+  inset: 0;
+}
+
+.media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A 16:9 frame scaled to cover, centred. */
+.youtube {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100vw, 177.78vh);
+  height: max(100vh, 56.25vw);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.youtube iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.dim {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  pointer-events: none;
+}
+
+.notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--text);
+}
+
+.notice p {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  background: var(--panel);
+  border-radius: var(--radius-sm);
+}
+
+.footer {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+}
+
+/* ---- Buttons shared by panel and background ---- */
+.btn {
+  font: inherit;
+  font-size: var(--text-md);
+  color: var(--text);
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.btn:hover {
+  background: var(--active);
+}
+
+.btn:focus-visible,
+.tab:focus-visible,
+.thumbBtn:focus-visible,
+.input:focus-visible,
+.icon:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+
+.primary:hover {
+  background: var(--accent);
+  filter: brightness(1.1);
+}
+
+/* ---- Panel ---- */
+.panel {
+  display: grid;
+  gap: var(--space-3);
+  color: var(--text);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.tab {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--hover);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text);
+  background: var(--active);
+  border-color: var(--accent);
+}
+
+.input {
+  font: inherit;
+  color: var(--text);
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.input::placeholder {
+  color: var(--text-faint);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.row .input {
+  flex: 1;
+}
+
+.error {
+  color: #ffb4a8;
+  font-size: var(--text-sm);
+}
+
+.empty {
+  margin: 0;
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--space-4) 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+}
+
+/* ---- Card ---- */
+.card {
+  list-style: none;
+  position: relative;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+}
+
+.card[aria-current='true'] {
+  border-color: var(--accent);
+}
+
+.thumbBtn {
+  all: unset;
+  display: block;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.thumb {
+  aspect-ratio: 16 / 9;
+  background: var(--panel-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.name {
+  font-size: var(--text-sm);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.cardActions {
+  display: flex;
+  justify-content: space-between;
+}
+
+.icon {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.icon:hover {
+  background: var(--hover);
+}
+
+.menu {
+  position: absolute;
+  right: var(--space-1);
+  bottom: 32px;
+  z-index: 1;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--panel-strong);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+
+.menu li {
+  list-style: none;
+}
+
+.menu button {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-md);
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  background: var(--active);
+}
+
+/* ---- Settings ---- */
+.settings {
+  display: grid;
+  gap: var(--space-3);
+  color: var(--text);
+}
+
+.settings h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.field input[type='range'] {
+  accent-color: var(--accent);
+}
