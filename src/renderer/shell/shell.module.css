@@ -1,0 +1,357 @@
+/* The shell's look (spec §4 visual direction). Values come from styles/tokens.css. */
+
+.shell {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--text);
+}
+
+.shell[data-chrome='hidden'][data-overlay='none'] {
+  cursor: none;
+}
+
+.background {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-background);
+}
+
+.frosted {
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* Chrome that auto-hides: dock, top bar, side panel, auto-hide widgets */
+.fades {
+  transition: opacity var(--duration-fade) var(--ease);
+}
+
+.shell[data-chrome='hidden'] .fades {
+  opacity: 0;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 36px;
+  height: 36px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.iconButton:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.iconButton[aria-pressed='true'],
+.iconButton[aria-expanded='true'] {
+  background: var(--active);
+  color: var(--text);
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+/* Top bar */
+.topBar {
+  position: absolute;
+  z-index: var(--z-chrome);
+  top: var(--space-3);
+  left: calc(var(--dock-w) + var(--space-5));
+  right: var(--space-3);
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.topGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  pointer-events: auto;
+}
+
+.streak {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.today {
+  padding: 0 var(--space-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.todayLabel {
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-right: var(--space-1);
+}
+
+/* Goal ring */
+.ring {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+}
+
+.ringTrack {
+  stroke: rgba(255, 255, 255, 0.14);
+}
+
+.ringFill {
+  stroke: var(--accent);
+  transition: stroke-dashoffset var(--duration-fade) var(--ease);
+}
+
+/* Dock */
+.dock {
+  position: absolute;
+  z-index: var(--z-chrome);
+  top: 50%;
+  left: var(--space-3);
+  transform: translateY(-50%);
+  width: var(--dock-w);
+  padding: var(--space-2) var(--space-1);
+}
+
+.dockList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dockItem {
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  height: auto;
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+}
+
+.dockDivider {
+  height: 1px;
+  margin: var(--space-1) var(--space-3);
+  background: var(--border);
+}
+
+/* Side panel */
+.sidePanel {
+  position: absolute;
+  z-index: var(--z-panel);
+  top: calc(var(--topbar-h) + var(--space-5));
+  bottom: var(--space-3);
+  left: calc(var(--dock-w) + var(--space-5));
+  width: var(--panel-w);
+  max-width: calc(100vw - var(--dock-w) - 48px);
+  display: flex;
+  flex-direction: column;
+  animation: slideIn var(--duration) var(--ease);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+/* Widget frame */
+.widget {
+  position: absolute;
+  z-index: var(--z-widget);
+  min-width: 200px;
+  animation: fadeIn var(--duration) var(--ease);
+}
+
+.widgetHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) 0 var(--space-3);
+}
+
+.handle {
+  flex: 1;
+  justify-content: flex-start;
+  height: 28px;
+  padding: 0;
+  cursor: grab;
+  touch-action: none;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.handle:hover {
+  background: transparent;
+}
+
+.dragging .handle {
+  cursor: grabbing;
+}
+
+.dragging {
+  user-select: none;
+}
+
+.small {
+  min-width: 28px;
+  height: 28px;
+}
+
+.widgetBody {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+/* Overlays */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+  background: var(--scrim);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  animation: fadeIn var(--duration) var(--ease);
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  max-height: 100%;
+  background: var(--panel-strong);
+}
+
+.dialog:focus-visible {
+  box-shadow: var(--shadow);
+}
+
+.dialogNarrow {
+  width: min(480px, 100%);
+}
+
+.dialog .title {
+  font-size: var(--text-lg);
+}
+
+/* Shortcut help */
+.keys {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.keys > div {
+  display: contents;
+}
+
+.keys dt {
+  justify-self: start;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.keys dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* Welcome card */
+.welcome {
+  position: absolute;
+  z-index: var(--z-welcome);
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 2 * var(--dock-w)));
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  animation: fadeIn var(--duration-fade) var(--ease);
+}
+
+.welcome p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.primary {
+  align-self: flex-end;
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter var(--duration) var(--ease);
+}
+
+.primary:hover {
+  filter: brightness(1.08);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}

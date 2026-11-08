@@ -1,0 +1,152 @@
+// The renderer's one store (Zustand): what main says (timer state, settings, the stats overview,
+// subjects) plus what is open on screen. Main owns the timer and every number (appplan §5,
+// study-dev rule 4); this store only mirrors it and sends commands through `window.studyat`.
+import { create } from 'zustand';
+import type { Unsubscribe } from '../../shared/ipc';
+import type {
+  PublicSettings,
+  SettingsPatch,
+  StatsOverview,
+  Subject,
+  TimerState,
+  WidgetId,
+  WidgetPos,
+} from '../../shared/types';
+
+export type PanelId = 'spaces' | 'sounds';
+export type OverlayId = 'stats' | 'settings' | 'help';
+
+export interface StudyState {
+  timer: TimerState;
+  overview: StatsOverview | null;
+  settings: PublicSettings | null;
+  /** Every subject, archived included; loaded on init. */
+  subjects: Subject[];
+  openPanel: PanelId | null;
+  overlay: OverlayId | null;
+  fullscreen: boolean;
+  /** What this window last asked of the mini timer; main has no event for it. */
+  miniShown: boolean;
+
+  setPanel(panel: PanelId | null): void;
+  /** Opens `panel`, or closes it if it is already open. */
+  togglePanel(panel: PanelId): void;
+  setOverlay(overlay: OverlayId | null): void;
+  /** Opens `overlay`, or closes it if it is already on top. */
+  toggleOverlay(overlay: OverlayId): void;
+  refreshOverview(): Promise<void>;
+  refreshSettings(): Promise<void>;
+  refreshSubjects(): Promise<void>;
+  /** Sends a patch to main and keeps what main returns (main sanitises and merges). */
+  updateSettings(patch: SettingsPatch): Promise<void>;
+  /** Changes one widget's open/position, optimistically, then persists it. */
+  patchWidget(id: WidgetId, patch: Partial<WidgetPos>): Promise<void>;
+  toggleWidget(id: WidgetId): Promise<void>;
+  toggleMini(): Promise<void>;
+}
+
+const MINUTE = 60_000;
+
+/** Shown until `timer.get()` answers; matches main's idle focus state. */
+const initialTimer = (): TimerState => ({
+  mode: 'focus',
+  status: 'idle',
+  remainingMs: 25 * MINUTE,
+  segmentMs: 25 * MINUTE,
+  completedFocusCount: 0,
+  subjectId: null,
+  pauseReason: null,
+  todayFocusMs: 0,
+});
+
+const initialData = () => ({
+  timer: initialTimer(),
+  overview: null,
+  settings: null,
+  subjects: [],
+  openPanel: null,
+  overlay: null,
+  fullscreen: false,
+  miniShown: false,
+});
+
+const api = () => window.studyat;
+
+export const useStudyStore = create<StudyState>()((set, get) => ({
+  ...initialData(),
+
+  setPanel: (openPanel) => set({ openPanel }),
+  togglePanel: (panel) => set((s) => ({ openPanel: s.openPanel === panel ? null : panel })),
+  setOverlay: (overlay) => set({ overlay }),
+  toggleOverlay: (overlay) => set((s) => ({ overlay: s.overlay === overlay ? null : overlay })),
+
+  refreshOverview: async () => set({ overview: await api().stats.overview() }),
+  refreshSettings: async () => set({ settings: await api().settings.get() }),
+  refreshSubjects: async () => set({ subjects: await api().subjects.list() }),
+
+  updateSettings: async (patch) => set({ settings: await api().settings.set(patch) }),
+
+  patchWidget: async (id, patch) => {
+    const settings = get().settings;
+    if (!settings) return;
+    const next: WidgetPos = { ...settings.widgets[id], ...patch };
+    set({ settings: { ...settings, widgets: { ...settings.widgets, [id]: next } } });
+    await get().updateSettings({ widgets: { [id]: next } });
+  },
+
+  toggleWidget: async (id) => {
+    const open = get().settings?.widgets[id].open ?? false;
+    await get().patchWidget(id, { open: !open });
+  },
+
+  toggleMini: async () => {
+    const show = !get().miniShown;
+    set({ miniShown: show });
+    await api().app.showMini(show);
+  },
+}));
+
+/**
+ * Loads everything the shell shows and subscribes to main's pushes. The overview is re-fetched
+ * when today's focus time crosses a whole minute and at every segment end, so the goal ring
+ * follows a running focus without an IPC call per tick. Returns the unsubscribe.
+ */
+export function initStudyStore(): Unsubscribe {
+  const studyat = api();
+  const store = useStudyStore.getState();
+  let lastMinute = -1;
+  let pushed = false;
+
+  const onState = (timer: TimerState): void => {
+    useStudyStore.setState({ timer });
+    const minute = Math.floor(timer.todayFocusMs / MINUTE);
+    if (lastMinute !== -1 && minute !== lastMinute) void store.refreshOverview();
+    lastMinute = minute;
+  };
+
+  const stops = [
+    studyat.timer.onState((timer) => {
+      pushed = true;
+      onState(timer);
+    }),
+    studyat.timer.onSegmentEnd(() => void store.refreshOverview()),
+    studyat.app.onFullscreen((fullscreen) => useStudyStore.setState({ fullscreen })),
+  ];
+
+  // A push that lands first is newer than the answer to get().
+  void studyat.timer.get().then((timer) => {
+    if (!pushed) onState(timer);
+  });
+  void store.refreshSettings();
+  void store.refreshOverview();
+  void store.refreshSubjects();
+
+  return () => {
+    for (const stop of stops) stop();
+  };
+}
+
+/** Back to the first-launch state; for tests. */
+export function resetStudyStore(): void {
+  useStudyStore.setState(initialData());
+}
