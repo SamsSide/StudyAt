@@ -2,12 +2,13 @@
 import { app, BrowserWindow, session } from 'electron';
 import { join } from 'node:path';
 import { applyUserDataOverride } from './paths';
-import { CSP, DEV_CSP, hardenWebContents } from './security';
+import { CSP, DEV_CSP, hardenWebContents, shouldApplyCsp } from './security';
 import { startRendererServer } from './server';
 
 applyUserDataOverride(app, process.env);
 
-const devUrl = process.env.ELECTRON_RENDERER_URL;
+// Dev server only in an unpackaged build: a packaged app ignores the variable and its weaker CSP.
+const devUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 let rendererServer: { url: string; close(): Promise<void> } | null = null;
 let mainWindow: BrowserWindow | null = null;
 
@@ -56,6 +57,12 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     const csp = devUrl ? DEV_CSP : CSP;
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const appUrl = devUrl ?? rendererServer?.url;
+      const appOrigin = appUrl ? new URL(appUrl).origin : null;
+      if (!shouldApplyCsp(details.url, appOrigin)) {
+        callback({});
+        return;
+      }
       callback({
         responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] },
       });

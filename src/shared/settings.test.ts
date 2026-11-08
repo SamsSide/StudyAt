@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, sanitiseSettingsPatch } from './settings';
+import { DEFAULT_SETTINGS, mergeSettings, sanitiseSettingsPatch } from './settings';
 import { SEED_SUBJECTS } from './subjects';
 
 describe('DEFAULT_SETTINGS', () => {
@@ -94,5 +94,37 @@ describe('sanitiseSettingsPatch', () => {
     expect(sanitiseSettingsPatch(null)).toEqual({});
     expect(sanitiseSettingsPatch('x')).toEqual({});
     expect(sanitiseSettingsPatch([1])).toEqual({});
+  });
+
+  it('accepts only registered-sound file chimes (file:<soundId>)', () => {
+    expect(sanitiseSettingsPatch({ chimeFocusEnd: 'file:12' })).toEqual({ chimeFocusEnd: 'file:12' });
+    for (const bad of ['file:C:\\a b.mp3', 'file:', 'file:abc', 'file:7x', 'file:-1']) {
+      expect(sanitiseSettingsPatch({ chimeFocusEnd: bad }), bad).toEqual({});
+    }
+  });
+
+  it('drops spotifyTokens: the renderer never sets them', () => {
+    expect(sanitiseSettingsPatch({ spotifyTokens: 'abc', focusMinutes: 30 })).toEqual({ focusMinutes: 30 });
+    expect(sanitiseSettingsPatch({ spotifyTokens: null })).toEqual({});
+  });
+});
+
+describe('mergeSettings', () => {
+  it('merges a partial widgets patch', () => {
+    const merged = mergeSettings(DEFAULT_SETTINGS, {
+      focusMinutes: 40,
+      widgets: { tasks: { open: true, x: 0.1, y: 0.2, autoHide: true } },
+    });
+    expect(merged.focusMinutes).toBe(40);
+    expect(merged.widgets.tasks).toEqual({ open: true, x: 0.1, y: 0.2, autoHide: true });
+    expect(merged.widgets.timer).toEqual(DEFAULT_SETTINGS.widgets.timer);
+    expect(merged.widgets.spotify).toEqual(DEFAULT_SETTINGS.widgets.spotify);
+  });
+
+  it('does not mutate the stored settings and keeps spotifyTokens', () => {
+    const stored = { ...structuredClone(DEFAULT_SETTINGS), spotifyTokens: 'enc' };
+    const merged = mergeSettings(stored, { widgets: { timer: { open: false, x: 0, y: 0, autoHide: false } } });
+    expect(stored.widgets.timer.open).toBe(true);
+    expect(merged.spotifyTokens).toBe('enc');
   });
 });

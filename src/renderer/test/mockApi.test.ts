@@ -55,4 +55,27 @@ describe('mockApi', () => {
     void window.studyat.timer.start();
     expect(start).toHaveBeenCalled();
   });
+
+  it('returns a seven-day Monday..Sunday empty week', async () => {
+    const week = await mockApi().stats.week();
+    expect(week.days.map((d) => d.dayKey)).toEqual([
+      '1970-01-05',
+      '1970-01-06',
+      '1970-01-07',
+      '1970-01-08',
+      '1970-01-09',
+      '1970-01-10',
+      '1970-01-11',
+    ]);
+    expect(week.days.every((d) => d.ms === 0)).toBe(true);
+  });
+
+  it('settings.set merges widgets and never exposes spotifyTokens', async () => {
+    const api = mockApi();
+    const out = await api.settings.set({ widgets: { tasks: { open: true, x: 0.3, y: 0.3, autoHide: false } } });
+    expect(out.widgets.timer).toBeDefined();
+    expect(out.widgets.tasks.open).toBe(true);
+    expect('spotifyTokens' in out).toBe(false);
+    expect('spotifyTokens' in (await api.settings.get())).toBe(false);
+  });
 });

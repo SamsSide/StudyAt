@@ -10,9 +10,10 @@ import type {
   Mode,
   NowPlaying,
   Playlist,
+  PublicSettings,
   SegmentEnd,
   Session,
-  Settings,
+  SettingsPatch,
   Sound,
   Space,
   SpaceOpts,
@@ -119,8 +120,8 @@ export interface StudyAtApi {
     remove(id: number): Promise<Mix[]>;
   };
   settings: {
-    get(): Promise<Settings>;
-    set(patch: Partial<Settings>): Promise<Settings>;
+    get(): Promise<PublicSettings>;
+    set(patch: SettingsPatch): Promise<PublicSettings>;
   };
   data: {
     exportJson(): Promise<boolean>;

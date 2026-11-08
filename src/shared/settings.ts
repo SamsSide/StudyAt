@@ -1,5 +1,5 @@
 // Settings defaults and the patch sanitiser (spec §3.11). Pure: used by main (validation) and tests.
-import type { ChimeId, Settings, WidgetId, WidgetPos } from './types';
+import type { ChimeId, Settings, SettingsPatch, WidgetId, WidgetPos } from './types';
 
 export const DEFAULT_SETTINGS: Settings = {
   focusMinutes: 25,
@@ -68,7 +68,7 @@ const str =
 const chime: Sanitiser = (v) => {
   if (typeof v !== 'string' || v.length > MAX_STRING) return NONE;
   if (BUILTIN_CHIMES.includes(v)) return v as ChimeId;
-  return /^file:\S+$/.test(v) ? (v as ChimeId) : NONE;
+  return /^file:\d+$/.test(v) ? (v as ChimeId) : NONE;
 };
 
 const nullableId: Sanitiser = (v) => {
@@ -128,7 +128,7 @@ const point: Sanitiser = (v) => {
 };
 
 // One entry per key of Settings (spec §3.11 ranges).
-const SANITISERS: Record<keyof Settings, Sanitiser> = {
+const SANITISERS: Record<keyof SettingsPatch, Sanitiser> = {
   focusMinutes: num(1, 180, true),
   shortMinutes: num(1, 180, true),
   longMinutes: num(1, 180, true),
@@ -155,7 +155,6 @@ const SANITISERS: Record<keyof Settings, Sanitiser> = {
   masterVolume: num(0, 1, false),
   widgets,
   spotifyClientId: str(true),
-  spotifyTokens: (v) => (v === null ? null : str(false)(v)),
   onboarded: bool,
   trayNoticeShown: bool,
   windowBounds: rect,
@@ -163,16 +162,22 @@ const SANITISERS: Record<keyof Settings, Sanitiser> = {
 };
 
 /**
- * Keeps only known keys with valid values, clamping numbers into their §3.11 ranges. A patch
- * `widgets` entry may name just some widgets; callers merge it over the stored value.
+ * Keeps only known keys with valid values, clamping numbers into their §3.11 ranges.
+ * `spotifyTokens` is never accepted (main-owned, spec §3.10). A patch `widgets` entry may name
+ * just some widgets; apply it with `mergeSettings`.
  */
-export function sanitiseSettingsPatch(patch: unknown): Partial<Settings> {
+export function sanitiseSettingsPatch(patch: unknown): SettingsPatch {
   if (!isRecord(patch)) return {};
   const out: Record<string, unknown> = {};
-  for (const key of Object.keys(SANITISERS) as (keyof Settings)[]) {
+  for (const key of Object.keys(SANITISERS) as (keyof SettingsPatch)[]) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
     const clean = SANITISERS[key](patch[key]);
     if (clean !== NONE) out[key] = clean;
   }
-  return out as Partial<Settings>;
+  return out as SettingsPatch;
+}
+
+/** Applies a sanitised patch over stored settings; `widgets` is merged per widget, not replaced. */
+export function mergeSettings(stored: Settings, patch: SettingsPatch): Settings {
+  return { ...stored, ...patch, widgets: { ...stored.widgets, ...patch.widgets } };
 }

@@ -153,7 +153,11 @@ export interface WeeklyRecap {
   goalDaysHit: number;
 }
 
-export type ChimeId = 'bell' | 'bowl' | 'woodblock' | 'marimba' | 'digital' | `file:${string}`;
+/**
+ * A built-in chime, or `file:<soundId>`: the id of a registered `sounds` row. The media protocol
+ * serves only DB-registered ids (spec §3.2), so a path is never a chime id.
+ */
+export type ChimeId = 'bell' | 'bowl' | 'woodblock' | 'marimba' | 'digital' | `file:${number}`;
 
 /** x and y are fractions of the window (0..1). */
 export interface WidgetPos {
@@ -208,6 +212,14 @@ export interface Settings {
   windowBounds: WindowBounds | null;
   miniPos: { x: number; y: number } | null;
 }
+
+/** What the renderer sees: tokens are main-owned (spec §3.10, study-dev rule 9) and never cross the bridge. */
+export type PublicSettings = Omit<Settings, 'spotifyTokens'>;
+
+/** A renderer settings patch: any public key, and `widgets` may name just some widgets. */
+export type SettingsPatch = Partial<Omit<Settings, 'widgets' | 'spotifyTokens'>> & {
+  widgets?: Partial<Record<WidgetId, WidgetPos>>;
+};
 
 export interface SpotifyStatus {
   configured: boolean;

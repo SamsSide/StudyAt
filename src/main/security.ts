@@ -30,6 +30,15 @@ function originOf(url: string): string | null {
   }
 }
 
+/**
+ * The CSP goes only on responses from the app's own origin. Third-party responses (the YouTube
+ * embed and its video, thumbnail and script hosts) keep their own policy, or the embed breaks.
+ */
+export function shouldApplyCsp(responseUrl: string, appOrigin: string | null): boolean {
+  if (appOrigin === null) return false;
+  return originOf(responseUrl) === appOrigin;
+}
+
 /** Denies window.open (https links go to the default browser) and blocks navigation off-origin. */
 export function hardenWebContents(wc: Electron.WebContents): void {
   wc.setWindowOpenHandler(({ url }) => {

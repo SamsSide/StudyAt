@@ -2,12 +2,15 @@
 // default, and the emit* helpers drive the event subscriptions.
 import { vi } from 'vitest';
 import type { StudyAtApi, Unsubscribe } from '../../shared/ipc';
-import { DEFAULT_SETTINGS } from '../../shared/settings';
+import { DEFAULT_SETTINGS, mergeSettings } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
 import type {
   AwayPrompt,
   NowPlaying,
+  PublicSettings,
   SegmentEnd,
+  Settings,
+  SettingsPatch,
   StatsOverview,
   Subject,
   TimerState,
@@ -49,7 +52,21 @@ const emptyOverview = (): StatsOverview => ({
   goalProgress: 0,
 });
 
-const emptyWeek = (): WeekBars => ({ weekStart: '1970-01-05', days: [] });
+/** Seven zero days, Monday 1970-01-05 .. Sunday 1970-01-11, as WeekBars promises. */
+const emptyWeek = (): WeekBars => ({
+  weekStart: '1970-01-05',
+  days: Array.from({ length: 7 }, (_, i) => ({
+    dayKey: `1970-01-${String(5 + i).padStart(2, '0')}`,
+    ms: 0,
+    bySubject: {},
+  })),
+});
+
+/** Drops the main-owned tokens, as the real settings channel does. */
+function publicSettings(s: Settings): PublicSettings {
+  const { spotifyTokens: _tokens, ...rest } = structuredClone(s);
+  return rest;
+}
 
 const emptyPlaying = (): NowPlaying => ({ state: 'unconfigured' });
 
@@ -142,8 +159,10 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       remove: resolves([]),
     },
     settings: {
-      get: vi.fn(() => Promise.resolve(structuredClone(DEFAULT_SETTINGS))),
-      set: vi.fn((patch) => Promise.resolve({ ...structuredClone(DEFAULT_SETTINGS), ...patch })),
+      get: vi.fn(() => Promise.resolve(publicSettings(DEFAULT_SETTINGS))),
+      set: vi.fn((patch: SettingsPatch) =>
+        Promise.resolve(publicSettings(mergeSettings(structuredClone(DEFAULT_SETTINGS), patch))),
+      ),
     },
     data: {
       exportJson: resolves(true),
