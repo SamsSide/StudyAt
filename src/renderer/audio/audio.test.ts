@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Sound } from '../../shared/types';
+import type { ChimeId, Sound } from '../../shared/types';
 import { BUILTIN_CHIME_IDS, CHIMES } from './chimes';
 import { AudioEngine } from './engine';
 import { makeNoise } from './noise';
@@ -38,6 +38,15 @@ describe('makeNoise', () => {
     const white = meanAbsDelta(makeNoise(ctx, 'white', 2).getChannelData(0));
     const brown = meanAbsDelta(makeNoise(ctx, 'brown', 2).getChannelData(0));
     expect(brown).toBeLessThan(white / 4);
+  });
+
+  it('brown noise wraps from its last sample to its first like any other step', () => {
+    const ctx = asBase(new FakeAudioContext(8000));
+    for (let run = 0; run < 5; run++) {
+      const d = makeNoise(ctx, 'brown', 2).getChannelData(0);
+      const wrap = Math.abs((d[d.length - 1] ?? 0) - (d[0] ?? 0));
+      expect(wrap).toBeLessThan(meanAbsDelta(d) * 8);
+    }
   });
 
   it('pink noise sits between white and brown and stays finite and bounded', () => {
@@ -91,8 +100,12 @@ describe('AudioEngine', () => {
     await engine.playChime('bell', { volume: 0.7, repeat: 1 });
     const [master, chime] = fake.gains;
     expect(master?.gain.value).toBe(0);
-    expect(chime?.gain.value).toBe(0.7);
+    expect(chime?.gain.value).toBe(1);
     expect(chime?.outputs).toEqual([fake.destination]);
+    // The volume lives on the voice's own gain, which feeds the chime bus.
+    const voice = fake.gains[2];
+    expect(voice?.gain.value).toBe(0.7);
+    expect(voice?.outputs).toEqual([chime]);
     expect(fake.state).toBe('running');
   });
 
@@ -113,6 +126,31 @@ describe('AudioEngine', () => {
     });
     expect(fetchMock).toHaveBeenCalledWith('studyat-media://chime/7');
     expect(fake.sources).toHaveLength(2);
+  });
+
+  it('a tick does not change the volume of a chime already playing', async () => {
+    const fake = new FakeAudioContext();
+    const engine = new AudioEngine(() => asAudioContext(fake));
+    await engine.playChime('bell', { volume: 0.9, repeat: 1 });
+    const chimeVoice = fake.gains[2];
+    engine.tick(0.2);
+    expect(chimeVoice?.gain.value).toBe(0.9);
+    const chimeBus = fake.gains[1];
+    expect(fake.gains.some((g) => g.gain.value === 0.2 && g.outputs.includes(chimeBus as never))).toBe(true);
+  });
+
+  it.each([
+    ['a file that cannot be fetched', 'file:7', 'studyat-media://chime/7'],
+    ['an unknown id', 'nonsense', undefined],
+    ['a custom id without a URL', 'file:8', undefined],
+  ])('falls back to the bell for %s', async (_label, id, customUrl) => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('gone'))));
+    const fake = new FakeAudioContext();
+    const engine = new AudioEngine(() => asAudioContext(fake));
+    await engine.playChime(id as ChimeId, { volume: 1, repeat: 1, customUrl });
+    let peak = 0;
+    for (const x of fake.render(3)) peak = Math.max(peak, Math.abs(x));
+    expect(peak).toBeGreaterThan(0.05);
   });
 
   it('resumes a suspended context on the first key press', async () => {

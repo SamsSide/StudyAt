@@ -25,6 +25,12 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
   const [levels, setLevels] = useState<Record<string, number>>({});
   const [master, setMaster] = useState(0.8);
   const [space, setSpace] = useState(() => spaceAudio?.get() ?? 1);
+  // A new space (new prop identity) has its own volume: re-read it during render, not in an effect.
+  const [spaceFor, setSpaceFor] = useState(spaceAudio);
+  if (spaceFor !== spaceAudio) {
+    setSpaceFor(spaceAudio);
+    setSpace(spaceAudio?.get() ?? 1);
+  }
   const [mixName, setMixName] = useState('');
   const [loaded, setLoaded] = useState(false);
 
@@ -114,10 +120,30 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     setSounds(await window.studyat.sounds.remove(sound.id));
   };
 
-  // The API has no relocate for sounds (spaces do), so re-adding is remove then pick again.
+  // The API has no relocate for sounds (spaces do), so pick the replacement first: only once a new sound
+  // is registered does the old one go, taking its level to the new id. Cancelling the picker changes
+  // nothing. Saved mixes still name the old id; a `sounds.relocate` that keeps the id fixes that.
   const relocate = async (sound: Sound) => {
-    await removeSound(sound);
-    setSounds(await window.studyat.sounds.addFiles());
+    const known = new Set(sounds.map((s) => s.id));
+    const list = await window.studyat.sounds.addFiles();
+    const added = list.find((s) => !known.has(s.id));
+    if (!added) {
+      setSounds(list);
+      return;
+    }
+    const oldKey = soundKey(sound);
+    const level = levelsRef.current[oldKey] ?? 0;
+    const next = { ...levelsRef.current };
+    delete next[oldKey];
+    if (level > 0) {
+      next[soundKey(added)] = level;
+      applyLevel(added, level);
+    }
+    levelsRef.current = next;
+    setLevels(next);
+    dirty.current.levels = true;
+    scheduleSave();
+    setSounds(await window.studyat.sounds.remove(sound.id));
   };
 
   const saveMix = async (e: FormEvent) => {
@@ -159,6 +185,7 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
           step={0.01}
           value={master}
           aria-label="Master volume"
+          disabled={!loaded} // a move before the saved levels arrive would be overwritten by them
           onChange={(e) => changeMaster(Number(e.target.value))}
         />
       </label>
@@ -192,7 +219,7 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
                 type="button"
                 className={styles.button}
                 aria-pressed={level === 0}
-                aria-label={level === 0 ? `Unmute ${s.name}` : `Mute ${s.name}`}
+                aria-label={`Mute ${s.name}`}
                 disabled={s.missing}
                 onClick={() => toggleMute(s)}
               >

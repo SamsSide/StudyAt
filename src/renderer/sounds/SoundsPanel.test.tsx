@@ -102,7 +102,10 @@ describe('SoundsPanel', () => {
     await user.click(await screen.findByRole('button', { name: 'Mute White noise' }));
     expect(screen.getByLabelText('White noise volume')).toHaveValue('0');
     expect(setLevel).toHaveBeenLastCalledWith(SOUNDS[0], 0, '');
-    await user.click(screen.getByRole('button', { name: 'Unmute White noise' }));
+    const toggle = screen.getByRole('button', { name: 'Mute White noise' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByLabelText('White noise volume')).toHaveValue('0.7');
   });
 
@@ -139,22 +142,63 @@ describe('SoundsPanel', () => {
     expect(api.mixes.remove).toHaveBeenCalledWith(5);
   });
 
-  it('a missing custom sound shows the Relocate state and relocating re-adds it', async () => {
-    const gone = sound(9, 'Lecture hum', {
-      kind: 'file',
-      builtin: false,
-      source: 'C:\\x.mp3',
-      missing: true,
-    });
-    const api = setup({ sounds: [...SOUNDS, gone] });
+  const goneSound = (): Sound =>
+    sound(9, 'Lecture hum', { kind: 'file', builtin: false, source: 'C:\\x.mp3', missing: true });
+
+  it('relocating picks a file first, then carries the level over and removes the old sound', async () => {
+    const gone = goneSound();
+    const fresh = sound(10, 'Lecture hum 2', { kind: 'file', builtin: false });
+    const api = setup({ sounds: [...SOUNDS, gone], settings: { soundLevels: { '9': 0.5 } } });
+    (api.sounds.addFiles as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, gone, fresh]);
+    (api.sounds.remove as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, fresh]);
     const user = userEvent.setup();
-    const btn = await screen.findByRole('button', {
-      name: 'File moved — Relocate…',
-    });
     expect(screen.queryByLabelText('Lecture hum volume')).not.toBeInTheDocument();
-    await user.click(btn);
-    expect(api.sounds.remove).toHaveBeenCalledWith(9);
+    await user.click(await screen.findByRole('button', { name: 'File moved — Relocate…' }));
+    await waitFor(() => expect(api.sounds.remove).toHaveBeenCalledWith(9));
     expect(api.sounds.addFiles).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('Lecture hum 2 volume')).toHaveValue('0.5');
+    expect(setLevel).toHaveBeenCalledWith(fresh, 0.5, 'studyat-media://sound/10');
+    await waitFor(() =>
+      expect(api.settings.set).toHaveBeenCalledWith({ soundLevels: { '10': 0.5 } }),
+    );
+  });
+
+  it('a cancelled relocate picker keeps the sound registered', async () => {
+    const gone = goneSound();
+    const api = setup({ sounds: [...SOUNDS, gone] });
+    (api.sounds.addFiles as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, gone]);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'File moved — Relocate…' }));
+    expect(api.sounds.addFiles).toHaveBeenCalledTimes(1);
+    expect(api.sounds.remove).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'File moved — Relocate…' })).toBeInTheDocument();
+  });
+
+  it('the master slider is disabled until the saved soundscape has loaded', async () => {
+    let release: (s: PublicSettings) => void = () => undefined;
+    const api = mockApi({
+      sounds: { list: vi.fn(() => Promise.resolve(SOUNDS)) },
+      mixes: { list: vi.fn(() => Promise.resolve([])) },
+      settings: { get: vi.fn(() => new Promise<PublicSettings>((r) => (release = r))) },
+    });
+    installMockApi(api);
+    render(<SoundsPanel />);
+    expect(screen.getByLabelText('Master volume')).toBeDisabled();
+    await act(async () => {
+      release(settingsWith({ masterVolume: 0.4 }));
+    });
+    await waitFor(() => expect(screen.getByLabelText('Master volume')).toBeEnabled());
+    expect(screen.getByLabelText('Master volume')).toHaveValue('0.4');
+  });
+
+  it('re-reads the space audio slider when the spaceAudio prop changes', async () => {
+    installMockApi(mockApi({ sounds: { list: vi.fn(() => Promise.resolve(SOUNDS)) } }));
+    const first: SpaceAudio = { get: () => 0.9, set: vi.fn() };
+    const second: SpaceAudio = { get: () => 0.3, set: vi.fn() };
+    const { rerender } = render(<SoundsPanel spaceAudio={first} />);
+    expect(await screen.findByLabelText('Space audio')).toHaveValue('0.9');
+    rerender(<SoundsPanel spaceAudio={second} />);
+    expect(screen.getByLabelText('Space audio')).toHaveValue('0.3');
   });
 
   it('never starts a missing sound, even with a saved level', async () => {

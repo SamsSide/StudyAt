@@ -5,7 +5,7 @@ export type NoiseColour = 'white' | 'pink' | 'brown';
 /** Peak the generated noise is normalised to; leaves headroom for the channel and master gains. */
 const PEAK = 0.5;
 
-/** Seconds of the loop's tail blended into its head so a looped buffer has no step at the seam. */
+/** Seconds of the loop's tail over which the seam offset is spread so a looped buffer has no step. */
 const SEAM_SECONDS = 0.05;
 
 function fill(data: Float32Array, colour: NoiseColour): void {
@@ -42,21 +42,32 @@ function fill(data: Float32Array, colour: NoiseColour): void {
       data[i] = last;
     }
   }
+  normalise(data);
+}
+
+/** Scales the buffer so its peak is PEAK. */
+function normalise(data: Float32Array): void {
+  const n = data.length;
   let peak = 0;
   for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(data[i] ?? 0));
   const scale = peak > 0 ? PEAK / peak : 1;
   for (let i = 0; i < n; i++) data[i] = (data[i] ?? 0) * scale;
 }
 
-/** Blends the head into the tail (equal-power) so the loop point is continuous for the integrated colours. */
+/**
+ * Ramps the tail so its last sample lands on the first one: playback wraps from data[L-1] to data[0],
+ * which then is an ordinary step instead of a click. The offset is spread over the last `length`
+ * samples with a raised-cosine ramp so it is inaudible for the integrated colours.
+ */
 function smoothSeam(data: Float32Array, length: number): void {
   const n = Math.min(length, Math.floor(data.length / 4));
+  if (n < 1) return;
+  const last = data.length - 1;
+  const delta = (data[0] ?? 0) - (data[last] ?? 0);
   for (let i = 0; i < n; i++) {
-    const t = i / n;
-    const head = data[i] ?? 0;
-    const tailIdx = data.length - n + i;
-    const tail = data[tailIdx] ?? 0;
-    data[tailIdx] = tail * Math.cos((t * Math.PI) / 2) + head * Math.sin((t * Math.PI) / 2);
+    const t = (i + 1) / n;
+    const idx = data.length - n + i;
+    data[idx] = (data[idx] ?? 0) + delta * (1 - Math.cos(t * Math.PI)) * 0.5;
   }
 }
 
@@ -65,6 +76,9 @@ export function makeNoise(ctx: BaseAudioContext, colour: NoiseColour, seconds = 
   const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
   const data = buffer.getChannelData(0);
   fill(data, colour);
-  if (colour !== 'white') smoothSeam(data, Math.round(ctx.sampleRate * SEAM_SECONDS));
+  if (colour !== 'white') {
+    smoothSeam(data, Math.round(ctx.sampleRate * SEAM_SECONDS));
+    normalise(data); // the seam offset can nudge the peak
+  }
   return buffer;
 }

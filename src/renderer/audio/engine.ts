@@ -1,7 +1,7 @@
 // The renderer's Web Audio engine (spec §3.9, appplan §4.3/§4.4): master gain -> destination for the
 // soundboard, and a separate chime gain -> destination so chimes ignore the master slider.
 import type { ChimeId, Sound } from '../../shared/types';
-import { CHIMES, tickVoice, type BuiltinChimeId } from './chimes';
+import { CHIMES, tickVoice, type BuiltinChimeId, type ChimeVoice } from './chimes';
 import { makeNoise, type NoiseColour } from './noise';
 
 /** Seconds between repeats of a chime (spec §3.9). */
@@ -22,6 +22,8 @@ export interface ChimeOpts {
 }
 
 const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
+
+const isBuiltinChime = (s: string): s is BuiltinChimeId => Object.hasOwn(CHIMES, s);
 
 const isNoiseColour = (s: string): s is NoiseColour => s === 'white' || s === 'pink' || s === 'brown';
 
@@ -44,7 +46,7 @@ export class AudioEngine {
       this.masterGain = ctx.createGain();
       this.masterGain.gain.value = this.masterValue;
       this.masterGain.connect(ctx.destination);
-      this.chimeGain = ctx.createGain();
+      this.chimeGain = ctx.createGain(); // unity bus; each chime voice carries its own volume
       this.chimeGain.connect(ctx.destination);
       this.armAutoResume();
     }
@@ -179,40 +181,53 @@ export class AudioEngine {
     }
   }
 
-  /** Plays a chime `repeat` times (1.2 s apart) through the chime gain, independent of the master. */
+  /**
+   * Plays a chime `repeat` times (1.2 s apart) through the chime bus, independent of the master. Each
+   * voice gets its own gain for the volume, so a tick or the next chime cannot change one in flight. A
+   * custom chime that is missing or will not decode, or an unknown id, falls back to the bell.
+   */
   async playChime(id: ChimeId, opts: ChimeOpts): Promise<void> {
     let buffer: AudioBuffer | null = null;
-    if (id.startsWith('file:')) {
-      if (!opts.customUrl) return;
+    let voice: ChimeVoice = CHIMES.bell;
+    if (isBuiltinChime(id)) {
+      voice = CHIMES[id];
+    } else if (id.startsWith('file:') && opts.customUrl) {
       try {
         buffer = await this.loadFile(opts.customUrl);
       } catch {
-        return;
+        buffer = null;
       }
     }
     await this.resume();
     const ctx = this.ctx;
-    this.chime.gain.value = clamp01(opts.volume);
     const repeats = Math.max(1, Math.round(opts.repeat));
     for (let i = 0; i < repeats; i++) {
       const at = ctx.currentTime + i * CHIME_REPEAT_GAP;
+      const out = this.voiceGain(opts.volume);
       if (buffer) {
         const src = ctx.createBufferSource();
         src.buffer = buffer;
-        src.connect(this.chime);
+        src.connect(out);
         src.start(at);
       } else {
-        CHIMES[id as BuiltinChimeId](ctx, at, this.chime);
+        voice(ctx, at, out);
       }
     }
+  }
+
+  /** A fresh gain at `volume` feeding the chime bus. */
+  private voiceGain(volume: number): GainNode {
+    const g = this.ctx.createGain();
+    g.gain.value = clamp01(volume);
+    g.connect(this.chime);
+    return g;
   }
 
   /** The soft once-a-second tick of the last focus minute. */
   tick(volume: number): void {
     const ctx = this.ctx;
     if (ctx.state === 'suspended') return; // never queue ticks behind a suspended context
-    this.chime.gain.value = clamp01(volume);
-    tickVoice(ctx, ctx.currentTime, this.chime);
+    tickVoice(ctx, ctx.currentTime, this.voiceGain(volume));
   }
 }
 
