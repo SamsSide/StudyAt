@@ -21,7 +21,7 @@ export function GeneralSection({ settings, update }: SectionProps) {
         min={0}
         max={60}
         unit="seconds"
-        onCommit={(n) => void update({ autoHideSeconds: n })}
+        onCommit={(n) => update({ autoHideSeconds: n })}
       />
       <Toggle
         label="Show the mini timer when the window is hidden"

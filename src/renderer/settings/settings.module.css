@@ -267,14 +267,6 @@
   font-family: var(--font-mono);
 }
 
-.confirm {
-  margin: var(--space-3) 0;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--active);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .navItem,
   .button,

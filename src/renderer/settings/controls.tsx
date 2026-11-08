@@ -70,9 +70,11 @@ export function NumberField({
   min: number;
   max: number;
   unit?: string;
-  onCommit: (next: number) => void;
+  /** Saves the number; resolves false when it couldn't be saved (the field then reverts). */
+  onCommit: (next: number) => Promise<boolean> | void;
 }) {
   const id = useId();
+  const [failed, setFailed] = useState(false);
   const [draft, setDraft] = useState(String(value));
   // Follow the saved value when it changes from outside (adjusting state during render).
   const [seen, setSeen] = useState(value);
@@ -81,7 +83,7 @@ export function NumberField({
     setDraft(String(value));
   }
 
-  const commit = (): void => {
+  const commit = async (): Promise<void> => {
     const parsed = Number(draft);
     if (draft.trim() === '' || !Number.isFinite(parsed)) {
       setDraft(String(value));
@@ -89,7 +91,12 @@ export function NumberField({
     }
     const next = clamp(Math.round(parsed), min, max);
     setDraft(String(next));
-    if (next !== value) onCommit(next);
+    if (next === value) return;
+    setFailed(false);
+    if ((await onCommit(next)) === false) {
+      setDraft(String(value));
+      setFailed(true);
+    }
   };
 
   return (
@@ -102,13 +109,22 @@ export function NumberField({
         min={min}
         max={max}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        aria-describedby={failed ? `${id}-error` : undefined}
+        onChange={(e) => {
+          setFailed(false);
+          setDraft(e.target.value);
+        }}
+        onBlur={() => void commit()}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commit();
+          if (e.key === 'Enter') void commit();
         }}
       />
       {unit && <span className={styles.hint}>{unit}</span>}
+      {failed && (
+        <span id={`${id}-error`} role="alert" className={styles.error}>
+          Couldn&apos;t save that. Please try again.
+        </span>
+      )}
     </Row>
   );
 }

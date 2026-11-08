@@ -17,7 +17,7 @@ export function GoalsSection({ settings, update }: SectionProps) {
         min={1}
         max={1440}
         unit="min"
-        onCommit={(n) => void update({ goalMinutes: n })}
+        onCommit={(n) => update({ goalMinutes: n })}
       />
       <NumberField
         label="Streak minimum"
@@ -26,7 +26,7 @@ export function GoalsSection({ settings, update }: SectionProps) {
         min={1}
         max={1440}
         unit="min"
-        onCommit={(n) => void update({ streakMinutes: n })}
+        onCommit={(n) => update({ streakMinutes: n })}
       />
       <NumberField
         label="Day starts at"
@@ -35,7 +35,7 @@ export function GoalsSection({ settings, update }: SectionProps) {
         min={0}
         max={23}
         unit="o'clock"
-        onCommit={(n) => void update({ rolloverHour: n })}
+        onCommit={(n) => update({ rolloverHour: n })}
       />
     </section>
   );

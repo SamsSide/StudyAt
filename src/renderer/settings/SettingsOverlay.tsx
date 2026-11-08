@@ -58,20 +58,27 @@ export function SettingsOverlay() {
   if (!settings) return null;
 
   const updateOrThrow = (patch: SettingsPatch): Promise<void> => updateSettings(patch);
-  const update = async (patch: SettingsPatch): Promise<void> => {
+  const update = async (patch: SettingsPatch): Promise<boolean> => {
     try {
       await updateSettings(patch);
+      return true;
     } catch (err) {
       console.error('Saving settings failed', err);
+      return false;
     }
   };
 
-  // Arrow keys move between sections, as a vertical tab list.
+  // Arrow keys move between sections, Home and End jump to the ends, as a vertical tab list.
   const onNavKey = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const last = SECTIONS.length - 1;
+    let index = SECTIONS.indexOf(active);
+    if (e.key === 'ArrowDown') index = (index + 1) % SECTIONS.length;
+    else if (e.key === 'ArrowUp') index = (index - 1 + SECTIONS.length) % SECTIONS.length;
+    else if (e.key === 'Home') index = 0;
+    else if (e.key === 'End') index = last;
+    else return;
     e.preventDefault();
-    const step = e.key === 'ArrowDown' ? 1 : -1;
-    const next = SECTIONS[(SECTIONS.indexOf(active) + step + SECTIONS.length) % SECTIONS.length] ?? active;
+    const next = SECTIONS[index] ?? active;
     setActive(next);
     document.getElementById(tabId(next))?.focus();
   };

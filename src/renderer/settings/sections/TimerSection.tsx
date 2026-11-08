@@ -15,7 +15,7 @@ export function TimerSection({ settings, update }: SectionProps) {
         min={1}
         max={180}
         unit="min"
-        onCommit={(n) => void update({ focusMinutes: n })}
+        onCommit={(n) => update({ focusMinutes: n })}
       />
       <NumberField
         label="Short break"
@@ -23,7 +23,7 @@ export function TimerSection({ settings, update }: SectionProps) {
         min={1}
         max={180}
         unit="min"
-        onCommit={(n) => void update({ shortMinutes: n })}
+        onCommit={(n) => update({ shortMinutes: n })}
       />
       <NumberField
         label="Long break"
@@ -31,7 +31,7 @@ export function TimerSection({ settings, update }: SectionProps) {
         min={1}
         max={180}
         unit="min"
-        onCommit={(n) => void update({ longMinutes: n })}
+        onCommit={(n) => update({ longMinutes: n })}
       />
       <NumberField
         label="Long break every"
@@ -39,7 +39,7 @@ export function TimerSection({ settings, update }: SectionProps) {
         value={settings.longEvery}
         min={1}
         max={12}
-        onCommit={(n) => void update({ longEvery: n })}
+        onCommit={(n) => update({ longEvery: n })}
       />
       <Toggle
         label="Start breaks automatically"
@@ -58,7 +58,7 @@ export function TimerSection({ settings, update }: SectionProps) {
         min={2}
         max={60}
         unit="min"
-        onCommit={(n) => void update({ idleMinutes: n })}
+        onCommit={(n) => update({ idleMinutes: n })}
       />
     </section>
   );

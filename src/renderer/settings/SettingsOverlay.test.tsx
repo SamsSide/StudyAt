@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
@@ -202,7 +202,13 @@ describe('SettingsOverlay', () => {
   it('connect shows port-in-use message on that error', async () => {
     const api = mockApi({
       spotify: {
-        connect: vi.fn(() => Promise.reject(new Error('Port 43821 is in use (EADDRINUSE)'))),
+        connect: vi.fn(() =>
+          Promise.reject(
+            new Error(
+              "Error invoking remote method 'spotify:connect': Error: Port 43821 is in use (EADDRINUSE)",
+            ),
+          ),
+        ),
       },
     });
     setup(api, { ...publicDefaults(), spotifyClientId: 'abc' });
@@ -216,15 +222,23 @@ describe('SettingsOverlay', () => {
   it('shortcuts section shows global hotkey and registration error', async () => {
     const api = mockApi({
       settings: {
-        set: vi.fn(() => Promise.reject(new Error('Ctrl+Alt+K is already used by another app'))),
+        set: vi.fn(() =>
+          Promise.reject(
+            new Error(
+              "Error invoking remote method 'settings:set': Error: Ctrl+Alt+K is already used by another app",
+            ),
+          ),
+        ),
       },
     });
     setup(api);
     await openSection('Shortcuts');
-    const field = screen.getByLabelText('Show or hide StudyAt');
+    const field = screen.getByLabelText('Start or pause the timer');
     expect(field).toHaveValue('Ctrl+Alt+P');
-    fireEvent.keyDown(field, { key: 'k', ctrlKey: true, altKey: true });
-    expect(await screen.findByRole('alert')).toHaveTextContent('Ctrl+Alt+K is already used by another app');
+    fireEvent.keyDown(field, { key: 'k', code: 'KeyK', ctrlKey: true, altKey: true });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Ctrl+Alt+K is already used by another app');
+    expect(alert).not.toHaveTextContent('Error invoking');
     expect(api.settings.set).toHaveBeenCalledWith({
       globalHotkey: 'Ctrl+Alt+K',
     });
@@ -234,13 +248,13 @@ describe('SettingsOverlay', () => {
   it('shortcuts: Backspace turns the hotkey off', async () => {
     const api = setup();
     await openSection('Shortcuts');
-    fireEvent.keyDown(screen.getByLabelText('Show or hide StudyAt'), {
+    fireEvent.keyDown(screen.getByLabelText('Start or pause the timer'), {
       key: 'Backspace',
     });
     await waitFor(() => expect(api.settings.set).toHaveBeenCalledWith({ globalHotkey: '' }));
   });
 
-  it('data: export buttons call exportJson/exportCsv; restore asks for confirmation', async () => {
+  it('data: export buttons call exportJson/exportCsv; restore goes straight to main', async () => {
     const api = mockApi({
       data: {
         listBackups: vi.fn(() =>
@@ -263,21 +277,36 @@ describe('SettingsOverlay', () => {
     expect(api.data.exportCsv).toHaveBeenCalledTimes(1);
     expect(api.data.openDataFolder).toHaveBeenCalledTimes(1);
 
+    // One confirmation only: main's native dialog. The overlay asks nothing itself.
     await userEvent.click(
       await screen.findByRole('button', {
         name: 'Restore daily-2026-11-07.sqlite',
       }),
     );
-    expect(api.data.restoreBackup).not.toHaveBeenCalled();
-    expect(screen.getByRole('alertdialog')).toHaveTextContent(
-      'Restore daily-2026-11-07.sqlite? StudyAt will restart with that backup. Your current data is kept as a backup first.',
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(api.data.restoreBackup).not.toHaveBeenCalled();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Restore daily-2026-11-07.sqlite' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(api.data.restoreBackup).toHaveBeenCalledTimes(1);
     expect(api.data.restoreBackup).toHaveBeenCalledWith('daily-2026-11-07.sqlite');
+  });
+
+  it("data: a refused restore shows main's clean message", async () => {
+    const api = mockApi({
+      data: {
+        listBackups: vi.fn(() =>
+          Promise.resolve([{ name: 'b.sqlite', size: 10, createdAt: 1_762_473_600_000 }]),
+        ),
+        restoreBackup: vi.fn(() =>
+          Promise.reject(
+            new Error("Error invoking remote method 'data:restoreBackup': Error: That backup is damaged"),
+          ),
+        ),
+      },
+    });
+    setup(api);
+    await openSection('Data');
+    await userEvent.click(await screen.findByRole('button', { name: 'Restore b.sqlite' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      "Couldn't restore that backup. That backup is damaged",
+    );
   });
 
   it('general: launch at start-up toggles setting', async () => {
@@ -303,5 +332,86 @@ describe('SettingsOverlay', () => {
       }),
     );
     expect(api.settings.set).toHaveBeenCalledWith({ miniWhenHidden: false });
+  });
+
+  it('shortcuts: keys come from the physical key, so Shift+digit is still the digit', async () => {
+    const api = setup();
+    await openSection('Shortcuts');
+    const field = screen.getByLabelText('Start or pause the timer');
+    fireEvent.keyDown(field, { key: '!', code: 'Digit1', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(api.settings.set).toHaveBeenCalledWith({ globalHotkey: 'Ctrl+Shift+1' }));
+    fireEvent.keyDown(field, { key: '+', code: 'Equal', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(api.settings.set).toHaveBeenCalledWith({ globalHotkey: 'Ctrl+Shift+=' }));
+    fireEvent.keyDown(field, { key: 'a', code: 'KeyA', altKey: true });
+    await waitFor(() => expect(api.settings.set).toHaveBeenCalledWith({ globalHotkey: 'Alt+A' }));
+  });
+
+  it('a number that fails to save goes back to the saved value with a short message', async () => {
+    const api = mockApi({ settings: { set: vi.fn(() => Promise.reject(new Error('disk full'))) } });
+    setup(api);
+    const input = screen.getByLabelText('Focus length');
+    await userEvent.clear(input);
+    await userEvent.type(input, '40');
+    await userEvent.tab();
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't save that");
+    expect(input).toHaveValue(25);
+  });
+
+  it('the chime volume saves once, after the slider settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = setup();
+      fireEvent.click(screen.getByRole('tab', { name: 'Chimes' }));
+      const slider = screen.getByLabelText('Volume');
+      fireEvent.change(slider, { target: { value: '0.3' } });
+      fireEvent.change(slider, { target: { value: '0.2' } });
+      fireEvent.change(slider, { target: { value: '0.1' } });
+      expect(slider).toHaveValue('0.1');
+      expect(api.settings.set).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(api.settings.set).toHaveBeenCalledTimes(1);
+      expect(api.settings.set).toHaveBeenCalledWith({ chimeVolume: 0.1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a custom chime that is already a sound is offered in the list and the user is told', async () => {
+    const existing = {
+      id: 3,
+      name: 'ding',
+      kind: 'file' as const,
+      source: 'C:/ding.mp3',
+      builtin: false,
+      sort: 0,
+      missing: false,
+    };
+    const api = mockApi({
+      sounds: {
+        list: vi.fn(() => Promise.resolve([existing])),
+        addFiles: vi.fn(() => Promise.resolve([existing])),
+      },
+    });
+    setup(api);
+    await openSection('Chimes');
+    const select = screen.getByLabelText('Focus ends');
+    await waitFor(() => expect(within(select).getByRole('option', { name: 'ding' })).toBeInTheDocument());
+    await userEvent.selectOptions(select, 'custom');
+    expect(await screen.findByRole('alert')).toHaveTextContent('already in your sounds');
+    expect(api.settings.set).not.toHaveBeenCalled();
+    await userEvent.selectOptions(select, 'file:3');
+    expect(api.settings.set).toHaveBeenCalledWith({ chimeFocusEnd: 'file:3' });
+  });
+
+  it('Home and End jump to the first and last section', async () => {
+    setup();
+    screen.getByRole('tab', { name: 'Timer' }).focus();
+    await userEvent.keyboard('{End}');
+    expect(screen.getByRole('tab', { name: 'General' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{Home}');
+    expect(screen.getByRole('tab', { name: 'Timer' })).toHaveFocus();
   });
 });

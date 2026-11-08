@@ -2,14 +2,13 @@
 // connect / disconnect. A busy callback port gets the §7 copy.
 import { useEffect, useId, useState } from 'react';
 import type { SpotifyStatus } from '../../../shared/types';
+import { ipcErrorMessage } from '../../lib/ipcError';
 import { Row } from '../controls';
 import styles from '../settings.module.css';
 import type { SectionProps } from './types';
 
 export const REDIRECT_URI = 'http://127.0.0.1:43821/callback';
 export const PORT_IN_USE_COPY = 'Port 43821 is in use — close the other app and retry';
-
-const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export function SpotifySection({ settings, update }: SectionProps) {
   const id = useId();
@@ -47,7 +46,7 @@ export function SpotifySection({ settings, update }: SectionProps) {
       setStatus(await window.studyat.spotify.connect());
     } catch (err) {
       console.error('Spotify connect failed', err);
-      const text = message(err);
+      const text = ipcErrorMessage(err);
       setError(
         text.includes('Port 43821 is in use')
           ? PORT_IN_USE_COPY

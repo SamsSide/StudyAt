@@ -1,6 +1,7 @@
 // Settings → Shortcuts (spec §3.7): the editable global hotkey, plus the in-app keys for reference.
 // If main can't register the hotkey, `settings.set` rejects and its message shows under the field.
 import { type KeyboardEvent, useId, useState } from 'react';
+import { ipcErrorMessage } from '../../lib/ipcError';
 import { SHORTCUTS } from '../../shell/useShortcuts';
 import { Row } from '../controls';
 import styles from '../settings.module.css';
@@ -8,18 +9,61 @@ import type { SectionProps } from './types';
 
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta']);
 
-/** An Electron accelerator from a key press, or null while only modifiers are down. */
+const NAMED_CODES: Record<string, string> = {
+  Space: 'Space',
+  Enter: 'Return',
+  Tab: 'Tab',
+  Insert: 'Insert',
+  Home: 'Home',
+  End: 'End',
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Minus: '-',
+  Equal: '=',
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Semicolon: ';',
+  Quote: "'",
+  Backquote: '`',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  NumpadAdd: 'numadd',
+  NumpadSubtract: 'numsub',
+  NumpadMultiply: 'nummult',
+  NumpadDivide: 'numdiv',
+  NumpadDecimal: 'numdec',
+};
+
+/** The accelerator name for a physical key, so Shift and keyboard layout don't change it. */
+function keyFromCode(code: string): string | null {
+  const letter = /^Key([A-Z])$/.exec(code);
+  if (letter) return letter[1] ?? null;
+  const digit = /^Digit(\d)$/.exec(code);
+  if (digit) return digit[1] ?? null;
+  const numpad = /^Numpad(\d)$/.exec(code);
+  if (numpad) return `num${numpad[1]}`;
+  if (/^F\d{1,2}$/.test(code)) return code;
+  return NAMED_CODES[code] ?? null;
+}
+
+/** An Electron accelerator from a key press, or null while only modifiers are down (or an unknown key). */
 export function acceleratorFromEvent(
-  e: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>,
+  e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>,
 ): string | null {
   if (MODIFIER_KEYS.has(e.key)) return null;
+  const key = keyFromCode(e.code);
+  if (!key) return null;
   const parts: string[] = [];
   if (e.ctrlKey) parts.push('Ctrl');
   if (e.altKey) parts.push('Alt');
   if (e.shiftKey) parts.push('Shift');
   if (e.metaKey) parts.push('Super');
-  const key =
-    e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key.replace(/^Arrow/, '');
   return [...parts, key].join('+');
 }
 
@@ -41,7 +85,7 @@ export function ShortcutsSection({ settings, updateOrThrow }: SectionProps) {
     } catch (err) {
       console.error('Registering the global hotkey failed', err);
       setShown(settings.globalHotkey);
-      setError(err instanceof Error ? err.message : "That shortcut couldn't be registered.");
+      setError(ipcErrorMessage(err) || "That shortcut couldn't be registered.");
     }
   };
 
@@ -67,7 +111,7 @@ export function ShortcutsSection({ settings, updateOrThrow }: SectionProps) {
         Shortcuts
       </h3>
       <Row
-        label="Show or hide StudyAt"
+        label="Start or pause the timer"
         hint="Works from any app. Click the box and press the keys; Backspace turns it off."
         htmlFor={id}
       >

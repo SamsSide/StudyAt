@@ -1,7 +1,8 @@
 // Settings → Data (spec §3.11): exports, the backups list with "Restore…", the data folder.
-// Restore asks here first (main shows its own native confirm as well); the app restarts after.
+// Restore goes straight to main, whose native dialog is the one confirmation (spec §3.6); the app restarts after.
 import { useEffect, useState } from 'react';
 import type { BackupInfo } from '../../../shared/types';
+import { ipcErrorMessage } from '../../lib/ipcError';
 import styles from '../settings.module.css';
 
 const formatSize = (bytes: number): string =>
@@ -18,7 +19,6 @@ const formatWhen = (ms: number): string =>
 
 export function DataSection() {
   const [backups, setBackups] = useState<BackupInfo[]>([]);
-  const [confirming, setConfirming] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
@@ -44,12 +44,12 @@ export function DataSection() {
       if (done && result !== false) setNotice(done);
     } catch (err) {
       console.error(failure, err);
-      setError(failure);
+      const reason = ipcErrorMessage(err);
+      setError(reason ? `${failure} ${reason}` : failure);
     }
   };
 
   const restore = async (name: string): Promise<void> => {
-    setConfirming(null);
     await run(() => window.studyat.data.restoreBackup(name), "Couldn't restore that backup.");
   };
 
@@ -98,26 +98,6 @@ export function DataSection() {
       )}
 
       <h4 className={styles.subheading}>Backups</h4>
-      {confirming && (
-        <div role="alertdialog" aria-label="Confirm restore" className={styles.confirm}>
-          <p className={styles.label}>
-            Restore {confirming}? StudyAt will restart with that backup. Your current data is kept as a backup
-            first.
-          </p>
-          <div className={styles.controls}>
-            <button
-              type="button"
-              className={`${styles.button} ${styles.primary}`}
-              onClick={() => void restore(confirming)}
-            >
-              Restore
-            </button>
-            <button type="button" className={styles.button} onClick={() => setConfirming(null)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
       {backups.length === 0 ? (
         <p className={styles.note}>No backups yet. StudyAt makes one the first time you open it each day.</p>
       ) : (
@@ -135,7 +115,7 @@ export function DataSection() {
                 type="button"
                 className={styles.button}
                 aria-label={`Restore ${b.name}`}
-                onClick={() => setConfirming(b.name)}
+                onClick={() => void restore(b.name)}
               >
                 Restore…
               </button>

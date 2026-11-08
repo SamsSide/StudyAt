@@ -1,15 +1,16 @@
 // Settings → Chimes (spec §3.9): focus-end and break-end chimes from the five built-ins or a custom
 // file, volume, repeat 1–3, a preview beside each, the last-minute tick and a chime on start.
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { BUILTIN_CHIME_IDS, CHIME_NAMES } from '../../audio/chimes';
 import { audioEngine } from '../../audio/engine';
 import { chimeUrl } from '../../audio/useChimes';
-import type { ChimeId } from '../../../shared/types';
+import type { ChimeId, Sound } from '../../../shared/types';
 import { clamp, NumberField, Row, Toggle } from '../controls';
 import styles from '../settings.module.css';
 import type { SectionProps } from './types';
 
 const CUSTOM = 'custom';
+const VOLUME_SAVE_DELAY_MS = 250;
 const isCustom = (id: ChimeId): boolean => id.startsWith('file:');
 
 interface ChimePickerProps {
@@ -17,10 +18,13 @@ interface ChimePickerProps {
   value: ChimeId;
   volume: number;
   repeat: number;
+  /** Sounds that are files, so a registered one can be picked straight from the list. */
+  files: Sound[];
+  onFilesChanged: (sounds: Sound[]) => void;
   onPick: (id: ChimeId) => void;
 }
 
-function ChimePicker({ label, value, volume, repeat, onPick }: ChimePickerProps) {
+function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPick }: ChimePickerProps) {
   const id = useId();
   const [message, setMessage] = useState('');
 
@@ -30,13 +34,21 @@ function ChimePicker({ label, value, volume, repeat, onPick }: ChimePickerProps)
     try {
       const before = new Set((await window.studyat.sounds.list()).map((s) => s.id));
       const after = await window.studyat.sounds.addFiles();
+      onFilesChanged(after.filter((s) => s.kind === 'file'));
       const added = after.find((s) => !before.has(s.id) && s.kind === 'file');
       if (added) onPick(`file:${added.id}`);
+      else if (before.size > 0)
+        // Cancelled, or a file that is already registered (main doesn't say which file was chosen).
+        setMessage(
+          'Nothing new was added. A file that is already in your sounds can be picked from the list.',
+        );
     } catch (err) {
       console.error('Choosing a custom chime failed', err);
       setMessage("That file couldn't be added.");
     }
   };
+
+  const hasOption = files.some((s) => `file:${s.id}` === value);
 
   const preview = (): void => {
     void audioEngine
@@ -50,11 +62,11 @@ function ChimePicker({ label, value, volume, repeat, onPick }: ChimePickerProps)
         <select
           id={id}
           className={styles.select}
-          value={isCustom(value) ? CUSTOM : value}
+          value={value}
           onChange={(e) => {
             const next = e.target.value;
             if (next === CUSTOM) {
-              if (!isCustom(value)) void chooseFile();
+              void chooseFile();
             } else {
               onPick(next as ChimeId);
             }
@@ -65,6 +77,12 @@ function ChimePicker({ label, value, volume, repeat, onPick }: ChimePickerProps)
               {CHIME_NAMES[chime]}
             </option>
           ))}
+          {files.map((sound) => (
+            <option key={sound.id} value={`file:${sound.id}`}>
+              {sound.name}
+            </option>
+          ))}
+          {isCustom(value) && !hasOption && <option value={value}>Custom file</option>}
           <option value={CUSTOM}>Custom file…</option>
         </select>
         {isCustom(value) && (
@@ -87,6 +105,53 @@ function ChimePicker({ label, value, volume, repeat, onPick }: ChimePickerProps)
 
 export function ChimesSection({ settings, update }: SectionProps) {
   const volumeId = useId();
+  const [files, setFiles] = useState<Sound[]>([]);
+  // The slider follows the finger; the save waits until it settles.
+  const [volume, setVolume] = useState(settings.chimeVolume);
+  const [seenVolume, setSeenVolume] = useState(settings.chimeVolume);
+  if (seenVolume !== settings.chimeVolume) {
+    setSeenVolume(settings.chimeVolume);
+    setVolume(settings.chimeVolume);
+  }
+  const pending = useRef<{ timer: ReturnType<typeof setTimeout>; value: number } | null>(null);
+  const saveVolume = useRef((_value: number): void => undefined);
+  useEffect(() => {
+    saveVolume.current = (value: number) => void update({ chimeVolume: value });
+  });
+
+  const changeVolume = (next: number): void => {
+    setVolume(next);
+    if (pending.current) clearTimeout(pending.current.timer);
+    pending.current = {
+      value: next,
+      timer: setTimeout(() => {
+        pending.current = null;
+        saveVolume.current(next);
+      }, VOLUME_SAVE_DELAY_MS),
+    };
+  };
+
+  // Leaving the section mid-drag still saves where the slider stopped.
+  useEffect(
+    () => () => {
+      if (!pending.current) return;
+      clearTimeout(pending.current.timer);
+      saveVolume.current(pending.current.value);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let live = true;
+    window.studyat.sounds.list().then(
+      (list) => live && setFiles(list.filter((s) => s.kind === 'file')),
+      (err: unknown) => console.error('Listing sounds failed', err),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+
   return (
     <section aria-labelledby="settings-chimes">
       <h3 id="settings-chimes" className={styles.heading}>
@@ -95,15 +160,19 @@ export function ChimesSection({ settings, update }: SectionProps) {
       <ChimePicker
         label="Focus ends"
         value={settings.chimeFocusEnd}
-        volume={settings.chimeVolume}
+        volume={volume}
         repeat={settings.chimeRepeat}
+        files={files}
+        onFilesChanged={setFiles}
         onPick={(id) => void update({ chimeFocusEnd: id })}
       />
       <ChimePicker
         label="Break ends"
         value={settings.chimeBreakEnd}
-        volume={settings.chimeVolume}
+        volume={volume}
         repeat={settings.chimeRepeat}
+        files={files}
+        onFilesChanged={setFiles}
         onPick={(id) => void update({ chimeBreakEnd: id })}
       />
       <Row label="Volume" htmlFor={volumeId}>
@@ -114,10 +183,10 @@ export function ChimesSection({ settings, update }: SectionProps) {
           min={0}
           max={1}
           step={0.05}
-          value={settings.chimeVolume}
-          onChange={(e) => void update({ chimeVolume: clamp(Number(e.target.value), 0, 1) })}
+          value={volume}
+          onChange={(e) => changeVolume(clamp(Number(e.target.value), 0, 1))}
         />
-        <span className={styles.hint}>{Math.round(settings.chimeVolume * 100)}%</span>
+        <span className={styles.hint}>{Math.round(volume * 100)}%</span>
       </Row>
       <NumberField
         label="Repeat"
@@ -125,7 +194,7 @@ export function ChimesSection({ settings, update }: SectionProps) {
         value={settings.chimeRepeat}
         min={1}
         max={3}
-        onCommit={(n) => void update({ chimeRepeat: n })}
+        onCommit={(n) => update({ chimeRepeat: n })}
       />
       <Toggle
         label="Soft tick in the last minute"
