@@ -119,6 +119,24 @@ describe('recapsService', () => {
     expect(recapsRepo(db).get('2026-11-09')).toBeNull();
   });
 
+  it('leaves a finished week with a running row for next time, so its stored recap is never too low', () => {
+    addSession(new Date(2026, 9, 27, 10).getTime(), 50);
+    // Sun 8 Nov 23:30, still running: credited to last week until it closes.
+    const sunday = new Date(2026, 10, 8, 23, 30).getTime();
+    const repo = sessionsRepo(db);
+    const running = repo.insertRunning({ pomodoroId: 'r', subjectId: null, startedAt: sunday, dayKey: dayKeyOf(sunday, 4) });
+    repo.checkpoint(running.id, 10 * MIN, sunday + 10 * MIN);
+    const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
+    const recaps = recapsService({ db, stats });
+
+    expect(recaps.computePending(WED)).toBeNull();
+    expect(recaps.list().map((r) => r.weekStart)).toEqual(['2026-10-26']);
+
+    repo.close(running.id, sunday + 45 * MIN, 45 * MIN, 0);
+    expect(recaps.computePending(WED)).toMatchObject({ weekStart: '2026-11-02', totalMs: 45 * MIN });
+    expect(recaps.list().map((r) => r.weekStart)).toEqual(['2026-10-26', '2026-11-02']);
+  });
+
   it('computes nothing without any sessions', () => {
     const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
     expect(recapsService({ db, stats }).computePending(WED)).toBeNull();

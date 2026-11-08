@@ -2,7 +2,7 @@
 // validated before it reaches a service (ids integers, strings <= 500 chars, enums checked).
 // Invalid input throws `IpcValidationError`, a rejected promise in the renderer. Electron is
 // injected (`ipc`, dialogs, window, app, shell) so every handler runs under a unit test.
-import type { FileFilter } from 'electron';
+import type { FileFilter, IpcMainInvokeEvent } from 'electron';
 import { CHANNELS } from '../shared/ipc';
 import { sanitiseSettingsPatch } from '../shared/settings';
 import type { Mode, PublicSettings, Settings, SettingsPatch, SubjectRange, TaskColour } from '../shared/types';
@@ -59,7 +59,7 @@ export interface Dialogs {
 }
 
 export interface IpcMainLike {
-  handle(channel: string, listener: (event: unknown, ...args: unknown[]) => unknown): void;
+  handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown): void;
 }
 
 export type TimerLike = Pick<
@@ -96,6 +96,11 @@ export interface IpcDeps {
   /** `app:showMini` (Task 13's mini window). */
   showMini?(show: boolean): void;
   exists?: (path: string) => boolean;
+  /**
+   * False rejects the call before any payload is read (study-dev rule 5): Task 13 checks the
+   * sender frame is one of StudyAt's own windows. Absent, every sender is allowed.
+   */
+  isTrustedSender?: (event: IpcMainInvokeEvent) => boolean;
 }
 
 /** Media ids → files registered in the DB (spec §3.2); `chime` ids are sound row ids. */
@@ -179,7 +184,10 @@ export function registerIpc(deps: IpcDeps) {
   const { api: spotify, auth } = deps.spotify;
 
   const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
-    deps.ipc.handle(channel, (_event, ...args) => fn(...args));
+    deps.ipc.handle(channel, (event, ...args) => {
+      if (deps.isTrustedSender && !deps.isTrustedSender(event)) throw new Error('Untrusted sender');
+      return fn(...args);
+    });
   };
   const clientId = (): string => settings.get().spotifyClientId;
   const setSettings = (patch: SettingsPatch): PublicSettings => {

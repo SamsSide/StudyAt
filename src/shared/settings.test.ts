@@ -45,6 +45,11 @@ describe('sanitiseSettingsPatch', () => {
     expect(sanitiseSettingsPatch({ focusMinutes: 50 })).toEqual({ focusMinutes: 50 });
   });
 
+  it('drops activeSpaceId: only spaces.setActive changes it, after checking the space exists', () => {
+    expect(sanitiseSettingsPatch({ activeSpaceId: 3, focusMinutes: 30 })).toEqual({ focusMinutes: 30 });
+    expect(sanitiseSettingsPatch({ activeSpaceId: null })).toEqual({});
+  });
+
   it('drops unknown keys', () => {
     expect(sanitiseSettingsPatch({ nope: 1, focusMinutes: 30, __proto__: { x: 1 } })).toEqual({
       focusMinutes: 30,

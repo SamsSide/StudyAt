@@ -71,11 +71,6 @@ const chime: Sanitiser = (v) => {
   return /^file:\d+$/.test(v) ? (v as ChimeId) : NONE;
 };
 
-const nullableId: Sanitiser = (v) => {
-  if (v === null) return null;
-  return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : NONE;
-};
-
 const soundLevels: Sanitiser = (v) => {
   if (!isRecord(v)) return NONE;
   const out: Record<string, number> = {};
@@ -127,8 +122,14 @@ const point: Sanitiser = (v) => {
   return x === NONE || y === NONE ? NONE : { x, y };
 };
 
-// One entry per key of Settings (spec §3.11 ranges).
-const SANITISERS: Record<keyof SettingsPatch, Sanitiser> = {
+/**
+ * Keys `settings:set` never accepts: `activeSpaceId` changes only through `spaces:setActive`,
+ * which checks the space exists.
+ */
+type SetOnlyElsewhere = 'activeSpaceId';
+
+// One entry per key of Settings the renderer may set (spec §3.11 ranges).
+const SANITISERS: Record<Exclude<keyof SettingsPatch, SetOnlyElsewhere>, Sanitiser> = {
   focusMinutes: num(1, 180, true),
   shortMinutes: num(1, 180, true),
   longMinutes: num(1, 180, true),
@@ -150,7 +151,6 @@ const SANITISERS: Record<keyof SettingsPatch, Sanitiser> = {
   miniWhenHidden: bool,
   globalHotkey: str(true),
   launchAtStartup: bool,
-  activeSpaceId: nullableId,
   soundLevels,
   masterVolume: num(0, 1, false),
   widgets,
@@ -163,13 +163,13 @@ const SANITISERS: Record<keyof SettingsPatch, Sanitiser> = {
 
 /**
  * Keeps only known keys with valid values, clamping numbers into their §3.11 ranges.
- * `spotifyTokens` is never accepted (main-owned, spec §3.10). A patch `widgets` entry may name
- * just some widgets; apply it with `mergeSettings`.
+ * `spotifyTokens` (main-owned, spec §3.10) and `activeSpaceId` are never accepted. A patch
+ * `widgets` entry may name just some widgets; apply it with `mergeSettings`.
  */
 export function sanitiseSettingsPatch(patch: unknown): SettingsPatch {
   if (!isRecord(patch)) return {};
   const out: Record<string, unknown> = {};
-  for (const key of Object.keys(SANITISERS) as (keyof SettingsPatch)[]) {
+  for (const key of Object.keys(SANITISERS) as (keyof typeof SANITISERS)[]) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
     const clean = SANITISERS[key](patch[key]);
     if (clean !== NONE) out[key] = clean;

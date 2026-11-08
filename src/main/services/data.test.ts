@@ -5,6 +5,7 @@ import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { subjectsRepo } from '../db/repos/subjects';
+import { nodeFs, type DbFs } from '../db/db-fs';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { csvLine, dataService, localStamp } from './data';
 import { IpcValidationError } from './validate';
@@ -23,7 +24,7 @@ afterEach(async () => {
   cleanup();
 });
 
-function service(overrides: { confirm?: () => Promise<boolean> } = {}) {
+function service(overrides: { confirm?: () => Promise<boolean>; fs?: DbFs } = {}) {
   const app = { relaunch: vi.fn(), exit: vi.fn() };
   const beforeRestore = vi.fn(() => Promise.resolve());
   const svc = dataService({
@@ -33,6 +34,7 @@ function service(overrides: { confirm?: () => Promise<boolean> } = {}) {
     confirm: overrides.confirm ?? (() => Promise.resolve(true)),
     beforeRestore,
     app,
+    fs: overrides.fs,
   });
   return { svc, app, beforeRestore };
 }
@@ -106,6 +108,44 @@ describe('dataService', () => {
     const safety = readdirSync(join(dir, 'backups')).find((n) => n.startsWith('pre-restore-'));
     expect(safety && readFileSync(join(dir, 'backups', safety))).toEqual(before);
     expect(app.relaunch).toHaveBeenCalled();
+    expect(app.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('restoreBackup still relaunches on the untouched original when copying the backup in fails', async () => {
+    mkdirSync(join(dir, 'backups'), { recursive: true });
+    writeFileSync(join(dir, 'backups', 'daily-2026-11-07.sqlite'), 'old data');
+    const before = readFileSync(join(dir, 'studyat.sqlite'));
+    const fs: DbFs = {
+      ...nodeFs,
+      copyFile: (from, to) =>
+        from.endsWith('daily-2026-11-07.sqlite') ? Promise.reject(new Error('disk full')) : nodeFs.copyFile(from, to),
+    };
+    const { svc, app } = service({ fs });
+
+    await expect(svc.restoreBackup('daily-2026-11-07.sqlite')).rejects.toThrow('disk full');
+    expect(app.relaunch).toHaveBeenCalledTimes(1);
+    expect(app.exit).toHaveBeenCalledWith(0);
+    expect(readFileSync(join(dir, 'studyat.sqlite'))).toEqual(before);
+  });
+
+  it('restoreBackup never copies the backup in when the pre-restore safety copy fails, and still relaunches', async () => {
+    mkdirSync(join(dir, 'backups'), { recursive: true });
+    writeFileSync(join(dir, 'backups', 'daily-2026-11-07.sqlite'), 'old data');
+    const before = readFileSync(join(dir, 'studyat.sqlite'));
+    const copies: string[] = [];
+    const fs: DbFs = {
+      ...nodeFs,
+      copyFile: (from, to) => {
+        copies.push(from);
+        return to.includes('pre-restore-') ? Promise.reject(new Error('EACCES')) : nodeFs.copyFile(from, to);
+      },
+    };
+    const { svc, app } = service({ fs });
+
+    await expect(svc.restoreBackup('daily-2026-11-07.sqlite')).rejects.toThrow('EACCES');
+    expect(copies.some((f) => f.endsWith('daily-2026-11-07.sqlite'))).toBe(false);
+    expect(readFileSync(join(dir, 'studyat.sqlite'))).toEqual(before);
+    expect(app.relaunch).toHaveBeenCalledTimes(1);
     expect(app.exit).toHaveBeenCalledWith(0);
   });
 });

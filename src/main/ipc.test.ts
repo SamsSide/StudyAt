@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNELS } from '../shared/ipc';
 import type { TimerState } from '../shared/types';
@@ -13,7 +14,7 @@ import { PortInUseError } from './spotify/auth';
 import { TimerController } from './timer/controller';
 import { FakeClock } from './timer/test-clock';
 
-type Handler = (event: unknown, ...args: unknown[]) => unknown;
+type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
 
 let dir: string;
 let cleanup: () => void;
@@ -65,6 +66,9 @@ function spotifyFake() {
   } satisfies SpotifyDeps;
 }
 
+/** Stands in for Electron's invoke event; tests only compare it by identity. */
+const sender = { senderFrame: null } as unknown as IpcMainInvokeEvent;
+
 function setup(overrides: Partial<IpcDeps> = {}) {
   const handlers = new Map<string, Handler>();
   const dialogs: Dialogs = {
@@ -93,12 +97,27 @@ function setup(overrides: Partial<IpcDeps> = {}) {
     Promise.resolve().then(() => {
       const fn = handlers.get(channel);
       if (!fn) throw new Error(`no handler for ${channel}`);
-      return fn({}, ...args);
+      return fn(sender, ...args);
     });
   return { handlers, invoke, dialogs, spotify, onSettingsChanged, services };
 }
 
 describe('registerIpc', () => {
+  it('rejects every channel when isTrustedSender says no, passing it the invoke event', async () => {
+    const isTrustedSender = vi.fn(() => false);
+    const { handlers, invoke } = setup({ isTrustedSender });
+    for (const channel of handlers.keys()) await expect(invoke(channel)).rejects.toThrow('Untrusted sender');
+    expect(isTrustedSender).toHaveBeenCalledWith(sender);
+    expect(timer.getState().status).toBe('idle');
+  });
+
+  it('allows a trusted sender, and every sender when isTrustedSender is absent', async () => {
+    const trusted = setup({ isTrustedSender: () => true });
+    expect(((await trusted.invoke(CHANNELS.timer.get)) as TimerState).status).toBe('idle');
+    const open = setup();
+    expect(((await open.invoke(CHANNELS.timer.get)) as TimerState).status).toBe('idle');
+  });
+
   it('handles exactly the request channels in CHANNELS', () => {
     const { handlers } = setup();
     const expected = Object.entries(CHANNELS)

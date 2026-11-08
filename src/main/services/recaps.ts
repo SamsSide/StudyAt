@@ -32,8 +32,15 @@ export function recapsService(deps: RecapsServiceDeps) {
       for (const s of sessions) if (first === null || s.dayKey < first) first = s.dayKey;
       const weeks = finishedWeeksSince(repo.list().at(-1)?.weekStart ?? null, first, ctx);
       if (weeks.length > 0) {
+        // A week with a row still running (or orphaned until recovery) isn't final yet: stop
+        // before it, so it and every later week are computed next time, never stored too low.
+        const open = new Set<string>();
+        for (const s of sessions) if (s.status === 'running') open.add(weekStartOf(s.dayKey));
         const all = subjects.list();
-        for (const week of weeks) repo.upsert(recapFor(week, sessions, all, ctx));
+        for (const week of weeks) {
+          if (open.has(week)) break;
+          repo.upsert(recapFor(week, sessions, all, ctx));
+        }
       }
       const last = repo.get(addDays(weekStartOf(todayKey(ctx)), -7));
       return last && last.shownAt === null ? last.recap : null;

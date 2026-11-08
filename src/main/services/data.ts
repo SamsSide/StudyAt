@@ -96,7 +96,7 @@ export function dataService(deps: DataServiceDeps) {
 
     /**
      * Restores a backup named by `listBackups` (anything else is rejected, so no path reaches
-     * here from the renderer). False if Sam cancels. On success the app relaunches.
+     * here from the renderer). False if Sam cancels; once confirmed, the app always relaunches.
      */
     async restoreBackup(name: string): Promise<boolean> {
       const backup = (await listBackups(deps.dir)).find((b) => b.name === name);
@@ -106,13 +106,19 @@ export function dataService(deps: DataServiceDeps) {
         `StudyAt will restart with the data from ${localStamp(backup.createdAt)}. Your current data is kept as a backup first.`,
       );
       if (!ok) return false;
-      await deps.beforeRestore();
-      const file = join(deps.dir, DB_FILE);
-      const backups = join(deps.dir, BACKUPS_DIR);
-      if (await fs.exists(file)) await copyAtomic(fs, file, join(backups, `pre-restore-${fileStamp(deps.now())}.sqlite`));
-      await copyAtomic(fs, join(backups, name), file);
-      deps.app.relaunch();
-      deps.app.exit(0);
+      // Once the timer is stopped and the database closed this process can't carry on, so it
+      // always relaunches: onto the backup if the copy worked, onto the untouched original if not
+      // (copyAtomic only replaces the file by rename). No safety copy, no restore.
+      try {
+        await deps.beforeRestore();
+        const file = join(deps.dir, DB_FILE);
+        const backups = join(deps.dir, BACKUPS_DIR);
+        if (await fs.exists(file)) await copyAtomic(fs, file, join(backups, `pre-restore-${fileStamp(deps.now())}.sqlite`));
+        await copyAtomic(fs, join(backups, name), file);
+      } finally {
+        deps.app.relaunch();
+        deps.app.exit(0);
+      }
       return true;
     },
   };
