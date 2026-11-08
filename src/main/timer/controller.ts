@@ -91,7 +91,13 @@ export class TimerController {
   private lastCheckpointAt = 0;
   private lastEmitted: Emitted | null = null;
   private dirty = false;
+  /** Set by `dispose` (and so by `quit`): no interval, command or poll steps the machine again. */
   private disposed = false;
+  /** Set once `quit` has run its discard and close; only then is a further `quit` a no-op. */
+  private quitDone = false;
+  /** The state answered once disposed, so a late IPC call never reads a database that may be closed. */
+  private frozen: TimerState | null = null;
+  private lastTodayFocusMs = 0;
   private tickTimer: Handle | null = null;
   private pollTimer: Handle | null = null;
   private awayTimer: Handle | null = null;
@@ -116,9 +122,24 @@ export class TimerController {
   }
 
   getState(): TimerState {
-    const now = this.deps.now();
+    if (this.disposed && this.frozen) return this.frozen;
+    return this.liveState(this.deps.now());
+  }
+
+  private liveState(now: number): TimerState {
+    this.lastTodayFocusMs = this.todayFocusMs(now, this.machine.mode === 'focus' ? this.liveMs(now) : 0);
+    return this.snapshot(now, this.lastTodayFocusMs);
+  }
+
+  private liveMs(now: number): number {
     const m = this.machine;
-    const live = m.status === 'running' && m.runningSince !== null ? Math.min(m.remainingMs, Math.max(0, now - m.runningSince)) : 0;
+    return m.status === 'running' && m.runningSince !== null ? Math.min(m.remainingMs, Math.max(0, now - m.runningSince)) : 0;
+  }
+
+  /** The state from memory alone; `todayFocusMs` is passed in because computing it reads the DB. */
+  private snapshot(now: number, todayFocusMs: number): TimerState {
+    const m = this.machine;
+    const live = this.liveMs(now);
     return {
       mode: m.mode,
       status: m.status,
@@ -127,7 +148,7 @@ export class TimerController {
       completedFocusCount: m.completedFocusCount,
       subjectId: this.subjectId,
       pauseReason: m.pauseReason,
-      todayFocusMs: this.todayFocusMs(now, m.mode === 'focus' ? live : 0),
+      todayFocusMs,
     };
   }
 
@@ -218,11 +239,12 @@ export class TimerController {
   }
 
   /**
-   * Rule 9: ends the running row as in rule 6, flushes, and stops every interval. Once quit (or
-   * disposed) the controller writes nothing more, so a second call is a no-op.
+   * Rule 9: ends the running row as in rule 6, flushes, and stops every interval. It still does so
+   * after a plain `dispose`, so an away period is never left in a `running` row for crash recovery
+   * to close as study time (A1). Only a completed `quit` makes a second call a no-op.
    */
   async quit(): Promise<void> {
-    if (this.disposed) return;
+    if (this.quitDone) return;
     const now = this.deps.now();
     this.tick(now);
     // No answer is possible after quitting, so an away period still open, prompted or not yet
@@ -233,11 +255,16 @@ export class TimerController {
     this.idle.clear();
     if (this.pending) this.resolveAway('discard', now);
     if (this.open) this.closeOpen(now);
+    this.quitDone = true; // everything above is synchronous, so a second call can't interleave
+    const final = this.liveState(now); // read while the database is surely open
     this.dispose();
+    this.frozen = final;
     await this.deps.db.flushNow();
   }
 
+  /** Stops intervals, polling and further commands; `quit` may still run afterwards. */
   dispose(): void {
+    if (!this.disposed) this.frozen = this.snapshot(this.deps.now(), this.lastTodayFocusMs);
     this.disposed = true;
     for (const h of [this.tickTimer, this.pollTimer, this.awayTimer]) if (h !== null) this.deps.clearInterval(h);
     this.tickTimer = this.pollTimer = this.awayTimer = null;

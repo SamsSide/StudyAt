@@ -508,6 +508,37 @@ describe('TimerController', () => {
     expect(clock.periods()).toEqual([]);
   });
 
+  it('quit after dispose still discards an open away period and closes the row (A1)', async () => {
+    c.start();
+    lastInput = NOW + MIN;
+    at(12 * MIN); // away since 1:00, not yet noticed
+    c.dispose();
+    const flush = vi.spyOn(db, 'flushNow');
+    await c.quit();
+    expect(rows()[0]).toMatchObject({ status: 'done', focusMs: MIN, discardedMs: 11 * MIN });
+    expect(flush).toHaveBeenCalled();
+    expect(clock.periods()).toEqual([]);
+  });
+
+  it('answers a late command after quit without touching the closed database', async () => {
+    c.start();
+    at(2 * MIN);
+    await c.quit();
+    const after = c.getState();
+    await db.close();
+    expect(c.pause()).toEqual(after);
+    expect(c.getState()).toMatchObject({ status: 'running', remainingMs: FOCUS - 2 * MIN, todayFocusMs: 2 * MIN });
+  });
+
+  it('answers a late command after dispose without touching the closed database', async () => {
+    c.start();
+    at(2 * MIN);
+    c.dispose();
+    await db.close();
+    expect(() => c.start()).not.toThrow();
+    expect(c.getState()).toMatchObject({ mode: 'focus', status: 'running' });
+  });
+
   // ── Findings 6 and 7: the ledger and row map stay bounded without under-charging ──
 
   it('a lowered idle threshold still charges an earlier row of the same pomodoro', () => {
