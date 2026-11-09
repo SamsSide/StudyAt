@@ -251,6 +251,79 @@ describe('NotesWidget', () => {
     expect(api.notes.update).toHaveBeenCalledWith(1, { text: 'Last words' });
   });
 
+  describe('while the widget is closed', () => {
+    /** Types into a note, closes the widget and lets the final save fail. */
+    async function closeAfterFailedSave() {
+      const update = vi.fn((_id: number, _patch: NotePatch) => Promise.reject<Note[]>(new Error('busy')));
+      const { api, view } = setup([note(1, 'Old')], { update });
+      await screen.findByDisplayValue('Old');
+      fireEvent.change(sheet(), { target: { value: 'Closed words' } });
+      vi.useFakeTimers();
+      view.unmount();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(update).toHaveBeenCalledTimes(1);
+      update.mockClear();
+      return { api, update };
+    }
+
+    it('main hiding the window resends the queued text', async () => {
+      const { api, update } = await closeAfterFailedSave();
+      update.mockImplementation(() => Promise.resolve([note(1, 'Closed words')]));
+      api.emitVisibility(false);
+      expect(update).toHaveBeenCalledWith(1, { text: 'Closed words' });
+    });
+
+    it('the page going hidden resends the queued text', async () => {
+      const { update } = await closeAfterFailedSave();
+      update.mockImplementation(() => Promise.resolve([note(1, 'Closed words')]));
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      fireEvent(document, new Event('visibilitychange'));
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      expect(update).toHaveBeenCalledWith(1, { text: 'Closed words' });
+    });
+
+    it('pagehide resends the queued text', async () => {
+      const { update } = await closeAfterFailedSave();
+      update.mockImplementation(() => Promise.resolve([note(1, 'Closed words')]));
+      fireEvent(window, new Event('pagehide'));
+      expect(update).toHaveBeenCalledWith(1, { text: 'Closed words' });
+    });
+
+    it('a failed save is retried up to three times, two seconds apart', async () => {
+      const { update } = await closeAfterFailedSave();
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(update).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(update).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2000);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(update).toHaveBeenCalledTimes(3);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(update).toHaveBeenCalledTimes(3);
+      expect(update).toHaveBeenLastCalledWith(1, { text: 'Closed words' });
+    });
+
+    it('the retries stop once a save goes through', async () => {
+      const { update } = await closeAfterFailedSave();
+      update.mockImplementation(() => Promise.resolve([note(1, 'Closed words')]));
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(update).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('no timed retries while the widget is open; the next blur tries again', async () => {
+    const update = vi.fn((_id: number, _patch: NotePatch) => Promise.reject<Note[]>(new Error('busy')));
+    setup([note(1, '')], { update });
+    await screen.findByPlaceholderText('Write a note…');
+    fireEvent.change(sheet(), { target: { value: 'Open words' } });
+    vi.useFakeTimers();
+    fireEvent.blur(sheet());
+    await act(async () => vi.advanceTimersByTimeAsync(20_000));
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
   it('a queued failed save is retried when the window hides', async () => {
     const update = vi.fn((_id: number, _patch: NotePatch) => Promise.reject<Note[]>(new Error('busy')));
     const { api } = setup([note(1, '')], { update });

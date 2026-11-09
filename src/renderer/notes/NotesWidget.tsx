@@ -9,7 +9,7 @@ import type { Note } from '../../shared/types';
 import { Icon } from '../shell/icons';
 import { TASK_COLOURS } from '../tasks/taskColours';
 import styles from './NotesWidget.module.css';
-import { editNote, flushNotes, forgetNote, onNotesSaved, useNoteSaves } from './noteSaves';
+import { attachNotesWidget, editNote, flushNotes, forgetNote, onNotesSaved, useNoteSaves } from './noteSaves';
 
 /** Addendum §4b: a note holds at most 5 000 characters. */
 export const MAX_NOTE_LENGTH = 5000;
@@ -72,24 +72,18 @@ export function NotesWidget() {
   useEffect(() => {
     live.current = true;
     void load();
+    const detach = attachNotesWidget();
     // Text left over from a save that failed after the widget last closed goes again now.
     flush();
     const stopSaved = onNotesSaved((list) => {
       adopt(list);
       if (live.current) setError(null);
     });
-    const onVisibility = (): void => {
-      if (document.visibilityState === 'hidden') flush();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    // Main also says when the window hides to the tray or minimises.
-    const stopVisibility = window.studyat.app.onVisibility((visible) => {
-      if (!visible) flush();
-    });
+    // Hiding the window (visibilitychange, pagehide, main's onVisibility) flushes through the
+    // queue's own listener in noteSaves.ts, open or closed.
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      stopVisibility();
       stopSaved();
+      detach();
       flush();
       live.current = false;
     };
