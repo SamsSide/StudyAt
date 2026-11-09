@@ -1,8 +1,9 @@
 // In-app shortcuts (spec §3.7, plus W for the Widgets popover from widgets addendum §1, and H for
 // focus view and 4 for Countdown from the v1.1 polish spec §3.2 and §3.4). Ignored
 // while typing in an input, textarea, select or contenteditable, and when a modifier is held. While
-// an overlay is open only Esc, ? and S act. Space is also left alone on buttons and other controls,
-// where it already means "press this".
+// an overlay is open only Esc, ? and S act. In focus view W, K, G (and T on an auto-hide Tasks
+// widget) leave it, so what they open is visible. Space is also left alone on buttons and other
+// controls, where it already means "press this".
 import { useEffect } from 'react';
 import type { Mode } from '../../shared/types';
 import { useStudyStore } from './store';
@@ -65,12 +66,13 @@ export function useShortcuts(): void {
       const studyat = window.studyat;
 
       // Esc works from anywhere, inputs included: close the Widgets popover first, then the top
-      // overlay, then the panel, then focus view.
+      // overlay; with no overlay open it leaves focus view (spec §3.4) and an open panel just shows
+      // again; only then does it close the panel.
       if (e.key === 'Escape') {
         if (store.widgetsPopover) store.setWidgetsPopover(false);
         else if (store.overlay) store.setOverlay(null);
-        else if (store.openPanel) store.setPanel(null);
         else if (store.focusView) store.setFocusView(false);
+        else if (store.openPanel) store.setPanel(null);
         else return;
         e.preventDefault();
         return;
@@ -93,11 +95,29 @@ export function useShortcuts(): void {
       } else if (key === 'r') void studyat.timer.reset();
       else if (key === 'n') void studyat.timer.skip();
       else if (key === 's') store.toggleOverlay('stats');
-      else if (key === 't') void store.toggleWidget('tasks');
-      else if (key === 'w') store.toggleWidgetsPopover();
-      else if (key === 'k') store.togglePanel('sounds');
-      else if (key === 'g') store.togglePanel('spaces');
-      else if (key === 'm') void store.toggleMini();
+      else if (key === 't') {
+        // An auto-hide Tasks widget is hidden in focus view, so T leaves focus view and opens it;
+        // one that doesn't auto-hide is already visible and just toggles.
+        const tasks = store.settings?.widgets.tasks;
+        if (store.focusView && tasks?.autoHide) {
+          store.setFocusView(false);
+          if (!tasks.open) void store.toggleWidget('tasks');
+        } else void store.toggleWidget('tasks');
+      }
+      // In focus view the popover and panels would open hidden, so W, K and G leave focus view and
+      // then open their target (spec §3.4: shortcuts still work in focus view).
+      else if (key === 'w') {
+        if (store.focusView) {
+          store.setFocusView(false);
+          store.setWidgetsPopover(true);
+        } else store.toggleWidgetsPopover();
+      } else if (key === 'k' || key === 'g') {
+        const panel = key === 'k' ? 'sounds' : 'spaces';
+        if (store.focusView) {
+          store.setFocusView(false);
+          store.setPanel(panel);
+        } else store.togglePanel(panel);
+      } else if (key === 'm') void store.toggleMini();
       else if (key === 'f') void studyat.app.toggleFullscreen();
       else if (key === 'h') store.toggleFocusView();
       else if (key === '?') store.toggleOverlay('help');

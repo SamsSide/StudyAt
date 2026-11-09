@@ -423,16 +423,75 @@ describe('Shell', () => {
       expect(shell()).toHaveAttribute('data-chrome', 'hidden');
     });
 
-    it('Esc closes a panel before it leaves focus view', async () => {
+    it('Esc in focus view leaves it and leaves an open panel alone, which shows again', async () => {
       const user = userEvent.setup();
       await renderShell();
       await user.keyboard('g');
       await user.keyboard('h');
       await user.keyboard('{Escape}');
-      expect(useStudyStore.getState().openPanel).toBeNull();
-      expect(useStudyStore.getState().focusView).toBe(true);
-      await user.keyboard('{Escape}');
       expect(useStudyStore.getState().focusView).toBe(false);
+      expect(useStudyStore.getState().openPanel).toBe('spaces');
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+      await user.keyboard('{Escape}');
+      expect(useStudyStore.getState().openPanel).toBeNull();
+    });
+
+    it.each([
+      ['w', () => useStudyStore.getState().widgetsPopover],
+      ['k', () => useStudyStore.getState().openPanel === 'sounds'],
+      ['g', () => useStudyStore.getState().openPanel === 'spaces'],
+    ])('%s leaves focus view and opens what it names', async (key, isOpen) => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.keyboard('h');
+      await user.keyboard(key);
+      expect(useStudyStore.getState().focusView).toBe(false);
+      expect(isOpen()).toBe(true);
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+    });
+
+    it('G leaves focus view and keeps a hidden Spaces panel open rather than closing it', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.keyboard('g');
+      await user.keyboard('h');
+      await user.keyboard('g');
+      expect(useStudyStore.getState().focusView).toBe(false);
+      expect(useStudyStore.getState().openPanel).toBe('spaces');
+    });
+
+    it('T leaves focus view when Tasks auto-hides, and shows it open', async () => {
+      const user = userEvent.setup();
+      const settings = onboarded();
+      settings.widgets.tasks = { ...settings.widgets.tasks, open: false, autoHide: true };
+      await renderShell(mockApi({ settings: { get: vi.fn(() => Promise.resolve(settings)) } }));
+      await user.keyboard('h');
+      await user.keyboard('t');
+      expect(useStudyStore.getState().focusView).toBe(false);
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+      expect(await screen.findByRole('group', { name: 'Tasks' })).toBeInTheDocument();
+    });
+
+    it('T on an auto-hide Tasks that is already open shows it rather than closing it', async () => {
+      const user = userEvent.setup();
+      const settings = onboarded();
+      settings.widgets.tasks = { ...settings.widgets.tasks, open: true, autoHide: true };
+      await renderShell(mockApi({ settings: { get: vi.fn(() => Promise.resolve(settings)) } }));
+      await user.keyboard('h');
+      await user.keyboard('t');
+      expect(useStudyStore.getState().focusView).toBe(false);
+      expect(screen.getByRole('group', { name: 'Tasks' })).toBeInTheDocument();
+    });
+
+    it('T stays in focus view when Tasks does not auto-hide', async () => {
+      const user = userEvent.setup();
+      const settings = onboarded();
+      settings.widgets.tasks = { ...settings.widgets.tasks, open: false, autoHide: false };
+      await renderShell(mockApi({ settings: { get: vi.fn(() => Promise.resolve(settings)) } }));
+      await user.keyboard('h');
+      await user.keyboard('t');
+      expect(useStudyStore.getState().focusView).toBe(true);
+      expect(await screen.findByRole('group', { name: 'Tasks' })).toBeInTheDocument();
     });
 
     it('the Show interface capsule appears only with the pointer in the top-left corner', async () => {

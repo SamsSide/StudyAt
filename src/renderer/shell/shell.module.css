@@ -47,7 +47,8 @@
     visibility 0s linear var(--duration-fade);
 }
 
-/* Focus view's way back: a capsule in the top-left corner, faded in while the pointer is there. */
+/* Focus view's way back: a capsule in the top-left corner, faded in while the pointer is there.
+   --z-chrome sits above --z-widget, so a widget parked in that corner never covers it. */
 .showInterface {
   position: absolute;
   z-index: var(--z-chrome);
