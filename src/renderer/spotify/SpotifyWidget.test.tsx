@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Device, NowPlaying, Playlist } from '../../shared/types';
+import type { Device, NowPlaying } from '../../shared/types';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { useStudyStore } from '../shell/store';
 import { SpotifyWidget } from './SpotifyWidget';
@@ -73,20 +73,6 @@ describe('SpotifyWidget', () => {
     expect(await screen.findByText('Nothing playing')).toBeInTheDocument();
   });
 
-  it('device select transfers playback when a device is chosen', async () => {
-    const devices: Device[] = [
-      { id: 'd1', name: 'Kitchen', type: 'Speaker', active: true },
-      { id: 'd2', name: 'Desk', type: 'Computer', active: false },
-    ];
-    const api = setup({ state: 'playing', track }, { devices: vi.fn(() => Promise.resolve(devices)) });
-    render(<SpotifyWidget />);
-    await screen.findByRole('option', { name: 'Desk' });
-    fireEvent.change(screen.getByLabelText('Device'), {
-      target: { value: 'd2' },
-    });
-    await waitFor(() => expect(api.spotify.transfer).toHaveBeenCalledWith('d2'));
-  });
-
   it('lists a device that appears after a later poll while no-device', async () => {
     vi.useFakeTimers();
     const kitchen: Device = {
@@ -102,18 +88,6 @@ describe('SpotifyWidget', () => {
     expect(screen.queryByRole('button', { name: 'Kitchen' })).toBeNull();
     await act(() => vi.advanceTimersByTimeAsync(3000));
     expect(screen.getByRole('button', { name: 'Kitchen' })).toBeInTheDocument();
-  });
-
-  it('retries playlists on a later poll after a failure', async () => {
-    vi.useFakeTimers();
-    const lists: Playlist[] = [{ id: 'p1', name: 'Focus', uri: 'spotify:playlist:p1', imageUrl: null }];
-    const playlists = vi.fn().mockRejectedValueOnce(new Error('x')).mockResolvedValue(lists);
-    setup({ state: 'playing', track }, { playlists });
-    render(<SpotifyWidget />);
-    await act(() => vi.advanceTimersByTimeAsync(0));
-    expect(screen.queryByRole('option', { name: 'Focus' })).toBeNull();
-    await act(() => vi.advanceTimersByTimeAsync(3000));
-    expect(screen.getByRole('option', { name: 'Focus' })).toBeInTheDocument();
   });
 
   it('a slow older poll cannot overwrite a newer answer', async () => {
@@ -179,7 +153,6 @@ describe('SpotifyWidget', () => {
       moduleClass(screen.getByRole('button', { name }));
     }
     expect(pause.className).not.toBe(screen.getByRole('button', { name: 'Next' }).className);
-    moduleClass(screen.getByLabelText('Playlist'));
     expect(container.querySelector('[class^="spotify"]')).toBeNull();
   });
 
@@ -222,7 +195,7 @@ describe('SpotifyWidget', () => {
     expect(api.spotify.play).not.toHaveBeenCalled();
     expect(api.spotify.previous).not.toHaveBeenCalled();
     expect(api.spotify.next).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Playlist')).toBeDisabled();
+    expect(document.querySelector('select')).toBeNull();
   });
 
   it('buttons call previous/pause/next', async () => {
@@ -264,15 +237,81 @@ describe('SpotifyWidget', () => {
     expect(screen.getByText('Song A')).toBeInTheDocument();
   });
 
-  it('playlist choice calls playContext(uri)', async () => {
-    const lists: Playlist[] = [{ id: 'p1', name: 'Focus', uri: 'spotify:playlist:p1', imageUrl: null }];
-    const api = setup({ state: 'playing', track }, { playlists: vi.fn(() => Promise.resolve(lists)) });
+  it('playing is a pop-out card: 64 px art, title, artist, progress and exactly three buttons', async () => {
+    const api = setup({ state: 'playing', track });
+    const { container } = render(<SpotifyWidget />);
+    await screen.findByText('Song A');
+    const art = screen.getByAltText('Album art');
+    expect(art).toHaveAttribute('width', '64');
+    expect(art).toHaveAttribute('height', '64');
+    expect(screen.getByText('Artist A')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Previous',
+      'Pause',
+      'Next',
+    ]);
+    expect(container.querySelector('select')).toBeNull();
+    expect(api.spotify.playlists).not.toHaveBeenCalled();
+  });
+
+  it('never fetches playlists, whatever the state', async () => {
+    vi.useFakeTimers();
+    for (const np of [{ state: 'idle' }, { state: 'paused', track }, { state: 'no-device' }] as NowPlaying[]) {
+      const api = setup(np);
+      const { unmount } = render(<SpotifyWidget />);
+      await act(() => vi.advanceTimersByTimeAsync(6000));
+      expect(api.spotify.playlists).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it('title and artist carry their full text as a tooltip', async () => {
+    const long = { ...track, title: 'A very long song title that will not fit', artist: 'Someone & Friends' };
+    setup({ state: 'playing', track: long });
     render(<SpotifyWidget />);
-    await screen.findByRole('option', { name: 'Focus' });
-    fireEvent.change(screen.getByLabelText('Playlist'), {
-      target: { value: 'spotify:playlist:p1' },
-    });
-    await waitFor(() => expect(api.spotify.playContext).toHaveBeenCalledWith('spotify:playlist:p1'));
+    expect(await screen.findByText(long.title)).toHaveAttribute('title', long.title);
+    expect(screen.getByText(long.artist)).toHaveAttribute('title', long.artist);
+  });
+
+  it('progress advances by 1 s each second while playing, and the next poll corrects it', async () => {
+    vi.useFakeTimers();
+    const nowPlaying = vi
+      .fn()
+      .mockResolvedValueOnce({ state: 'playing', track })
+      .mockResolvedValue({ state: 'playing', track: { ...track, progressMs: 60_000 } });
+    setup({ state: 'idle' }, { nowPlaying });
+    render(<SpotifyWidget />);
+    const now = () => screen.getByRole('progressbar').getAttribute('aria-valuenow');
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(now()).toBe('30000');
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(now()).toBe('31000');
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(now()).toBe('32000');
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(nowPlaying).toHaveBeenCalledTimes(2);
+    expect(now()).toBe('60000');
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(now()).toBe('61000');
+  });
+
+  it('progress holds still while paused', async () => {
+    vi.useFakeTimers();
+    setup({ state: 'paused', track });
+    render(<SpotifyWidget />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(2500));
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '30000');
+  });
+
+  it('progress never runs past the end of the track', async () => {
+    vi.useFakeTimers();
+    setup({ state: 'playing', track: { ...track, progressMs: 119_500 } });
+    render(<SpotifyWidget />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '120000');
   });
 
   it('polls every 3 s only while mounted and the window is shown, and polls at once on return', async () => {

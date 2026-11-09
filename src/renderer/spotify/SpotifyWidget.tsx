@@ -1,11 +1,15 @@
-// Spotify widget body (spec §3.10, appplan §4.6). Rendered inside the shell's WidgetFrame.
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import type { Device, NowPlaying, Playlist } from '../../shared/types';
+// Spotify widget body (spec §3.7, appplan §4.6): a now-playing card in the style of the Windows
+// media pop-out. Rendered inside the shell's WidgetFrame. Playlists and devices stay in the main
+// process API; the widget only lists devices when there is none to play on.
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Device, NowPlaying } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import styles from './SpotifyWidget.module.css';
 import { usePolling } from './usePolling';
 
 const POLL_MS = 3000;
+/** Between polls the progress line advances locally at this rate while playing (spec §3.7). */
+const TICK_MS = 1000;
 
 export interface SpotifyWidgetProps {
   /** Opens the settings overlay (wired by the app shell). */
@@ -17,13 +21,14 @@ const asList = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
 export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
   // null until the first answer, so no state message flashes on mount.
   const [playing, setPlaying] = useState<NowPlaying | null>(null);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  // Seconds ticked locally since an answer, tagged with that answer: a newer answer starts at
+  // zero, and a stray tick from the previous answer's interval is dropped.
+  const [tick, setTick] = useState<{ of: NowPlaying | null; n: number }>({ of: null, n: 0 });
   const state = playing?.state ?? null;
   const seq = useRef(0);
-  const haveDevices = useRef(false);
-  const havePlaylists = useRef(false);
   const noDevice = state === 'no-device';
+  const isPlaying = state === 'playing';
 
   const poll = useCallback(async () => {
     const mine = ++seq.current;
@@ -35,33 +40,28 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
     }
     if (mine !== seq.current) return; // a newer poll has already answered
     setPlaying(np);
-    const usable =
-      np.state === 'idle' || np.state === 'playing' || np.state === 'paused' || np.state === 'no-device';
-    if (!usable) return;
-    // Playlists are retried on later polls until one load succeeds with something to show.
-    if (!havePlaylists.current) {
-      window.studyat.spotify
-        .playlists()
-        .then((l) => {
-          const list = asList(l).slice(0, 50);
-          if (list.length > 0) havePlaylists.current = true;
-          setPlaylists(list);
-        })
-        .catch(() => undefined);
-    }
     // Devices refresh on every poll while there is no device (Sam may just have opened Spotify).
-    if (np.state === 'no-device' || !haveDevices.current) {
+    if (np.state === 'no-device') {
       window.studyat.spotify
         .devices()
-        .then((d) => {
-          haveDevices.current = true;
-          setDevices(asList(d));
-        })
+        .then((d) => setDevices(asList(d)))
         .catch(() => undefined);
     }
   }, []);
 
   usePolling(poll, POLL_MS, true);
+
+  // A fresh interval per answer, so the ticks line up with the progress Spotify just reported.
+  useEffect(() => {
+    if (!isPlaying) return undefined;
+    const answer = playing;
+    const timer = setInterval(
+      () => setTick((t) => ({ of: answer, n: t.of === answer ? t.n + 1 : 1 })),
+      TICK_MS,
+    );
+    return () => clearInterval(timer);
+  }, [playing, isPlaying]);
+  const ticks = tick.of === playing ? tick.n : 0;
 
   /** Runs a control call; a rejection is swallowed and the re-poll shows the real state. */
   const control = async (call: () => Promise<unknown>) => {
@@ -118,8 +118,11 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
   }
 
   const track = playing.track;
-  const pct = track && track.durationMs > 0 ? Math.min(100, (track.progressMs / track.durationMs) * 100) : 0;
-  const isPlaying = state === 'playing';
+  const progressMs = track
+    ? Math.min(track.durationMs, track.progressMs + (isPlaying ? ticks * TICK_MS : 0))
+    : 0;
+  const pct = track && track.durationMs > 0 ? Math.min(100, (progressMs / track.durationMs) * 100) : 0;
+  const title = track?.title ?? 'Nothing playing';
 
   return (
     <div className={styles.root}>
@@ -146,33 +149,33 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
       ) : (
         <div className={styles.track}>
           {track?.artUrl ? (
-            <img className={styles.art} src={track.artUrl} alt="Album art" width={56} height={56} />
+            <img className={styles.art} src={track.artUrl} alt="Album art" width={64} height={64} />
           ) : (
             <div className={styles.art} aria-hidden="true">
               <Glyph name="note" />
             </div>
           )}
           <div className={styles.meta}>
-            <div className={styles.title}>{track?.title ?? 'Nothing playing'}</div>
-            {track && <div className={styles.artist}>{track.artist}</div>}
+            <div className={styles.title} title={title}>
+              {title}
+            </div>
+            {track && (
+              <div className={styles.artist} title={track.artist}>
+                {track.artist}
+              </div>
+            )}
           </div>
           {track && (
-            <div className={styles.timeline}>
-              <div
-                role="progressbar"
-                aria-label="Track progress"
-                aria-valuemin={0}
-                aria-valuemax={track.durationMs}
-                aria-valuenow={track.progressMs}
-                aria-valuetext={`${clock(track.progressMs)} of ${clock(track.durationMs)}`}
-                className={styles.progress}
-              >
-                <div className={styles.progressFill} style={{ width: `${pct}%` }} />
-              </div>
-              <div className={styles.times} aria-hidden="true">
-                <span>{clock(track.progressMs)}</span>
-                <span>{clock(track.durationMs)}</span>
-              </div>
+            <div
+              role="progressbar"
+              aria-label="Track progress"
+              aria-valuemin={0}
+              aria-valuemax={track.durationMs}
+              aria-valuenow={progressMs}
+              aria-valuetext={`${clock(progressMs)} of ${clock(track.durationMs)}`}
+              className={styles.progress}
+            >
+              <div className={styles.progressFill} style={{ width: `${pct}%` }} />
             </div>
           )}
         </div>
@@ -209,56 +212,11 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
           <Glyph name="next" />
         </button>
       </div>
-
-      <label className={styles.field}>
-        <span className={styles.label}>Playlist</span>
-        <span className={styles.selectWrap}>
-          <select
-            className={styles.select}
-            value=""
-            disabled={noDevice}
-            onChange={(e) => {
-              const uri = e.target.value;
-              if (uri) void control(() => api().playContext(uri));
-            }}
-          >
-            <option value="">Choose a playlist</option>
-            {playlists.map((p) => (
-              <option key={p.id} value={p.uri}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </span>
-      </label>
-
-      {!noDevice && devices.length > 0 && (
-        <label className={styles.field}>
-          <span className={styles.label}>Device</span>
-          <span className={styles.selectWrap}>
-            <select
-              className={styles.select}
-              value={devices.find((d) => d.active)?.id ?? ''}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (id) void control(() => api().transfer(id));
-              }}
-            >
-              {!devices.some((d) => d.active) && <option value="">Choose a device</option>}
-              {devices.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </span>
-        </label>
-      )}
     </div>
   );
 }
 
-/** Track time as m:ss for the progress labels. */
+/** Track time as m:ss for the progress bar's spoken value. */
 function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const s = total % 60;
