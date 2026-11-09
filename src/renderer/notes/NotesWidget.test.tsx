@@ -5,6 +5,7 @@ import type { NotePatch } from '../../shared/ipc';
 import type { Note, TaskColour } from '../../shared/types';
 import { installMockApi, mockApi, type MockApi } from '../test/mockApi';
 import { NotesWidget } from './NotesWidget';
+import { resetNoteSaves } from './noteSaves';
 
 const note = (id: number, text: string, over: Partial<Note> = {}): Note => ({
   id,
@@ -47,7 +48,10 @@ function setup(initial: Note[] = [], overrides: Partial<MockApi['notes']> = {}) 
 
 const sheet = () => screen.getByRole('textbox', { name: /^Note/ });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  resetNoteSaves();
+});
 afterEach(() => vi.useRealTimers());
 
 describe('NotesWidget', () => {
@@ -174,6 +178,111 @@ describe('NotesWidget', () => {
     expect(api.notes.update).toHaveBeenCalledTimes(2);
   });
 
+  it('a failed older save is not retried once newer text for the note has gone', async () => {
+    const replies: { ok: (v: Note[]) => void; fail: (e: Error) => void }[] = [];
+    const { api } = setup([note(1, '')], {
+      update: vi.fn(() => new Promise<Note[]>((ok, fail) => replies.push({ ok, fail }))),
+    });
+    await screen.findByPlaceholderText('Write a note…');
+    fireEvent.change(sheet(), { target: { value: 't1' } });
+    fireEvent.blur(sheet());
+    fireEvent.change(sheet(), { target: { value: 't2' } });
+    fireEvent.blur(sheet());
+    expect(api.notes.update).toHaveBeenCalledTimes(2);
+    await act(async () => replies[0]!.fail(new Error('busy')));
+    await act(async () => replies[1]!.ok([note(1, 't2')]));
+    fireEvent.blur(sheet());
+    expect(api.notes.update).toHaveBeenCalledTimes(2);
+    expect(api.notes.update).not.toHaveBeenLastCalledWith(1, { text: 't1' });
+    expect(sheet()).toHaveValue('t2');
+  });
+
+  it('keeps unsaved text when a delete fails after a failed save', async () => {
+    const user = userEvent.setup();
+    const { api } = setup([note(1, 'Old')], {
+      update: vi.fn(() => Promise.reject(new Error('busy'))),
+      remove: vi.fn(() => Promise.reject(new Error('busy'))),
+    });
+    await screen.findByDisplayValue('Old');
+    fireEvent.change(sheet(), { target: { value: 'Precious words' } });
+    fireEvent.blur(sheet());
+    await screen.findByText("Couldn't save this note. It's still here — try again.");
+    await user.click(screen.getByRole('button', { name: 'Delete note' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText("Couldn't delete this note. Try again.")).toBeInTheDocument();
+    expect(api.notes.remove).toHaveBeenCalledWith(1);
+    expect(sheet()).toHaveValue('Precious words');
+    fireEvent.blur(sheet());
+    expect(api.notes.update).toHaveBeenLastCalledWith(1, { text: 'Precious words' });
+  });
+
+  it('the save error stays while a failed save is still queued, even after a recolour works', async () => {
+    const user = userEvent.setup();
+    const update = vi.fn((_id: number, patch: NotePatch) =>
+      patch.text !== undefined
+        ? Promise.reject(new Error('busy'))
+        : Promise.resolve([note(1, 'Old', { colour: patch.colour ?? 'yellow' })]),
+    );
+    setup([note(1, 'Old')], { update });
+    await screen.findByDisplayValue('Old');
+    fireEvent.change(sheet(), { target: { value: 'New words' } });
+    fireEvent.blur(sheet());
+    await screen.findByText("Couldn't save this note. It's still here — try again.");
+    await user.click(screen.getByRole('button', { name: 'Blue' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Blue' })).toHaveAttribute('aria-pressed', 'true'),
+    );
+    expect(screen.getByText("Couldn't save this note. It's still here — try again.")).toBeInTheDocument();
+    expect(sheet()).toHaveValue('New words');
+  });
+
+  it('unsaved text survives closing the widget after a failed final save', async () => {
+    const update = vi.fn((_id: number, _patch: NotePatch) => Promise.reject<Note[]>(new Error('busy')));
+    const { api, view } = setup([note(1, 'Old')], { update });
+    await screen.findByDisplayValue('Old');
+    fireEvent.change(sheet(), { target: { value: 'Last words' } });
+    view.unmount();
+    expect(update).toHaveBeenLastCalledWith(1, { text: 'Last words' });
+    await act(async () => undefined);
+    update.mockClear();
+    update.mockImplementation(() => Promise.resolve([note(1, 'Last words')]));
+    render(<NotesWidget />);
+    expect(await screen.findByDisplayValue('Last words')).toBeInTheDocument();
+    expect(api.notes.update).toHaveBeenCalledWith(1, { text: 'Last words' });
+  });
+
+  it('a queued failed save is retried when the window hides', async () => {
+    const update = vi.fn((_id: number, _patch: NotePatch) => Promise.reject<Note[]>(new Error('busy')));
+    const { api } = setup([note(1, '')], { update });
+    await screen.findByPlaceholderText('Write a note…');
+    fireEvent.change(sheet(), { target: { value: 'Try again later' } });
+    fireEvent.blur(sheet());
+    await screen.findByText("Couldn't save this note. It's still here — try again.");
+    update.mockImplementation(() => Promise.resolve([note(1, 'Try again later')]));
+    await act(async () => api.emitVisibility(false));
+    expect(update).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Couldn't save this note. It's still here — try again."),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it('Esc in the delete question cancels it, stays inside the widget and refocuses delete', async () => {
+    const user = userEvent.setup();
+    const onWindowKey = vi.fn();
+    window.addEventListener('keydown', onWindowKey);
+    const { api } = setup([note(1, 'One')]);
+    await screen.findByDisplayValue('One');
+    await user.click(screen.getByRole('button', { name: 'Delete note' }));
+    await user.keyboard('{Escape}');
+    window.removeEventListener('keydown', onWindowKey);
+    expect(screen.queryByText('Delete this note?')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete note' })).toHaveFocus();
+    expect(onWindowKey).not.toHaveBeenCalled();
+    expect(api.notes.remove).not.toHaveBeenCalled();
+  });
+
   it('New note adds an empty sheet at the end and focuses it', async () => {
     const user = userEvent.setup();
     const { api } = setup([note(1, 'One')]);
@@ -232,6 +341,7 @@ describe('NotesWidget', () => {
     await user.click(screen.getByRole('button', { name: 'Delete note' }));
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     expect(await screen.findByText('No notes yet.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New note' })).toHaveFocus();
   });
 
   it('a failed load says so and can try again', async () => {

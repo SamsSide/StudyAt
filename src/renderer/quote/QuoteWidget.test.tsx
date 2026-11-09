@@ -44,6 +44,10 @@ describe('QUOTES', () => {
       expect(q.author.trim()).not.toBe('');
     }
   });
+
+  it('uses typographic apostrophes, never straight ones', () => {
+    expect(QUOTES.filter((q) => q.text.includes("'")).map((q) => q.text)).toEqual([]);
+  });
 });
 
 describe('QuoteWidget', () => {

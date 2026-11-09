@@ -1,13 +1,15 @@
 // The Notes widget body (widgets addendum §4b): sticky notes like macOS Stickies, one at a time as a
 // soft coloured sheet. A header row switches notes (‹ › and a dot strip), adds one and deletes one
 // (asked in place); six colours below. Text autosaves 500 ms after typing stops and at once on blur,
-// on switching notes, on hiding the window and on unmount. The shell's WidgetFrame supplies the
-// glass container and title.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+// on switching notes, on hiding the window and on unmount; text whose save failed waits in the
+// module-level queue (noteSaves.ts) and goes again on the next try, even after the widget closes.
+// The shell's WidgetFrame supplies the glass container and title.
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { Note } from '../../shared/types';
 import { Icon } from '../shell/icons';
 import { TASK_COLOURS } from '../tasks/taskColours';
 import styles from './NotesWidget.module.css';
+import { editNote, flushNotes, forgetNote, onNotesSaved, useNoteSaves } from './noteSaves';
 
 /** Addendum §4b: a note holds at most 5 000 characters. */
 export const MAX_NOTE_LENGTH = 5000;
@@ -29,19 +31,17 @@ export function NotesWidget() {
   const [currentId, setCurrentId] = useState<number | null>(null);
   // Text typed but not yet confirmed by main, per note: the sheet always shows this over main's copy,
   // so a slow or failed save never takes words away.
-  const [drafts, setDrafts] = useState<ReadonlyMap<number, string>>(new Map());
+  const { drafts, failing } = useNoteSaves();
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  // What still has to go to main, and the autosave timer. Refs, so the unmount and window-hide
-  // flushes see the latest without re-subscribing.
-  const pending = useRef(new Map<number, string>());
   const timer = useRef<number | null>(null);
   const live = useRef(true);
   const sheetRef = useRef<HTMLTextAreaElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const focusNext = useRef<'sheet' | 'delete' | 'cancel' | null>(null);
+  const newRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<'sheet' | 'delete' | 'cancel' | 'new' | null>(null);
 
   const adopt = useCallback((list: Note[]) => {
     if (!live.current) return;
@@ -55,32 +55,11 @@ export function NotesWidget() {
     timer.current = null;
   };
 
-  /** Sends every unsaved text now. A failure puts it back in the queue for the next try. */
+  /** Sends every unsaved text now (the queue keeps any that fail for the next try). */
   const flush = useCallback(() => {
     clearTimer();
-    const queue = [...pending.current];
-    pending.current.clear();
-    for (const [id, text] of queue) {
-      window.studyat.notes.update(id, { text }).then(
-        (list) => {
-          if (!live.current) return;
-          adopt(list);
-          setError(null);
-          // Main has this text now; a newer draft (typed while it was in flight) stays.
-          setDrafts((d) => {
-            if (d.get(id) !== text) return d;
-            const next = new Map(d);
-            next.delete(id);
-            return next;
-          });
-        },
-        () => {
-          if (!pending.current.has(id)) pending.current.set(id, text);
-          if (live.current) setError(SAVE_FAILED);
-        },
-      );
-    }
-  }, [adopt]);
+    flushNotes();
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -93,6 +72,12 @@ export function NotesWidget() {
   useEffect(() => {
     live.current = true;
     void load();
+    // Text left over from a save that failed after the widget last closed goes again now.
+    flush();
+    const stopSaved = onNotesSaved((list) => {
+      adopt(list);
+      if (live.current) setError(null);
+    });
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') flush();
     };
@@ -104,10 +89,11 @@ export function NotesWidget() {
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       stopVisibility();
+      stopSaved();
       flush();
       live.current = false;
     };
-  }, [load, flush]);
+  }, [load, flush, adopt]);
 
   const index = Math.max(
     0,
@@ -120,9 +106,8 @@ export function NotesWidget() {
     const target = focusNext.current;
     if (!target) return;
     focusNext.current = null;
-    const el =
-      target === 'sheet' ? sheetRef.current : target === 'delete' ? deleteRef.current : cancelRef.current;
-    el?.focus();
+    const refs = { sheet: sheetRef, delete: deleteRef, cancel: cancelRef, new: newRef };
+    refs[target].current?.focus();
   });
 
   /** A mutation other than typing; every call returns the whole list. */
@@ -146,9 +131,7 @@ export function NotesWidget() {
 
   const type = (value: string): void => {
     if (!current) return;
-    const id = current.id;
-    setDrafts((d) => new Map(d).set(id, value));
-    pending.current.set(id, value);
+    editNote(current.id, value);
     clearTimer();
     timer.current = window.setTimeout(flush, AUTOSAVE_MS);
   };
@@ -186,23 +169,29 @@ export function NotesWidget() {
     focusNext.current = 'delete';
   };
 
+  /** Esc answers the question with Cancel, and stays here rather than closing the shell's panel. */
+  const onConfirmKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    cancelDelete();
+  };
+
   const confirmDelete = async (): Promise<void> => {
     if (!current) return;
     const id = current.id;
-    // The note is going: its unsaved text goes with it, unsent.
-    if (pending.current.delete(id) && pending.current.size === 0) clearTimer();
-    setDrafts((d) => {
-      const next = new Map(d);
-      next.delete(id);
-      return next;
-    });
     const list = await run(() => window.studyat.notes.remove(id), DELETE_FAILED);
     setConfirming(false);
+    // Kept until main has really deleted the note, so a failed delete loses no words.
     if (!list) return;
+    forgetNote(id);
     const neighbour = list[Math.min(index, list.length - 1)];
     setCurrentId(neighbour?.id ?? null);
-    focusNext.current = neighbour ? 'sheet' : null;
+    focusNext.current = neighbour ? 'sheet' : 'new';
   };
+
+  // Another failure's message first; otherwise the save message stays while a failed save waits.
+  const shownError = error ?? (failing ? SAVE_FAILED : null);
 
   if (loadFailed && !loaded) {
     return (
@@ -224,13 +213,13 @@ export function NotesWidget() {
       <div className={styles.widget}>
         <div className={styles.state}>
           <p className={styles.message}>No notes yet.</p>
-          <button type="button" className={styles.primaryButton} onClick={() => void add()}>
+          <button ref={newRef} type="button" className={styles.primaryButton} onClick={() => void add()}>
             <Icon name="plus" />
             New note
           </button>
-          {error && (
+          {shownError && (
             <p className={styles.error} role="status">
-              {error}
+              {shownError}
             </p>
           )}
         </div>
@@ -244,7 +233,7 @@ export function NotesWidget() {
   return (
     <div className={styles.widget}>
       {confirming ? (
-        <div className={styles.toolbar} role="group" aria-label="Delete this note?">
+        <div className={styles.toolbar} role="group" aria-label="Delete this note?" onKeyDown={onConfirmKey}>
           <span className={styles.confirmText}>Delete this note?</span>
           <button ref={cancelRef} type="button" className={styles.textButton} onClick={cancelDelete}>
             Cancel
@@ -346,9 +335,9 @@ export function NotesWidget() {
           ))}
         </div>
       </div>
-      {error && (
+      {shownError && (
         <p className={styles.error} role="status">
-          {error}
+          {shownError}
         </p>
       )}
     </div>

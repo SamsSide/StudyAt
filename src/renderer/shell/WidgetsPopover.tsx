@@ -86,7 +86,7 @@ export function WidgetsPopover({
       id={id}
       role="dialog"
       aria-label="Widgets"
-      className={`${styles.popover} ${styles.frosted}`}
+      className={`${styles.popover} ${styles.frosted} ${styles.fades}`}
       onKeyDown={onKeyDown}
       onBlur={(e) => {
         // Tabbing out closes it, as a macOS popover does; a click elsewhere is the pointer handler's.

@@ -285,6 +285,17 @@ describe('Shell', () => {
       expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
     });
 
+    it('fades with the rest of the chrome when it auto-hides', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      const nav = screen.getByRole('navigation', { name: 'Dock' });
+      const fades = [...nav.classList].find((c) => /fades/.test(c));
+      expect(fades).toBeDefined();
+      expect(popover()).toHaveClass(fades!);
+      expect(popover().closest('[data-chrome]')).not.toBeNull();
+    });
+
     it('opening a full-window overlay closes it', async () => {
       const user = userEvent.setup();
       await renderShell();

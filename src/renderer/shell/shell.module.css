@@ -256,7 +256,8 @@
 }
 
 /* The dock's Widgets popover: a small glass sheet beside the Widgets item, its rows macOS
-   switches. Placed by WidgetsPopover (fixed, beside the item, clamped inside the window). */
+   switches. Placed by WidgetsPopover (fixed, beside the item, clamped inside the window). It also
+   carries .fades, so it fades out with the dock when the chrome auto-hides. */
 .popover {
   position: fixed;
   z-index: calc(var(--z-panel) + 1);
