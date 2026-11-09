@@ -1,15 +1,24 @@
 // The soundboard side panel (spec §3.9, appplan §4.3): master, the space's audio slider, one row per
 // channel with mute and slider, "Add sound…", and mixes (save current levels, click to apply, delete).
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
 import type { Mix, Sound } from '../../shared/types';
 import { audioEngine } from '../audio/engine';
-import { ipcErrorMessage } from '../lib/ipcError';
 import styles from './SoundsPanel.module.css';
-import { applyLevel, restoreSoundscape, soundKey } from './soundscape';
+import { applyLevel, restoreSoundscape, soundKey, type Soundscape } from './soundscape';
 
 export interface SpaceAudio {
   get(): number;
   set(v: number): void;
+  /** Re-read `get` whenever this fires, so the slider follows changes made elsewhere. */
+  subscribe?(listener: () => void): () => void;
 }
 
 export interface SoundsPanelProps {
@@ -20,11 +29,9 @@ export interface SoundsPanelProps {
 /** Slider saves are batched so dragging does not hit the main process on every input event. */
 const SAVE_DEBOUNCE_MS = 300;
 
-/** A short failure line, plus main's reason when it gave one. */
-const withReason = (failure: string, err: unknown): string => {
-  const reason = ipcErrorMessage(err);
-  return reason ? `${failure} ${reason}` : failure;
-};
+const SAVE_FAILED = "Couldn't save your sound levels.";
+
+const noSubscribe = (): (() => void) => () => undefined;
 
 /** How far along its track a 0–1 slider is, for the accent fill. */
 const fill = (v: number): CSSProperties => ({ '--fill': `${Math.round(v * 100)}%` }) as CSSProperties;
@@ -53,15 +60,11 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
   const [mixes, setMixes] = useState<Mix[]>([]);
   const [levels, setLevels] = useState<Record<string, number>>({});
   const [master, setMaster] = useState(0.8);
-  const [space, setSpace] = useState(() => spaceAudio?.get() ?? 1);
-  // A new space (new prop identity) has its own volume: re-read it during render, not in an effect.
-  const [spaceFor, setSpaceFor] = useState(spaceAudio);
-  if (spaceFor !== spaceAudio) {
-    setSpaceFor(spaceAudio);
-    setSpace(spaceAudio?.get() ?? 1);
-  }
+  // The active space's level, live: it follows the space's own settings and a switch of space.
+  const space = useSyncExternalStore(spaceAudio?.subscribe ?? noSubscribe, () => spaceAudio?.get() ?? 1);
   const [mixName, setMixName] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const levelsRef = useRef(levels);
@@ -81,7 +84,17 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     if (dirty.current.levels) patch.soundLevels = levelsRef.current;
     if (dirty.current.master) patch.masterVolume = masterRef.current;
     dirty.current = { levels: false, master: false };
-    if (patch.soundLevels || patch.masterVolume !== undefined) void window.studyat.settings.set(patch);
+    if (!patch.soundLevels && patch.masterVolume === undefined) return;
+    window.studyat.settings.set(patch).then(
+      () => setError((cur) => (cur === SAVE_FAILED ? null : cur)),
+      (e: unknown) => {
+        // Still unsaved: the next change (or closing the panel) sends it again with the latest values.
+        if (patch.soundLevels) dirty.current.levels = true;
+        if (patch.masterVolume !== undefined) dirty.current.master = true;
+        console.warn(SAVE_FAILED, e);
+        setError(SAVE_FAILED);
+      },
+    );
   }, []);
 
   const scheduleSave = useCallback(() => {
@@ -89,23 +102,33 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     saveTimer.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
   }, [flush]);
 
+  const live = useRef(true);
+  const adopt = useCallback((s: Soundscape) => {
+    if (!live.current) return;
+    setSounds(s.sounds);
+    setMixes(s.mixes);
+    setLevels(s.levels);
+    levelsRef.current = s.levels;
+    setMaster(s.master);
+    masterRef.current = s.master;
+    setLoaded(true);
+    setLoadFailed(false);
+  }, []);
+  const failLoad = useCallback((e: unknown) => {
+    // A fixed sentence on screen; main's reason goes to the log only (ruling R38).
+    console.warn("Couldn't load your sounds.", e);
+    if (live.current) setLoadFailed(true);
+  }, []);
+  const load = () => restoreSoundscape().then(adopt, failLoad);
+
   useEffect(() => {
-    let live = true;
-    void restoreSoundscape().then((s) => {
-      if (!live) return;
-      setSounds(s.sounds);
-      setMixes(s.mixes);
-      setLevels(s.levels);
-      levelsRef.current = s.levels;
-      setMaster(s.master);
-      masterRef.current = s.master;
-      setLoaded(true);
-    });
+    live.current = true;
+    restoreSoundscape().then(adopt, failLoad);
     return () => {
-      live = false;
+      live.current = false;
       flush(); // a slider moved just before closing the panel still persists
     };
-  }, [flush]);
+  }, [adopt, failLoad, flush]);
 
   /** Runs a call to main; a rejection becomes the inline error rather than an unhandled one. */
   const attempt = async (call: () => Promise<void>, failure: string): Promise<void> => {
@@ -113,7 +136,9 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     try {
       await call();
     } catch (e) {
-      setError(withReason(failure, e));
+      // A fixed sentence on screen; main's reason (which may name a path) goes to the log (R38).
+      console.warn(failure, e);
+      setError(failure);
     }
   };
 
@@ -200,6 +225,18 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
   const deleteMix = (mix: Mix) =>
     attempt(async () => setMixes(await window.studyat.mixes.remove(mix.id)), "Couldn't delete that mix.");
 
+  if (loadFailed && !loaded)
+    return (
+      <div className={styles.panel} data-testid="sounds-panel">
+        <div className={styles.loadFailed} role="status">
+          <p className={styles.error}>Couldn't load your sounds.</p>
+          <button type="button" className={styles.button} onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+
   return (
     <div className={styles.panel} data-testid="sounds-panel">
       <div className={styles.group}>
@@ -231,11 +268,7 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
               step={0.01}
               value={space}
               aria-label="Space audio"
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setSpace(v);
-                spaceAudio.set(v);
-              }}
+              onChange={(e) => spaceAudio.set(Number(e.target.value))}
             />
           </label>
         )}

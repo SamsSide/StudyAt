@@ -55,6 +55,28 @@ describe('SpaceBackground', () => {
     expect(v.playbackRate).toBe(1.5);
   });
 
+  it('a failed first load says so over the empty background, and "Try again" loads the space', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { spotifyTokens: _t, ...pub } = structuredClone(DEFAULT_SETTINGS);
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("EACCES: permission denied, open 'C:\\studyat.db'"))
+      .mockResolvedValue([makeSpace({ id: 1, kind: 'image' })]);
+    installMockApi(
+      mockApi({
+        spaces: { list },
+        settings: { get: vi.fn(() => Promise.resolve({ ...pub, activeSpaceId: 1 })) },
+      }),
+    );
+    render(<SpaceBackground />);
+    expect(await screen.findByText("Couldn't load your spaces.")).toBeInTheDocument();
+    expect(screen.getByTestId('space-background')).not.toHaveTextContent('EACCES');
+    expect(warn).toHaveBeenCalled();
+    await act(async () => screen.getByRole('button', { name: 'Try again' }).click());
+    expect(await screen.findByTestId('space-image')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your spaces.")).not.toBeInTheDocument();
+  });
+
   it('shows a relocate state for a missing file', async () => {
     const api = await mount([makeSpace({ id: 1, missing: true })]);
     await act(async () => screen.getByRole('button', { name: 'File moved — Relocate…' }).click());

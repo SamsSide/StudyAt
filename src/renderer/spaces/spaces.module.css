@@ -186,7 +186,7 @@
   color: var(--text);
 }
 
-.tab[aria-selected='true'] {
+.tab[aria-pressed='true'] {
   color: var(--text);
   background: var(--glass-fill-raised);
   box-shadow: var(--shadow-sm);
@@ -234,6 +234,18 @@
 .error {
   color: var(--danger);
   font-size: var(--text-sm);
+}
+
+.loadFailed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+}
+
+.loadFailed .error {
+  margin: 0;
 }
 
 .empty {

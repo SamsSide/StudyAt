@@ -19,6 +19,9 @@ const SLIDERS: Slider[] = [
   { key: 'blur', label: 'Blur', min: 0, max: 12, step: 1 },
 ];
 
+/** YouTube plays only at 0.25 steps (0.5, 0.75, 1, 1.25, 1.5); a finer step would be ignored. */
+const YOUTUBE_SPEED_STEP = 0.25;
+
 /** How far along its track a slider is, for the accent fill. */
 const fill = (value: number, min: number, max: number): CSSProperties =>
   ({ '--fill': `${((value - min) / (max - min)) * 100}%` }) as CSSProperties;
@@ -51,7 +54,7 @@ export function SpaceSettings({ space, onClose }: { space: Space; onClose: () =>
             style={fill(space.opts[s.key], s.min, s.max)}
             min={s.min}
             max={s.max}
-            step={s.step}
+            step={s.key === 'speed' && space.kind === 'youtube' ? YOUTUBE_SPEED_STEP : s.step}
             value={space.opts[s.key]}
             onChange={(e) => {
               const v = Number(e.target.value);

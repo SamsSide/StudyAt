@@ -239,14 +239,14 @@ describe('TasksWidget', () => {
     const api = setup([task(1, 'Essay')], {
       list: () => (fail ? Promise.reject(new Error('boom')) : Promise.resolve([task(1, 'Essay')])),
     });
-    expect(await screen.findByText('Couldn’t load your tasks.')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load your tasks.")).toBeInTheDocument();
     expect(screen.queryByText('No tasks yet.')).not.toBeInTheDocument();
     expect(screen.queryByText(/refreshed/)).not.toBeInTheDocument();
     expect(screen.queryByText(/boom/)).not.toBeInTheDocument();
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('button', { name: 'Essay' })).toBeInTheDocument();
-    expect(screen.queryByText('Couldn’t load your tasks.')).not.toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your tasks.")).not.toBeInTheDocument();
     expect(api.tasks.list).toHaveBeenCalledTimes(2);
   });
 
@@ -256,12 +256,51 @@ describe('TasksWidget', () => {
     vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
     expect(
-      await screen.findByText('Couldn’t save that just now. Your list has been refreshed.'),
+      await screen.findByText("Couldn't save that just now. Your list has been refreshed."),
     ).toBeInTheDocument();
     expect(screen.queryByText('No tasks yet.')).not.toBeInTheDocument();
-    await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
+    // The text that didn't save is back in the box: Enter tries again.
+    await userEvent.type(screen.getByPlaceholderText('Add a task…'), '{Enter}');
     await screen.findByRole('button', { name: 'Lab' });
-    expect(screen.queryByText(/Couldn’t save/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't save/)).not.toBeInTheDocument();
+  });
+
+  it('a failed add puts the typed text back in the add box', async () => {
+    const api = setup([task(1, 'Essay')]);
+    await screen.findByRole('button', { name: 'Essay' });
+    vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
+    await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Revise chapter 3{Enter}');
+    await screen.findByText("Couldn't save that just now. Your list has been refreshed.");
+    expect(screen.getByPlaceholderText('Add a task…')).toHaveValue('Revise chapter 3');
+  });
+
+  it('a failed add never overwrites text typed since', async () => {
+    const api = setup([task(1, 'Essay')]);
+    await screen.findByRole('button', { name: 'Essay' });
+    let reject: (e: Error) => void = () => undefined;
+    vi.mocked(api.tasks.create).mockReturnValueOnce(new Promise<Task[]>((_, rej) => (reject = rej)));
+    const box = screen.getByPlaceholderText('Add a task…');
+    await userEvent.type(box, 'First{Enter}');
+    await userEvent.type(box, 'Second');
+    await act(async () => reject(new Error('nope')));
+    await screen.findByText(/Couldn't save/);
+    expect(box).toHaveValue('Second');
+  });
+
+  it('a failed edit reopens the note with the edited text', async () => {
+    const api = setup([task(1, 'Essay')]);
+    await userEvent.click(await screen.findByRole('button', { name: 'Essay' }));
+    vi.mocked(api.tasks.update).mockRejectedValueOnce(new Error('nope'));
+    const input = screen.getByRole('textbox', { name: 'Edit task' });
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Essay final draft{Enter}');
+    await screen.findByText("Couldn't save that just now. Your list has been refreshed.");
+    const reopened = await screen.findByRole('textbox', { name: 'Edit task' });
+    expect(reopened).toHaveValue('Essay final draft');
+    expect(reopened).toHaveFocus();
+    // Enter saves it this time.
+    await userEvent.type(reopened, '{Enter}');
+    expect(await screen.findByRole('button', { name: 'Essay final draft' })).toBeInTheDocument();
   });
 
   it('a failed save with a failed reload does not claim a refresh', async () => {
@@ -270,7 +309,7 @@ describe('TasksWidget', () => {
     vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
     vi.mocked(api.tasks.list).mockRejectedValueOnce(new Error('still nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
-    expect(await screen.findByText('Couldn’t save that just now.')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't save that just now.")).toBeInTheDocument();
     expect(screen.queryByText(/refreshed/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Essay' })).toBeInTheDocument();
   });
@@ -329,14 +368,14 @@ describe('TasksWidget', () => {
     const api = setup([task(1, 'Essay')], {
       list: () => (fail ? Promise.reject(new Error('boom')) : Promise.resolve([task(1, 'Essay')])),
     });
-    expect(await screen.findByText('Couldn’t load your tasks.')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load your tasks.")).toBeInTheDocument();
     fail = false;
     vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
     expect(
-      await screen.findByText('Couldn’t save that just now. Your list has been refreshed.'),
+      await screen.findByText("Couldn't save that just now. Your list has been refreshed."),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Couldn’t load your tasks.')).not.toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your tasks.")).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Essay' })).toBeInTheDocument();
   });
 

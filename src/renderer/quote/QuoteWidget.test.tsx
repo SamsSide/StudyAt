@@ -94,7 +94,7 @@ describe('QuoteWidget', () => {
     expect(shownText()).toBe(`“${QUOTES[start]!.text}”`);
   });
 
-  it('a new study day starts again from that day’s quote', async () => {
+  it("a new study day starts again from that day's quote", async () => {
     vi.useFakeTimers();
     let now = at(9, 22);
     render(<QuoteWidget now={() => now} />);

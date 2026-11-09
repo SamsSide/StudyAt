@@ -62,9 +62,12 @@ removed or have embedding disabled later; the card then shows "This video can't 
 
 ## Quotations (`assets/quotes.json`)
 
-Public domain: every quoted author died before 1955. The translations used are public-domain or
-paraphrase-free standard renderings (for example Long's Marcus Aurelius and Epictetus, Gummere's
-Seneca, Legge's Confucius and Lao Tzu, Jowett's Plato).
+Public domain: every quoted author died before 1955. Each line is their own words in English, a
+short traditional English rendering of a classical saying, or taken from an old public-domain
+translation (George Long's Marcus Aurelius and Epictetus, Richard Gummere's Seneca, James Legge's
+Confucius and Lao Tzu, Benjamin Jowett's Plato). Marie Curie's line is from her own
+autobiographical notes in *Pierre Curie* (1923, translated by Charlotte and Vernon Kellogg). Lines
+from modern copyrighted translations or later biographies are left out.
 
 Weather data by Open-Meteo.com (CC BY 4.0) — fetched at runtime, not bundled.
 

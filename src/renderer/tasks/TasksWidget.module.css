@@ -1,14 +1,8 @@
 /* The Tasks widget's contents; the glass container and title come from the shell's WidgetFrame.
    Notes are soft, glassy sticky cards (R27): a pastel tint that lets a little of the panel through,
-   a top sheen and a bright top edge, with dark text (every pair clears WCAG AA). */
+   a top sheen and a bright top edge, with dark text (every pair clears WCAG AA). The tints are
+   tokens (tokens.css), shared with Notes. */
 .widget {
-  --note-yellow: #ecdc94;
-  --note-pink: #edb8ca;
-  --note-blue: #afcaef;
-  --note-green: #b8dcb9;
-  --note-purple: #d1bdec;
-  --note-grey: #d3d6dd;
-  --note-text: #1b1e27;
   --note-soft: rgba(27, 30, 39, 0.62);
 
   display: flex;
@@ -185,7 +179,7 @@
   position: relative;
   padding: var(--space-2) var(--space-2) var(--space-2) 2px;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 12px;
+  border-radius: var(--radius);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 55%),
     color-mix(in srgb, var(--tint) 90%, transparent);

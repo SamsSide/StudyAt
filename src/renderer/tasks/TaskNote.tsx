@@ -9,7 +9,8 @@ export interface TaskNoteProps {
   task: Task;
   dragging?: boolean;
   onToggle(task: Task): void;
-  onEditText(task: Task, text: string): void;
+  /** Resolves to whether the text saved; when it didn't, the note reopens with the edited text. */
+  onEditText(task: Task, text: string): Promise<boolean>;
   onColour(task: Task, colour: TaskColour): void;
   /** Open notes only: pointer handlers for the drag handle. */
   dragHandlers?: {
@@ -103,7 +104,14 @@ export function TaskNote({
     setEditing(false);
     if (!save) return;
     const text = clampTaskText(draft);
-    if (text && text !== task.text) onEditText(task, text);
+    if (!text || text === task.text) return;
+    void onEditText(task, text).then((saved) => {
+      if (saved) return;
+      // Never lose an edit: reopen it with what was typed, so Enter can try again.
+      ended.current = false;
+      setDraft(text);
+      setEditing(true);
+    });
   };
 
   const onEditKey = (e: KeyboardEvent<HTMLInputElement>) => {

@@ -1,8 +1,7 @@
 // The Spaces side panel (spec §3.8): tabs, search, grid of cards, add files, add YouTube.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { parseYouTubeId } from '../../core/youtube';
 import type { Space } from '../../shared/types';
-import { ipcErrorMessage } from '../lib/ipcError';
 import { SpaceCard } from './SpaceCard';
 import { SpaceSettings } from './SpaceSettings';
 import styles from './spaces.module.css';
@@ -12,11 +11,8 @@ import { captureThumbnail } from './thumbnail';
 export const TABS = ['All', 'Videos', 'Images', 'YouTube', 'Favourites'] as const;
 type Tab = (typeof TABS)[number];
 
-/** A short failure line, plus main's reason when it gave one. */
-const withReason = (failure: string, err: unknown): string => {
-  const reason = ipcErrorMessage(err);
-  return reason ? `${failure} ${reason}` : failure;
-};
+/** Arrow keys step along the kind filter. */
+const STEP: Record<string, number> = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
 
 const inTab = (s: Space, tab: Tab): boolean =>
   tab === 'All' ||
@@ -29,9 +25,14 @@ export function SpacesPanel() {
   const spaces = useSpacesStore((s) => s.spaces);
   const activeId = useSpacesStore((s) => s.activeId);
   const loaded = useSpacesStore((s) => s.loaded);
+  const loadFailed = useSpacesStore((s) => s.loadFailed);
   const embedErrors = useSpacesStore((s) => s.embedErrors);
   const { load, apply, reload, setActive, update } = useSpacesStore.getState();
   const [tab, setTab] = useState<Tab>('All');
+  // The kind filter is one tab stop (a segmented control, like the timer's modes); this is the
+  // button arrowed to, until a click or Enter picks one.
+  const [tabStop, setTabStop] = useState<Tab>('All');
+  const tabButtons = useRef<(HTMLButtonElement | null)[]>([]);
   const [query, setQuery] = useState('');
   const [url, setUrl] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export function SpacesPanel() {
   const [menuId, setMenuId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!loaded) void load();
+    if (!loaded) void load(); // opening the panel after a failed load is a retry too
   }, [loaded, load]);
 
   const shown = useMemo(() => {
@@ -62,7 +63,9 @@ export function SpacesPanel() {
     try {
       return await call();
     } catch (e) {
-      setError(withReason(message, e));
+      // A fixed sentence on screen; main's reason (which may name a path) goes to the log (ruling R38).
+      console.warn(message, e);
+      setError(message);
       await reload();
       return undefined;
     }
@@ -95,7 +98,9 @@ export function SpacesPanel() {
       setUrl('');
     } catch (e) {
       // The link stays in the box so Sam can retry.
-      setUrlError(withReason("Couldn't add that video. Try again.", e));
+      const message = "Couldn't add that video. Try again.";
+      console.warn(message, e);
+      setUrlError(message);
       await reload();
     }
   };
@@ -120,20 +125,41 @@ export function SpacesPanel() {
     if (next) apply(next);
   };
 
+  const pickTab = (t: Tab) => {
+    setTab(t);
+    setTabStop(t);
+  };
+
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const from = tabButtons.current.findIndex((el) => el === document.activeElement);
+    const step = STEP[e.key];
+    let next: number;
+    if (step !== undefined) next = (Math.max(0, from) + step + TABS.length) % TABS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = TABS.length - 1;
+    else return;
+    e.preventDefault();
+    tabButtons.current[next]?.focus();
+    setTabStop(TABS[next]!);
+  };
+
   const settingsSpace = spaces.find((s) => s.id === settingsId);
   if (settingsSpace) return <SpaceSettings space={settingsSpace} onClose={() => setSettingsId(null)} />;
 
   return (
     <div className={styles.panel}>
-      <div role="tablist" aria-label="Space kinds" className={styles.tabs}>
-        {TABS.map((t) => (
+      <div role="toolbar" aria-label="Space kinds" className={styles.tabs} onKeyDown={onTabKey}>
+        {TABS.map((t, i) => (
           <button
             key={t}
-            role="tab"
+            ref={(el) => {
+              tabButtons.current[i] = el;
+            }}
             type="button"
             className={styles.tab}
-            aria-selected={t === tab}
-            onClick={() => setTab(t)}
+            aria-pressed={t === tab}
+            tabIndex={t === tabStop ? 0 : -1}
+            onClick={() => pickTab(t)}
           >
             {t}
           </button>
@@ -183,7 +209,14 @@ export function SpacesPanel() {
           {error}
         </div>
       )}
-      {shown.length === 0 ? (
+      {loadFailed && !loaded ? (
+        <div className={styles.loadFailed} role="status">
+          <p className={styles.error}>Couldn't load your spaces.</p>
+          <button type="button" className={styles.btn} onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
+      ) : shown.length === 0 ? (
         loaded && <p className={styles.empty}>No spaces match.</p>
       ) : (
         <ul className={styles.grid}>

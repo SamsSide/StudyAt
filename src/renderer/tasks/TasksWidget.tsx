@@ -87,11 +87,15 @@ export function TasksWidget() {
     };
   }, [adopt]);
 
-  /** Run a mutation; every call returns the full list. A failure re-reads so the view is honest. */
+  /**
+   * Run a mutation; every call returns the full list. A failure re-reads so the view is honest.
+   * Resolves to whether the mutation saved, so a caller can hand back text that didn't.
+   */
   const run = useCallback(
-    async (call: Promise<Task[]>) => {
+    async (call: Promise<Task[]>): Promise<boolean> => {
       try {
         adopt(await call);
+        return true;
       } catch {
         refocus.current = null;
         try {
@@ -102,6 +106,7 @@ export function TasksWidget() {
         } catch {
           setSaveError('plain');
         }
+        return false;
       }
     },
     [adopt],
@@ -115,8 +120,14 @@ export function TasksWidget() {
     const clean = clampTaskText(text);
     if (!clean) return;
     setText('');
-    void run(window.studyat.tasks.create({ text: clean, colour }));
+    void run(window.studyat.tasks.create({ text: clean, colour })).then((saved) => {
+      // Never lose what was typed: it goes back in the box, unless Sam has typed something since.
+      if (!saved) setText((now) => (now === '' ? clean : now));
+    });
   };
+
+  const editText = (task: Task, value: string): Promise<boolean> =>
+    run(window.studyat.tasks.update(task.id, { text: value }));
 
   const commitOrder = (ids: number[]) => {
     setTasks((prev) => withOrder(prev, ids));
@@ -208,15 +219,15 @@ export function TasksWidget() {
       {saveError && (
         <p className={styles.error} role="status">
           {saveError === 'refreshed'
-            ? 'Couldn’t save that just now. Your list has been refreshed.'
-            : 'Couldn’t save that just now.'}
+            ? "Couldn't save that just now. Your list has been refreshed."
+            : "Couldn't save that just now."}
         </p>
       )}
 
       <div className={styles.scroll}>
         {loadFailed && (
           <div className={styles.loadFailed} role="status">
-            <p className={styles.error}>Couldn’t load your tasks.</p>
+            <p className={styles.error}>Couldn't load your tasks.</p>
             <button type="button" className={styles.clear} onClick={() => void load()}>
               Try again
             </button>
@@ -236,7 +247,7 @@ export function TasksWidget() {
                 dragHandlers={dragHandlers}
                 onMove={move}
                 onToggle={tick}
-                onEditText={(n, v) => void run(window.studyat.tasks.update(n.id, { text: v }))}
+                onEditText={editText}
                 onColour={(n, c) => void run(window.studyat.tasks.update(n.id, { colour: c }))}
               />
             ))}
@@ -272,7 +283,7 @@ export function TasksWidget() {
                     key={t.id}
                     task={t}
                     onToggle={untick}
-                    onEditText={(n, v) => void run(window.studyat.tasks.update(n.id, { text: v }))}
+                    onEditText={editText}
                     onColour={(n, c) => void run(window.studyat.tasks.update(n.id, { colour: c }))}
                   />
                 ))}

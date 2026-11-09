@@ -18,6 +18,10 @@ export const spaceAudio = {
   canPlayAudio(): boolean {
     return hasAudio(activeIn(useSpacesStore.getState()));
   },
+  /** Calls `listener` whenever the active space or its level may have changed. */
+  subscribe(listener: () => void): () => void {
+    return useSpacesStore.subscribe(listener);
+  },
   set(v: number): void {
     const s = activeIn(useSpacesStore.getState());
     if (!hasAudio(s)) return;

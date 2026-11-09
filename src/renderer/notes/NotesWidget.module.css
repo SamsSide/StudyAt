@@ -1,14 +1,8 @@
 /* The Notes widget's contents; the glass frame and title come from the shell's WidgetFrame.
    One note at a time as a soft sticky sheet in the task colours (R27): a pastel tint that lets a
-   little of the glass through, a top sheen and a bright top edge, with dark text (AA on every tint). */
+   little of the glass through, a top sheen and a bright top edge, with dark text (AA on every tint).
+   The tints are tokens (tokens.css), shared with Tasks. */
 .widget {
-  --note-yellow: #ecdc94;
-  --note-pink: #edb8ca;
-  --note-blue: #afcaef;
-  --note-green: #b8dcb9;
-  --note-purple: #d1bdec;
-  --note-grey: #d3d6dd;
-  --note-text: #1b1e27;
   --note-soft: rgba(27, 30, 39, 0.55);
 
   display: flex;

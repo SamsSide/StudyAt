@@ -30,19 +30,60 @@ const cards = () => screen.getAllByRole('listitem').filter((li) => li.closest('u
 beforeEach(() => resetSpacesStore());
 
 describe('SpacesPanel', () => {
-  it('tabs filter by kind and favourites', async () => {
+  it('the kind filter is a segmented control: pressed buttons filter by kind and favourites', async () => {
     setup();
     await screen.findByText('Rainy Window');
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    const filter = screen.getByRole('toolbar', { name: 'Space kinds' });
+    const all = within(filter).getByRole('button', { name: 'All' });
+    expect(all).toHaveAttribute('aria-pressed', 'true');
     expect(cards()).toHaveLength(3);
-    await userEvent.click(screen.getByRole('tab', { name: 'Videos' }));
+    await userEvent.click(within(filter).getByRole('button', { name: 'Videos' }));
+    expect(within(filter).getByRole('button', { name: 'Videos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(all).toHaveAttribute('aria-pressed', 'false');
     expect(cards()).toHaveLength(1);
-    await userEvent.click(screen.getByRole('tab', { name: 'Images' }));
+    await userEvent.click(within(filter).getByRole('button', { name: 'Images' }));
     expect(screen.getByText('Forest Path')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: 'YouTube' }));
+    await userEvent.click(within(filter).getByRole('button', { name: 'YouTube' }));
     expect(screen.getByText('Lofi Cafe')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('tab', { name: 'Favourites' }));
+    await userEvent.click(within(filter).getByRole('button', { name: 'Favourites' }));
     expect(cards()).toHaveLength(1);
     expect(screen.getByText('Forest Path')).toBeInTheDocument();
+  });
+
+  it('the kind filter is one tab stop; arrow keys move along it and Enter picks', async () => {
+    setup();
+    await screen.findByText('Rainy Window');
+    const filter = screen.getByRole('toolbar', { name: 'Space kinds' });
+    const buttons = within(filter).getAllByRole('button');
+    expect(buttons.filter((b) => b.tabIndex === 0)).toHaveLength(1);
+    buttons[0]!.focus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(buttons[1]).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    expect(buttons[4]).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(buttons[0]).toHaveFocus();
+    await userEvent.keyboard('{ArrowLeft}{Enter}');
+    expect(buttons[4]).toHaveAttribute('aria-pressed', 'true');
+    expect(cards()).toHaveLength(1);
+  });
+
+  it('a failed first load says so and "Try again" loads the spaces', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("EACCES: permission denied, open 'C:\\Users\\sam\\db'"))
+      .mockResolvedValue(sampleSpaces());
+    setup(sampleSpaces(), { spaces: { list } });
+    expect(await screen.findByText("Couldn't load your spaces.")).toBeInTheDocument();
+    expect(screen.queryByText('No spaces match.')).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('EACCES');
+    expect(warn).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Rainy Window')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your spaces.")).not.toBeInTheDocument();
+    warn.mockRestore();
   });
 
   it('search filters by name case-insensitively and shows "No spaces match."', async () => {
@@ -343,28 +384,34 @@ describe('SpacesPanel', () => {
       expect(useSpacesStore.getState().activeId).toBe(2);
     });
 
-    it("shows main's reason without Electron's prefix", async () => {
+    it("shows a fixed sentence only, never main's reason or a path, and logs the reason", async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const err = new Error(
-        "Error invoking remote method 'spaces:setActive': Error: That space no longer exists.",
+        "Error invoking remote method 'spaces:setActive': Error: EACCES: permission denied, open 'C:\\Users\\sam\\studyat.db'",
       );
       setup(sampleSpaces(), { spaces: { setActive: vi.fn(() => Promise.reject(err)) } });
       await userEvent.click(await screen.findByRole('button', { name: 'Use Forest Path' }));
       const alert = await screen.findByRole('alert');
-      expect(alert).toHaveTextContent("Couldn't switch spaces. Try again. That space no longer exists.");
-      expect(alert).not.toHaveTextContent('Error invoking');
+      expect(alert).toHaveTextContent(/^Couldn't switch spaces\. Try again\.$/);
+      expect(alert).not.toHaveTextContent('EACCES');
+      expect(alert).not.toHaveTextContent('studyat.db');
+      expect(warn).toHaveBeenCalledWith(expect.any(String), err);
+      warn.mockRestore();
     });
 
-    it("a failed add YouTube shows main's reason too", async () => {
+    it('a failed add YouTube shows a fixed sentence only', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const err = new Error(
-        "Error invoking remote method 'spaces:addYouTube': Error: That video is already a space.",
+        "Error invoking remote method 'spaces:addYouTube': Error: EACCES: permission denied",
       );
       setup(sampleSpaces(), { spaces: { addYouTube: vi.fn(() => Promise.reject(err)) } });
       await screen.findByText('Rainy Window');
       await userEvent.type(screen.getByLabelText('YouTube link'), 'https://youtu.be/dQw4w9WgXcQ');
       await userEvent.click(screen.getByRole('button', { name: 'Add YouTube' }));
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        "Couldn't add that video. Try again. That video is already a space.",
-      );
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/^Couldn't add that video\. Try again\.$/);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it('a failed remove shows an inline error', async () => {

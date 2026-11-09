@@ -67,3 +67,21 @@ describe('spacesStore.setActive', () => {
     expect(useSpacesStore.getState().embedErrors).toEqual({ 2: 'embed' });
   });
 });
+
+describe('spacesStore.load', () => {
+  it('a failed load never rejects: it marks loadFailed, logs, and a later load clears it', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('EACCES'))
+      .mockResolvedValue([makeSpace({ id: 1 })]);
+    installMockApi(mockApi({ spaces: { list } }));
+    await expect(useSpacesStore.getState().load()).resolves.toBeUndefined();
+    expect(useSpacesStore.getState()).toMatchObject({ loaded: false, loadFailed: true });
+    expect(warn).toHaveBeenCalled();
+    await useSpacesStore.getState().load();
+    expect(useSpacesStore.getState()).toMatchObject({ loaded: true, loadFailed: false });
+    expect(useSpacesStore.getState().spaces).toHaveLength(1);
+    warn.mockRestore();
+  });
+});

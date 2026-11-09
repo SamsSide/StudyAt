@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarAgenda, CalendarEvent } from '../../shared/widgets';
 import { useStudyStore } from '../shell/store';
+import { useWindowVisibility } from '../spaces/windowVisibility';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { CalendarWidget } from './CalendarWidget';
 
@@ -51,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+  useWindowVisibility.getState().setVisible(true);
 });
 
 describe('CalendarWidget', () => {
@@ -182,12 +184,16 @@ describe('CalendarWidget', () => {
     expect(api.calendar.agenda).toHaveBeenCalledTimes(1);
     await act(() => vi.advanceTimersByTimeAsync(1_000));
     expect(api.calendar.agenda).toHaveBeenCalledTimes(2);
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    // Minimised or hidden to the tray: main says so; `document.hidden` stays false.
+    act(() => useWindowVisibility.getState().setVisible(false));
     await act(() => vi.advanceTimersByTimeAsync(900_000));
     expect(api.calendar.agenda).toHaveBeenCalledTimes(2);
+    // Shown again: ask at once rather than waiting out the interval.
+    await act(async () => {
+      useWindowVisibility.getState().setVisible(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.calendar.agenda).toHaveBeenCalledTimes(3);
   });
 
   it('refreshes once when the window regains focus', async () => {

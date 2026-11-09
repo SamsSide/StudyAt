@@ -181,6 +181,7 @@ export function SpaceBackground() {
   const spaces = useSpacesStore((s) => s.spaces);
   const activeId = useSpacesStore((s) => s.activeId);
   const loaded = useSpacesStore((s) => s.loaded);
+  const loadFailed = useSpacesStore((s) => s.loadFailed);
   const embedErrors = useSpacesStore((s) => s.embedErrors);
   // Minimised or in the tray: main says so (document.hidden stays false there, see windowVisibility).
   const windowVisible = useWindowVisibility((s) => s.visible);
@@ -196,7 +197,23 @@ export function SpaceBackground() {
   const space = spaces.find((s) => s.id === activeId) ?? null;
   const userPlay = space !== null && playId === space.id;
 
-  if (!space) return <div data-testid="space-background" className={styles.bg} />;
+  if (!space)
+    return (
+      <div data-testid="space-background" className={styles.bg}>
+        {loadFailed && !loaded && (
+          <div className={styles.notice} role="status">
+            <p>Couldn't load your spaces.</p>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.primary}`}
+              onClick={() => void useSpacesStore.getState().load()}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+      </div>
+    );
 
   const stillFirst = reduced && !userPlay && space.kind !== 'image';
   const paused = !windowVisible || documentHidden || stillFirst;

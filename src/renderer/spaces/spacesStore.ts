@@ -14,6 +14,8 @@ export interface SpacesState {
   spaces: Space[];
   activeId: number | null;
   loaded: boolean;
+  /** The last `load` failed, so there is nothing honest to show yet. */
+  loadFailed: boolean;
   /** YouTube spaces that failed this session, by id. */
   embedErrors: Record<number, VideoError>;
   load(): Promise<void>;
@@ -37,13 +39,21 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   spaces: [],
   activeId: null,
   loaded: false,
+  loadFailed: false,
   embedErrors: {},
   async load() {
-    const [spaces, settings] = await Promise.all([
-      window.studyat.spaces.list(),
-      window.studyat.settings.get(),
-    ]);
-    set({ spaces, activeId: settings.activeSpaceId, loaded: true });
+    try {
+      const [spaces, settings] = await Promise.all([
+        window.studyat.spaces.list(),
+        window.studyat.settings.get(),
+      ]);
+      set({ spaces, activeId: settings.activeSpaceId, loaded: true, loadFailed: false });
+    } catch (e) {
+      // Never rejects: the background and the panel both call this unattended. The panel shows
+      // the failure and offers "Try again"; main's reason goes to the log only (ruling R38).
+      console.warn('Spaces failed to load', e);
+      set({ loadFailed: true });
+    }
   },
   apply(spaces) {
     set({ spaces });
@@ -101,7 +111,7 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
 
 export const resetSpacesStore = (): void => {
   updateSeq = new Map();
-  useSpacesStore.setState({ spaces: [], activeId: null, loaded: false, embedErrors: {} });
+  useSpacesStore.setState({ spaces: [], activeId: null, loaded: false, loadFailed: false, embedErrors: {} });
 };
 
 export const mediaUrl = (id: number): string => `studyat-media://space/${id}`;

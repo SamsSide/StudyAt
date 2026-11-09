@@ -1,6 +1,12 @@
-// Runs `fn` now and then every `ms`, but only while `enabled` and the window is visible
-// (spec §3.10: Spotify polls only while the widget is open and the window shown).
+// Runs `fn` now and then every `ms`, but only while `enabled` and the window is on screen (spec §3.10:
+// Spotify polls only while the widget is open and the window shown; Calendar and Weather share it).
+// The window runs with `backgroundThrottling: false`, so `document.hidden` stays false when it is
+// minimised or hidden to the tray; main's report (`useWindowVisibility`) is what says so. Either
+// one saying hidden stops the timer; being shown again polls at once, then on the interval.
 import { useEffect, useRef } from 'react';
+import { useWindowVisibility } from '../spaces/windowVisibility';
+
+const onScreen = (): boolean => useWindowVisibility.getState().visible && !document.hidden;
 
 export function usePolling(fn: () => void | Promise<void>, ms: number, enabled: boolean): void {
   const latest = useRef(fn);
@@ -24,12 +30,14 @@ export function usePolling(fn: () => void | Promise<void>, ms: number, enabled: 
       clearInterval(timer);
       timer = null;
     };
-    const onVisibility = () => (document.hidden ? stop() : start());
+    const sync = () => (onScreen() ? start() : stop());
 
-    if (!document.hidden) start();
-    document.addEventListener('visibilitychange', onVisibility);
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    const unsubscribe = useWindowVisibility.subscribe(sync);
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', sync);
+      unsubscribe();
       stop();
     };
   }, [ms, enabled]);

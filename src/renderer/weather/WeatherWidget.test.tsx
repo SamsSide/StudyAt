@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings, WeatherUnits } from '../../shared/types';
 import type { Place, WeatherReport } from '../../shared/widgets';
 import { resetStudyStore, useStudyStore } from '../shell/store';
+import { useWindowVisibility } from '../spaces/windowVisibility';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { placeLabel, shortWeekday, temperature } from './format';
 import { WeatherWidget } from './WeatherWidget';
@@ -66,6 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+  useWindowVisibility.getState().setVisible(true);
 });
 
 describe('weather format', () => {
@@ -104,7 +106,7 @@ describe('WeatherWidget', () => {
     expect(useStudyStore.getState().overlay).toBe('settings');
   });
 
-  it('shows the place, current temperature, condition and today’s high and low', async () => {
+  it("shows the place, current temperature, condition and today's high and low", async () => {
     setup(report());
     await show();
     expect(screen.getByText('Durham')).toBeInTheDocument();
@@ -181,15 +183,19 @@ describe('WeatherWidget', () => {
     expect(api.weather.current).toHaveBeenCalledTimes(4);
   });
 
-  it('stops asking while the window is hidden', async () => {
+  it('stops asking while the window is hidden, and asks at once when shown again', async () => {
     const api = setup(report());
     await show();
-    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
-    act(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
-    });
+    // Minimised or hidden to the tray: main says so; `document.hidden` stays false.
+    act(() => useWindowVisibility.getState().setVisible(false));
     await act(() => vi.advanceTimersByTimeAsync(1_800_000));
     expect(api.weather.current).toHaveBeenCalledTimes(1);
+    // Shown again: ask at once rather than waiting out the interval.
+    await act(async () => {
+      useWindowVisibility.getState().setVisible(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.weather.current).toHaveBeenCalledTimes(2);
   });
   it('ignores an answer that arrives after a newer one', async () => {
     let releaseOld: (r: WeatherReport) => void = () => undefined;

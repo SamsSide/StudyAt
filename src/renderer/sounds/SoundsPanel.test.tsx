@@ -1,9 +1,12 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { Mix, PublicSettings, Sound } from '../../shared/types';
 import { audioEngine } from '../audio/engine';
+import { makeSpace } from '../spaces/fixtures';
+import { spaceAudio as storeSpaceAudio } from '../spaces/spaceAudio';
+import { resetSpacesStore, useSpacesStore } from '../spaces/spacesStore';
 import { installMockApi, mockApi, type MockApi } from '../test/mockApi';
 import { SoundsPanel, type SpaceAudio } from './SoundsPanel';
 
@@ -47,8 +50,10 @@ function setup(
 
 let setLevel: ReturnType<typeof vi.spyOn>;
 let setMasterSpy: ReturnType<typeof vi.spyOn>;
+let warn: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   setLevel = vi.spyOn(audioEngine, 'setLevel').mockResolvedValue(undefined);
   setMasterSpy = vi.spyOn(audioEngine, 'setMaster').mockImplementation(() => undefined);
 });
@@ -175,17 +180,20 @@ describe('SoundsPanel', () => {
     expect(setLevel).not.toHaveBeenCalledWith(gone, 0.5, expect.anything());
   });
 
-  it("a failed relocate says so, with main's reason and without Electron's prefix", async () => {
+  it("a failed relocate shows a fixed sentence only, never main's reason or a path, and logs it", async () => {
     const gone = goneSound();
     const api = setup({ sounds: [...SOUNDS, gone] });
-    (api.sounds.relocate as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error("Error invoking remote method 'sounds:relocate': Error: That file can't be read."),
+    const err = new Error(
+      "Error invoking remote method 'sounds:relocate': Error: EACCES: permission denied, open 'C:\\x.mp3'",
     );
+    (api.sounds.relocate as ReturnType<typeof vi.fn>).mockRejectedValue(err);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'File moved — Relocate…' }));
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent("Couldn't relocate that sound. That file can't be read.");
-    expect(alert).not.toHaveTextContent('Error invoking');
+    expect(alert).toHaveTextContent(/^Couldn't relocate that sound\.$/);
+    expect(alert).not.toHaveTextContent('EACCES');
+    expect(alert).not.toHaveTextContent('x.mp3');
+    expect(warn).toHaveBeenCalledWith(expect.any(String), err);
   });
 
   it('a failed "Add sound…" shows an inline error', async () => {
@@ -193,7 +201,57 @@ describe('SoundsPanel', () => {
     (api.sounds.addFiles as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('disk'));
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Add sound…' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't add that sound. disk");
+    expect(await screen.findByRole('alert')).toHaveTextContent(/^Couldn't add that sound\.$/);
+  });
+
+  it('a failed level save says so and is sent again with the next change', async () => {
+    const api = setup();
+    const set = api.settings.set as ReturnType<typeof vi.fn>;
+    set.mockRejectedValueOnce(new Error('EACCES'));
+    const slider = await screen.findByLabelText('White noise volume');
+    vi.useFakeTimers();
+    fireEvent.change(slider, { target: { value: '0.5' } });
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent(/^Couldn't save your sound levels\.$/);
+    expect(warn).toHaveBeenCalled();
+    // Moving the master slider saves it and resends the levels that didn't save.
+    fireEvent.change(screen.getByLabelText('Master volume'), { target: { value: '0.3' } });
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(set).toHaveBeenLastCalledWith({ soundLevels: { '1': 0.5 }, masterVolume: 0.3 });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('a failed master save is sent again when the panel closes', async () => {
+    const api = setup();
+    const set = api.settings.set as ReturnType<typeof vi.fn>;
+    set.mockRejectedValueOnce(new Error('EACCES'));
+    const slider = await screen.findByLabelText('Master volume');
+    vi.useFakeTimers();
+    fireEvent.change(slider, { target: { value: '0.25' } });
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't save your sound levels.");
+    cleanup();
+    expect(set).toHaveBeenCalledTimes(2);
+    expect(set).toHaveBeenLastCalledWith({ masterVolume: 0.25 });
+  });
+
+  it('a failed first load says so, with no unhandled rejection, and "Try again" loads the sounds', async () => {
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("EACCES: permission denied, open 'C:\\Users\\sam'"))
+      .mockResolvedValue(SOUNDS);
+    installMockApi(mockApi({ sounds: { list }, mixes: { list: vi.fn(() => Promise.resolve([])) } }));
+    render(<SoundsPanel />);
+    expect(await screen.findByText("Couldn't load your sounds.")).toBeInTheDocument();
+    expect(screen.getByTestId('sounds-panel')).not.toHaveTextContent('EACCES');
+    expect(screen.queryByText('No mixes yet.')).not.toBeInTheDocument();
+    expect(warn).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByLabelText('White noise volume')).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load your sounds.")).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add sound…' })).toBeEnabled();
   });
 
   it('"Add sound…" and the mix form wait for the saved soundscape', async () => {
@@ -274,6 +332,22 @@ describe('SoundsPanel', () => {
     setup();
     await screen.findByLabelText('Master volume');
     expect(screen.queryByLabelText('Space audio')).not.toBeInTheDocument();
+  });
+
+  it("the space audio slider follows the active space's level as it changes elsewhere", async () => {
+    resetSpacesStore();
+    const space = makeSpace({
+      id: 1,
+      kind: 'video',
+      opts: { audio: true, volume: 0.5, speed: 1, dim: 0, blur: 0 },
+    });
+    useSpacesStore.setState({ spaces: [space], activeId: 1, loaded: true });
+    setup({ spaceAudio: storeSpaceAudio });
+    const slider = await screen.findByLabelText('Space audio');
+    expect(slider).toHaveValue('0.5');
+    act(() => useSpacesStore.setState({ spaces: [{ ...space, opts: { ...space.opts, volume: 0.2 } }] }));
+    expect(slider).toHaveValue('0.2');
+    resetSpacesStore();
   });
 
   it('space audio slider reads and sets through the prop', async () => {

@@ -4,6 +4,7 @@ import type { Device, NowPlaying, Playlist } from '../../shared/types';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { useStudyStore } from '../shell/store';
 import { SpotifyWidget } from './SpotifyWidget';
+import { useWindowVisibility } from '../spaces/windowVisibility';
 import { usePolling } from './usePolling';
 
 const track = {
@@ -29,6 +30,7 @@ afterEach(() => {
     configurable: true,
     value: false,
   });
+  useWindowVisibility.getState().setVisible(true);
 });
 
 describe('SpotifyWidget', () => {
@@ -273,7 +275,7 @@ describe('SpotifyWidget', () => {
     await waitFor(() => expect(api.spotify.playContext).toHaveBeenCalledWith('spotify:playlist:p1'));
   });
 
-  it('polls every 3 s only while mounted and visible', async () => {
+  it('polls every 3 s only while mounted and the window is shown, and polls at once on return', async () => {
     vi.useFakeTimers();
     const api = setup({ state: 'playing', track });
     const { unmount } = render(<SpotifyWidget />);
@@ -282,24 +284,54 @@ describe('SpotifyWidget', () => {
     await act(() => vi.advanceTimersByTimeAsync(3000));
     expect(calls()).toBe(2);
 
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      value: true,
-    });
-    document.dispatchEvent(new Event('visibilitychange'));
+    // Minimised or hidden to the tray: main says so; `document.hidden` stays false.
+    act(() => useWindowVisibility.getState().setVisible(false));
     await act(() => vi.advanceTimersByTimeAsync(9000));
     expect(calls()).toBe(2);
 
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      value: false,
-    });
-    document.dispatchEvent(new Event('visibilitychange'));
+    act(() => useWindowVisibility.getState().setVisible(true));
     expect(calls()).toBe(3);
 
     unmount();
     await act(() => vi.advanceTimersByTimeAsync(9000));
     expect(calls()).toBe(3);
+  });
+
+  it('also stops while the document itself is hidden', async () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const Probe = () => {
+      usePolling(fn, 1000, true);
+      return null;
+    };
+    render(<Probe />);
+    expect(fn).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(fn).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start while the window is hidden at mount', async () => {
+    vi.useFakeTimers();
+    useWindowVisibility.getState().setVisible(false);
+    const fn = vi.fn();
+    const Probe = () => {
+      usePolling(fn, 1000, true);
+      return null;
+    };
+    render(<Probe />);
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(fn).not.toHaveBeenCalled();
+    act(() => useWindowVisibility.getState().setVisible(true));
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 
   it('usePolling does nothing while disabled', async () => {
