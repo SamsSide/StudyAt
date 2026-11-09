@@ -3,6 +3,9 @@
 // first-run welcome. Later tasks plug their parts in through `Registry`.
 import { type ComponentType, useEffect, useState } from 'react';
 import type { WidgetId } from '../../shared/types';
+import { AddImageDialog } from '../images/AddImageDialog';
+import { ImageWidgets } from '../images/ImageWidget';
+import { useImagesStore } from '../images/imagesStore';
 import '../styles/tokens.css';
 import { Dock } from './Dock';
 import { LoadFailed } from './LoadFailed';
@@ -14,6 +17,7 @@ import { initStudyStore, type PanelId, useStudyStore } from './store';
 import { TopBar } from './TopBar';
 import { useAutoHide } from './useAutoHide';
 import { useShortcuts } from './useShortcuts';
+import { useClearHeldTask } from '../timer/useClearHeldTask';
 import { Welcome } from './Welcome';
 import { WidgetFrame } from './WidgetFrame';
 
@@ -85,7 +89,9 @@ export function Shell({ registry }: { registry: Registry }) {
   const setFocusView = useStudyStore((s) => s.setFocusView);
 
   useEffect(() => initStudyStore(), []);
+  useEffect(() => void useImagesStore.getState().load(), []);
   useShortcuts();
+  useClearHeldTask();
   const visible = useAutoHide(settings?.autoHideSeconds ?? DEFAULT_AUTO_HIDE_SECONDS);
   // An overlay always shows over everything; focus view keeps the chrome hidden whatever the mouse
   // does (spec §3.4); otherwise auto-hide decides.
@@ -117,6 +123,8 @@ export function Shell({ registry }: { registry: Registry }) {
             </WidgetFrame>
           );
         })}
+      {/* Image widgets float after the fixed ones (v1.1 spec §3.6). */}
+      {settings && <ImageWidgets />}
 
       <TopBar />
       <Dock />
@@ -143,6 +151,7 @@ export function Shell({ registry }: { registry: Registry }) {
           {OverlayBody ? <OverlayBody /> : <ShortcutsHelp />}
         </Overlay>
       )}
+      <AddImageDialog />
     </div>
   );
 }

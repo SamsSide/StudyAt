@@ -39,6 +39,18 @@ describe('Shell', () => {
     expect(screen.queryByTestId('tasks-widget')).not.toBeInTheDocument();
   });
 
+  it('loads the image widgets on init and shows them after the fixed widgets', async () => {
+    const api = onboardedApi();
+    vi.mocked(api.images.list).mockResolvedValue([
+      { id: 2, url: 'studyat-media://image/2', width: 100, height: 100, x: 0.5, y: 0.5, scale: 1, bare: false },
+    ]);
+    await renderShell(api);
+    const img = await screen.findByRole('img', { name: 'Image 1' });
+    expect(api.images.list).toHaveBeenCalledTimes(1);
+    const timer = screen.getByTestId('timer-widget');
+    expect(timer.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('dock opens sounds panel and closing it via Esc', async () => {
     const user = userEvent.setup();
     await renderShell();

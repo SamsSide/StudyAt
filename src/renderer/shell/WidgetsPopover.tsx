@@ -1,9 +1,11 @@
 // The dock's Widgets popover (widgets addendum §1): a small glass sheet beside the dock listing the
 // Calendar, Weather, Quote and Notes widgets, each with a macOS-style switch bound to toggleWidget.
-// Timer, Tasks and Spotify keep their own dock items. Focus moves to the first switch on open and
+// Timer, Tasks and Spotify keep their own dock items. Below the switches, "Add image…" opens the
+// image dialog (v1.1 spec §3.6) in the popover's place. Focus moves to the first switch on open and
 // back to the dock item on close; Esc (useShortcuts), W, a click outside or tabbing away closes it.
 import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
 import type { WidgetId } from '../../shared/types';
+import { useImagesStore } from '../images/imagesStore';
 import styles from './shell.module.css';
 import { useStudyStore } from './store';
 
@@ -17,6 +19,8 @@ export const POPOVER_WIDGETS: readonly { id: WidgetId; label: string }[] = [
 /** Gap between the dock item and the popover, and the least gap to the window's edge. */
 const GAP = 12;
 const EDGE = 8;
+/** The popover's menu items, in order, for Up and Down. */
+const ITEMS = '[role="switch"], [data-popover-item]';
 
 export function WidgetsPopover({
   id,
@@ -29,6 +33,7 @@ export function WidgetsPopover({
 }) {
   const widgets = useStudyStore((s) => s.settings?.widgets);
   const toggleWidget = useStudyStore((s) => s.toggleWidget);
+  const setAdding = useImagesStore((s) => s.setAdding);
   const ref = useRef<HTMLDivElement>(null);
 
   // Beside the dock item, vertically centred on it, kept inside the window (and again on resize).
@@ -70,10 +75,10 @@ export function WidgetsPopover({
     return () => document.removeEventListener('pointerdown', onDown);
   }, [anchor, onClose]);
 
-  /** Up and Down move between the switches, as in a menu. */
+  /** Up and Down move between the items, as in a menu. */
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    const items = [...(ref.current?.querySelectorAll<HTMLElement>('[role="switch"]') ?? [])];
+    const items = [...(ref.current?.querySelectorAll<HTMLElement>(ITEMS) ?? [])];
     const at = items.indexOf(document.activeElement as HTMLElement);
     const step = e.key === 'ArrowDown' ? 1 : -1;
     items[(at + step + items.length) % items.length]?.focus();
@@ -112,6 +117,17 @@ export function WidgetsPopover({
           </li>
         ))}
       </ul>
+      <button
+        type="button"
+        data-popover-item
+        className={styles.popoverRow}
+        onClick={() => {
+          onClose();
+          setAdding(true);
+        }}
+      >
+        Add image…
+      </button>
     </div>
   );
 }

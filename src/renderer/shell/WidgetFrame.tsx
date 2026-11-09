@@ -15,7 +15,8 @@
 //
 // Settings widgets read `settings.widgets[id]` and save through `patchWidget`; an image widget
 // (spec §3.6) passes its own `pos`, `onPatch` and `onClose` instead. `chrome="bare"` drops the
-// glass and the header, and the body itself becomes the drag handle.
+// glass and the header, and the body itself becomes the drag handle: focusable, labelled
+// `bodyLabel` (default "Move {title}"), and focused by a press so the arrow keys work next.
 import {
   type KeyboardEvent,
   type PointerEvent,
@@ -122,6 +123,8 @@ interface WidgetFrameProps {
   onClose?(): void;
   /** Extra controls: in the header when framed, in a floating toolbar when bare. */
   headerExtra?: ReactNode;
+  /** The bare body's accessible name; "Move {title}" when not given. */
+  bodyLabel?: string;
 }
 
 export function WidgetFrame({
@@ -133,6 +136,7 @@ export function WidgetFrame({
   onPatch,
   onClose,
   headerExtra,
+  bodyLabel,
 }: WidgetFrameProps) {
   const storedPos = useStudyStore((s) => (id ? s.settings?.widgets[id] : undefined));
   const patchWidget = useStudyStore((s) => s.patchWidget);
@@ -327,9 +331,13 @@ export function WidgetFrame({
             role="button"
             tabIndex={0}
             className={`${styles.widgetBody} ${styles.bareBody}`}
-            aria-label={`Move ${title}`}
+            aria-label={bodyLabel ?? `Move ${title}`}
             title="Drag to move, or use the arrow keys"
-            onPointerDown={onMoveDown}
+            onPointerDown={(e) => {
+              // The drag's preventDefault would stop the press focusing it.
+              e.currentTarget.focus({ preventScroll: true });
+              onMoveDown(e);
+            }}
             onKeyDown={onMoveKey}
           >
             {children}

@@ -1,0 +1,176 @@
+/* Image widgets and the "Add image…" dialog (v1.1 spec §3.6). */
+
+/* The image's box: WidgetFrame scales it, so its size is set inline at the 240 × 240 fit. */
+.picture {
+  position: relative;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+
+/* In bare chrome the frame's body rounds the corners (12 px). */
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  min-height: 64px;
+  border: 1px dashed var(--separator);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+/* In the bare toolbar the question floats over the space, so it gets its own glass. */
+.confirm:only-child {
+  margin-top: 0;
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.confirmText {
+  flex: 1;
+  padding: 0 var(--space-2) 0 var(--space-1);
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.textButton,
+.dangerButton,
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease);
+}
+
+/* The bare toolbar sits straight on the space: frosted so it reads over any picture. */
+.textButton {
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.textButton:hover {
+  background: var(--glass-fill-raised);
+}
+
+.dangerButton {
+  border-color: rgba(255, 155, 155, 0.35);
+  background: rgba(255, 110, 110, 0.18);
+  color: var(--danger);
+}
+
+.dangerButton:hover {
+  background: rgba(255, 110, 110, 0.28);
+}
+
+.primaryButton {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-text);
+}
+
+.primaryButton:disabled,
+.textButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.textButton:focus-visible,
+.dangerButton:focus-visible,
+.primaryButton:focus-visible,
+.input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* The dialog body */
+.add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+}
+
+.link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font: inherit;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .textButton,
+  .dangerButton,
+  .primaryButton {
+    transition: none;
+  }
+}
