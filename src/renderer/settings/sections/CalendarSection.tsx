@@ -5,7 +5,7 @@
 // so it happens only on an explicit Save, and only when the list differs from the last one saved here.
 import { useEffect, useId, useRef, useState } from 'react';
 import type { CalendarStatus } from '../../../shared/widgets';
-import { ipcErrorMessage } from '../../lib/ipcError';
+import { logIpcError } from '../../lib/ipcError';
 import { Row } from '../controls';
 import styles from '../settings.module.css';
 
@@ -13,6 +13,17 @@ const MAX_CALENDARS = 5;
 const MAX_URL_LENGTH = 2000;
 const PRIVACY_NOTE = 'This link is private — StudyAt keeps it encrypted on this PC.';
 const SAVE_FAILED = "Couldn't save your calendars. Please try again.";
+const HTTPS_ONLY = 'Calendar addresses must start with https://';
+
+/** As main checks it: an https address with a host. Checked here so the line is the renderer's own. */
+const isHttpsUrl = (u: string): boolean => {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' && url.hostname !== '';
+  } catch {
+    return false;
+  }
+};
 
 const cleaned = (urls: string[]): string[] => urls.map((u) => u.trim()).filter((u) => u !== '');
 const sameList = (a: string[], b: string[]): boolean =>
@@ -38,7 +49,7 @@ export function CalendarSection() {
     let live = true;
     window.studyat.calendar.status().then(
       (s) => live && setStatus(s),
-      (err: unknown) => console.error('Calendar status failed', err),
+      (err: unknown) => logIpcError('Calendar status failed', err),
     );
     return () => {
       live = false;
@@ -49,17 +60,21 @@ export function CalendarSection() {
   const canSave = !busy && next.length > 0 && !(lastSaved && sameList(next, lastSaved));
 
   const send = async (list: string[]): Promise<void> => {
+    setSaved(false);
+    if (!list.every(isHttpsUrl)) {
+      setError(HTTPS_ONLY);
+      return;
+    }
     setBusy(true);
     setError('');
-    setSaved(false);
     try {
       setStatus(await window.studyat.calendar.setUrls(list));
       setLastSaved(list);
       setUrls(['']);
       setSaved(list.length > 0);
     } catch (err) {
-      console.error('Saving calendars failed', err);
-      setError(ipcErrorMessage(err) || SAVE_FAILED);
+      logIpcError('Saving calendars failed', err);
+      setError(SAVE_FAILED);
     } finally {
       setBusy(false);
     }

@@ -12,7 +12,7 @@
   height: 100vh;
   padding: var(--space-3) var(--space-3) var(--space-2) var(--space-5);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 26px;
+  border-radius: var(--radius-capsule);
   background: var(--glass-sheen), rgba(22, 24, 31, 0.95);
   box-shadow: var(--glass-highlight);
   overflow: hidden;
@@ -76,6 +76,14 @@
 
 .primary:active {
   transform: scale(0.97);
+}
+
+/* The class sets its own shadow, which outranks the global focus ring: keep both. */
+.primary:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--focus-ring),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .link {

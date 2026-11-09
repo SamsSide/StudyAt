@@ -4,6 +4,7 @@ import { type CSSProperties, useEffect, useId, useRef, useState } from 'react';
 import { BUILTIN_CHIME_IDS, CHIME_NAMES } from '../../audio/chimes';
 import { audioEngine } from '../../audio/engine';
 import { chimeUrl } from '../../audio/useChimes';
+import { logIpcError } from '../../lib/ipcError';
 import { useStudyStore } from '../../shell/store';
 import type { ChimeId, Sound } from '../../../shared/types';
 import { clamp, NumberField, Row, Toggle } from '../controls';
@@ -45,7 +46,7 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
         // note rather than an alert.
         setNote('No new sound was added. If the file is already in your sounds, pick it from the list.');
     } catch (err) {
-      console.error('Choosing a custom chime failed', err);
+      logIpcError('Choosing a custom chime failed', err);
       setMessage("That file couldn't be added.");
     }
   };
@@ -55,7 +56,7 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
   const preview = (): void => {
     void audioEngine
       .playChime(value, { volume, repeat, customUrl: chimeUrl(value) })
-      .catch((err: unknown) => console.error('Chime preview failed', err));
+      .catch((err: unknown) => logIpcError('Chime preview failed', err));
   };
 
   return (
@@ -162,7 +163,7 @@ export function ChimesSection({ settings, update }: SectionProps) {
     let live = true;
     window.studyat.sounds.list().then(
       (list) => live && setFiles(list.filter((s) => s.kind === 'file')),
-      (err: unknown) => console.error('Listing sounds failed', err),
+      (err: unknown) => logIpcError('Listing sounds failed', err),
     );
     return () => {
       live = false;
@@ -217,18 +218,18 @@ export function ChimesSection({ settings, update }: SectionProps) {
       <Toggle
         label="Soft tick in the last minute"
         checked={settings.tickLastMinute}
-        onChange={(v) => void update({ tickLastMinute: v })}
+        onChange={(v) => update({ tickLastMinute: v })}
       />
       <Toggle
         label="Chime when focus starts"
         checked={settings.chimeOnStart}
-        onChange={(v) => void update({ chimeOnStart: v })}
+        onChange={(v) => update({ chimeOnStart: v })}
       />
       <Toggle
         label="Desktop notifications"
         hint="Shown when a session ends and the window is hidden"
         checked={settings.notifications}
-        onChange={(v) => void update({ notifications: v })}
+        onChange={(v) => update({ notifications: v })}
       />
     </section>
   );

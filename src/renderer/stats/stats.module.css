@@ -340,7 +340,7 @@
 
 .danger {
   border: 0;
-  background: #f0a39a;
+  background: var(--danger-fill);
   color: var(--accent-text);
 }
 
@@ -351,6 +351,24 @@
 
 .secondary:hover {
   background: var(--glass-fill-raised);
+}
+
+/* These classes set their own shadow, which outranks the global focus ring: keep both. */
+.primary:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--focus-ring),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.secondary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), var(--shadow-sm);
+}
+
+.danger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Charts */

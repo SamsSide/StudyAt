@@ -1,8 +1,9 @@
 // Settings → Data (spec §3.11): exports, the backups list with "Restore…", the data folder.
 // Restore goes straight to main, whose native dialog is the one confirmation (spec §3.6); the app restarts after.
+// A failure shows a fixed line; main's reason (a path, an fs code) goes to the log only (ruling R38).
 import { useEffect, useState } from 'react';
 import type { BackupInfo } from '../../../shared/types';
-import { ipcErrorMessage } from '../../lib/ipcError';
+import { logIpcError } from '../../lib/ipcError';
 import styles from '../settings.module.css';
 
 const formatSize = (bytes: number): string =>
@@ -42,7 +43,7 @@ export function DataSection() {
     window.studyat.data.listBackups().then(
       (list) => live && setBackups(list),
       (err: unknown) => {
-        console.error('Listing backups failed', err);
+        logIpcError('Listing backups failed', err);
         if (live) setError("Couldn't list your backups.");
       },
     );
@@ -58,9 +59,8 @@ export function DataSection() {
       const result = await work();
       if (done && result !== false) setNotice(done);
     } catch (err) {
-      console.error(failure, err);
-      const reason = ipcErrorMessage(err);
-      setError(reason ? `${failure} ${reason}` : failure);
+      logIpcError(failure, err);
+      setError(failure);
     }
   };
 

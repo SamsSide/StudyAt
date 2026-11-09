@@ -1,11 +1,14 @@
 // Settings → Shortcuts (spec §3.7): the editable global hotkey, plus the in-app keys for reference.
 // If main can't register the hotkey, `settings.set` rejects and its message shows under the field.
 import { type KeyboardEvent, useId, useState } from 'react';
-import { ipcErrorMessage } from '../../lib/ipcError';
+import { ipcErrorMessage, logIpcError } from '../../lib/ipcError';
 import { SHORTCUTS } from '../../shell/useShortcuts';
 import { Row } from '../controls';
 import styles from '../settings.module.css';
 import type { SectionProps } from './types';
+
+/** How main's hotkey refusals end (src/main/hotkey.ts). */
+const HOTKEY_REFUSAL_END = 'Choose another shortcut.';
 
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta']);
 
@@ -83,9 +86,12 @@ export function ShortcutsSection({ settings, updateOrThrow }: SectionProps) {
     try {
       await updateOrThrow({ globalHotkey: hotkey });
     } catch (err) {
-      console.error('Registering the global hotkey failed', err);
+      logIpcError('Registering the global hotkey failed', err);
       setShown(settings.globalHotkey);
-      setError(ipcErrorMessage(err) || "That shortcut couldn't be registered.");
+      // Main's hotkey refusal is designed copy (it names the keys and ends "Choose another
+      // shortcut."), so it is shown; any other failure gets the fixed line (ruling R38).
+      const reason = ipcErrorMessage(err);
+      setError(reason.endsWith(HOTKEY_REFUSAL_END) ? reason : "That shortcut couldn't be registered.");
     }
   };
 

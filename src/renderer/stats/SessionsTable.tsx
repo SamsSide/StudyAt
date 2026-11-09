@@ -5,6 +5,7 @@
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { NO_SUBJECT_NAME } from '../../core/stats/totals';
 import type { Session } from '../../shared/types';
+import { logIpcError } from '../lib/ipcError';
 import { formatHm } from '../shell/format';
 import { useStudyStore } from '../shell/store';
 import { formatClockTime, formatDayLabel } from './format';
@@ -115,7 +116,8 @@ export function SessionsTable({
       await window.studyat.stats.updateSession(s.id, { subjectId });
       settle(s.id, subjectId, (e) => ({ ...e, saved: true }));
       onChanged();
-    } catch {
+    } catch (err) {
+      logIpcError('Changing a session subject failed', err);
       settle(s.id, subjectId, () => null);
       setError('Couldn’t change that session’s subject. Please try again.');
     }
@@ -139,7 +141,8 @@ export function SessionsTable({
       setConfirming(null);
       wrap.current?.focus();
       onChanged();
-    } catch {
+    } catch (err) {
+      logIpcError('Deleting a session failed', err);
       setError('Couldn’t delete that session. Please try again.');
     }
   };

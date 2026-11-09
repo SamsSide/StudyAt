@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { ipcErrorMessage } from './ipcError';
+import { describe, expect, it, vi } from 'vitest';
+import { ipcErrorMessage, logIpcError } from './ipcError';
 
 describe('ipcErrorMessage', () => {
   it("strips Electron's remote-method prefix", () => {
@@ -20,5 +20,27 @@ describe('ipcErrorMessage', () => {
     expect(ipcErrorMessage("Error invoking remote method 'a:b': Error: Hi")).toBe('Hi');
     expect(ipcErrorMessage(undefined)).toBe('');
     expect(ipcErrorMessage({})).toBe('');
+  });
+});
+
+describe('logIpcError', () => {
+  it("warns with the context and main's reason, without the remote-method prefix", () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    logIpcError(
+      'Exporting failed',
+      new Error(
+        "Error invoking remote method 'data:exportJson': Error: EACCES: permission denied, open 'C:\\x'",
+      ),
+    );
+    expect(warn).toHaveBeenCalledWith('Exporting failed', "EACCES: permission denied, open 'C:\\x'");
+    warn.mockRestore();
+  });
+
+  it('passes on a value with no message as it is', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const odd = { code: 1 };
+    logIpcError('Something failed', odd);
+    expect(warn).toHaveBeenCalledWith('Something failed', odd);
+    warn.mockRestore();
   });
 });

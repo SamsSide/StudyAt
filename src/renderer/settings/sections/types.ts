@@ -4,6 +4,6 @@ export interface SectionProps {
   settings: PublicSettings;
   /** Saves a patch through the store. A refusal from main is logged, not thrown; resolves false then. */
   update: (patch: SettingsPatch) => Promise<boolean>;
-  /** As `update`, but rejects with main's message, for fields that show it (the hotkey). */
+  /** As `update`, but rejects, for the one field that shows main's refusal (the hotkey, ruling R38). */
   updateOrThrow: (patch: SettingsPatch) => Promise<void>;
 }

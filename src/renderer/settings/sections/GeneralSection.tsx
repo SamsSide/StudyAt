@@ -12,7 +12,7 @@ export function GeneralSection({ settings, update }: SectionProps) {
       <Toggle
         label="Launch at start-up"
         checked={settings.launchAtStartup}
-        onChange={(v) => void update({ launchAtStartup: v })}
+        onChange={(v) => update({ launchAtStartup: v })}
       />
       <NumberField
         label="Hide the controls after"
@@ -26,7 +26,7 @@ export function GeneralSection({ settings, update }: SectionProps) {
       <Toggle
         label="Show the mini timer when the window is hidden"
         checked={settings.miniWhenHidden}
-        onChange={(v) => void update({ miniWhenHidden: v })}
+        onChange={(v) => update({ miniWhenHidden: v })}
       />
       <p className={styles.note}>StudyAt keeps running in the tray when you close the window.</p>
     </section>

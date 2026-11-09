@@ -3,6 +3,7 @@
 // study-dev rule 4); this store only mirrors it and sends commands through `window.studyat`.
 import { create } from 'zustand';
 import type { Unsubscribe } from '../../shared/ipc';
+import { logIpcError } from '../lib/ipcError';
 import type {
   PublicSettings,
   SettingsPatch,
@@ -31,6 +32,8 @@ export interface StudyState {
   widgetsPopover: boolean;
   /** A Settings section a deep link asked for; the Settings overlay takes it and clears it. */
   settingsSection: string | null;
+  /** Settings couldn't be loaded at launch, even after retrying; the shell offers "Try again". */
+  settingsFailed: boolean;
 
   setPanel(panel: PanelId | null): void;
   /** Opens `panel`, or closes it if it is already open. */
@@ -45,6 +48,9 @@ export interface StudyState {
   refreshOverview(): Promise<void>;
   refreshSettings(): Promise<void>;
   refreshSubjects(): Promise<void>;
+  /** Loads settings, trying three times with a backoff (on launch and from "Try again"). Never
+   *  rejects: if every try fails it sets `settingsFailed`. */
+  retrySettings(): Promise<void>;
   /** Sends a patch to main and keeps what main returns (main sanitises and merges). */
   updateSettings(patch: SettingsPatch): Promise<void>;
   /** Changes one widget's open/position, optimistically, then persists it; a failed save is undone. */
@@ -78,7 +84,16 @@ const initialData = () => ({
   miniShown: false,
   widgetsPopover: false,
   settingsSection: null,
+  settingsFailed: false,
 });
+
+/** Waits before the second and third tries at loading settings on launch. */
+const SETTINGS_RETRY_MS = [400, 1200] as const;
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** The settings that change what the overview counts (goal, streak day, day boundary, appplan §5). */
+const changesOverview = (a: PublicSettings, b: PublicSettings): boolean =>
+  a.goalMinutes !== b.goalMinutes || a.streakMinutes !== b.streakMinutes || a.rolloverHour !== b.rolloverHour;
 
 const api = () => window.studyat;
 
@@ -100,6 +115,24 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
   refreshSettings: async () => set({ settings: await api().settings.get() }),
   refreshSubjects: async () => set({ subjects: await api().subjects.list() }),
 
+  retrySettings: async () => {
+    set({ settingsFailed: false });
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const settings = await api().settings.get();
+        set({ settings, settingsFailed: false });
+        return;
+      } catch (err) {
+        logIpcError('Loading settings failed', err);
+        const delay = SETTINGS_RETRY_MS[attempt];
+        if (delay === undefined) break;
+        await wait(delay);
+      }
+    }
+    // A push from main may have landed meanwhile; only then is there nothing to report.
+    if (!get().settings) set({ settingsFailed: true });
+  },
+
   updateSettings: async (patch) => set({ settings: await api().settings.set(patch) }),
 
   patchWidget: async (id, patch) => {
@@ -112,7 +145,7 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
       await get().updateSettings({ widgets: { [id]: next } });
     } catch (err) {
       // The change didn't stick: show what main has, or failing that put the widget back.
-      console.error('Saving the widget failed', err);
+      logIpcError('Saving the widget failed', err);
       try {
         await get().refreshSettings();
       } catch {
@@ -149,7 +182,7 @@ export function initStudyStore(): Unsubscribe {
   const onState = (timer: TimerState): void => {
     useStudyStore.setState({ timer });
     const minute = Math.floor(timer.todayFocusMs / MINUTE);
-    if (lastMinute !== -1 && minute !== lastMinute) void store.refreshOverview();
+    if (lastMinute !== -1 && minute !== lastMinute) refresh();
     lastMinute = minute;
   };
 
@@ -158,13 +191,20 @@ export function initStudyStore(): Unsubscribe {
       pushed = true;
       onState(timer);
     }),
-    studyat.timer.onSegmentEnd(() => void store.refreshOverview()),
+    studyat.timer.onSegmentEnd(() => refresh()),
     studyat.app.onFullscreen((fullscreen) => useStudyStore.setState({ fullscreen })),
     // Main pushes every settings write, wherever it came from (a widget, Settings, another window).
-    studyat.settings.onChanged((settings) => useStudyStore.setState({ settings })),
+    studyat.settings.onChanged((settings) => useStudyStore.setState({ settings, settingsFailed: false })),
+    // A new goal, streak threshold or rollover hour changes today's numbers: ask main again,
+    // whether the change came from a push or from this window's updateSettings.
+    useStudyStore.subscribe((now, before) => {
+      if (now.settings && before.settings && changesOverview(now.settings, before.settings)) refresh();
+    }),
   ];
 
-  const refresh = (): void => void store.refreshOverview().catch(() => undefined);
+  function refresh(): void {
+    store.refreshOverview().catch((err: unknown) => logIpcError('Loading the overview failed', err));
+  }
   const onVisibility = (): void => {
     if (document.visibilityState === 'visible') refresh();
   };
@@ -179,9 +219,9 @@ export function initStudyStore(): Unsubscribe {
   void studyat.timer.get().then((timer) => {
     if (!pushed) onState(timer);
   });
-  void store.refreshSettings();
-  void store.refreshOverview();
-  void store.refreshSubjects();
+  void store.retrySettings();
+  refresh();
+  store.refreshSubjects().catch((err: unknown) => logIpcError('Loading subjects failed', err));
 
   return () => {
     for (const stop of stops) stop();

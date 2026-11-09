@@ -2,7 +2,7 @@
 // days studied, best day, top subjects, longest session, streak at the week's end and goal days.
 // Every figure is main's stored recap. A week with no study gets the kind empty-week line instead.
 // `RecapPopup` is the once-only pop-up useRecapPopup shows on launch.
-import { type KeyboardEvent, useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import type { WeeklyRecap } from '../../shared/types';
 import { formatHm } from '../shell/format';
 import { useStudyStore } from '../shell/store';
@@ -92,29 +92,43 @@ export function RecapCard({
 
 /**
  * The recap as a modal pop-up: focus starts on "Got it" and returns where it was; Esc or a click
- * on the backdrop closes it. Esc is marked handled so the shell doesn't also close a panel.
+ * on the backdrop closes it. While open it owns the keyboard, as the away prompt does: a
+ * capture-phase listener on window runs first and stops every key, so no app shortcut (S, R,
+ * Space and the rest) acts behind it. Enter and Space keep their default and press "Got it".
  */
 export function RecapPopup({ recap, onClose }: { recap: WeeklyRecap; onClose: () => void }) {
   const titleId = useId();
   const dialog = useRef<HTMLDivElement>(null);
+  // The key listener is added once; it reads the latest onClose through this ref.
+  const close = useRef(onClose);
+  useLayoutEffect(() => {
+    close.current = onClose;
+  });
 
   useEffect(() => {
     const previous = document.activeElement;
-    dialog.current?.querySelector<HTMLButtonElement>('[data-recap-close]')?.focus();
+    const gotIt = (): HTMLButtonElement | null =>
+      dialog.current?.querySelector<HTMLButtonElement>('[data-recap-close]') ?? null;
+    gotIt()?.focus();
+
+    const onKey = (e: KeyboardEvent): void => {
+      e.stopPropagation();
+      const inside = e.target instanceof Node && dialog.current?.contains(e.target);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close.current();
+      } else if (e.key === 'Tab' || !inside) {
+        // "Got it" is the only control: keep focus on it.
+        e.preventDefault();
+        gotIt()?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
     return () => {
+      window.removeEventListener('keydown', onKey, true);
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, []);
-
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
-    } else if (e.key === 'Tab') {
-      // "Got it" is the only control: keep focus on it.
-      e.preventDefault();
-    }
-  };
 
   return (
     <div
@@ -123,14 +137,7 @@ export function RecapPopup({ recap, onClose }: { recap: WeeklyRecap; onClose: ()
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div
-        ref={dialog}
-        className={styles.popup}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onKeyDown={onKeyDown}
-      >
+      <div ref={dialog} className={styles.popup} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <RecapCard recap={recap} onClose={onClose} titleId={titleId} />
       </div>
     </div>

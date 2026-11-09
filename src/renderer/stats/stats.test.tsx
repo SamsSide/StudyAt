@@ -542,17 +542,46 @@ describe('useRecapPopup', () => {
     expect(api.recaps.markShown).toHaveBeenCalledTimes(1);
   });
 
-  it('Esc closes it without closing anything else', async () => {
+  it('Esc closes it without reaching the app shortcuts', async () => {
     api = mockApi({ recaps: { pending: vi.fn(() => Promise.resolve(emptyRecap())) } });
     installMockApi(api);
-    const onWindowKey = vi.fn((e: KeyboardEvent) => e.defaultPrevented);
+    const onWindowKey = vi.fn();
     window.addEventListener('keydown', onWindowKey);
     render(<PopupHost />);
     await screen.findByText("No focus time last week — that's okay. A fresh week starts now.");
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(onWindowKey).toHaveReturnedWith(true);
+    expect(onWindowKey).not.toHaveBeenCalled();
     window.removeEventListener('keydown', onWindowKey);
+  });
+
+  it('takes the keyboard while open: shortcuts never fire behind it, Enter presses Got it', async () => {
+    api = mockApi({ recaps: { pending: vi.fn(() => Promise.resolve(recap())) } });
+    installMockApi(api);
+    const onWindowKey = vi.fn();
+    window.addEventListener('keydown', onWindowKey);
+    render(<PopupHost />);
+    const dialog = await screen.findByRole('dialog', { name: 'Your week: 2 Nov–8 Nov' });
+    const gotIt = within(dialog).getByRole('button', { name: 'Got it' });
+    // Focus slips out (a click on the page behind, say): keys still don't reach the app.
+    gotIt.blur();
+    await userEvent.keyboard('srn');
+    expect(onWindowKey).not.toHaveBeenCalled();
+    expect(gotIt).toHaveFocus();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onWindowKey).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', onWindowKey);
+  });
+
+  it('Space presses Got it too', async () => {
+    api = mockApi({ recaps: { pending: vi.fn(() => Promise.resolve(recap())) } });
+    installMockApi(api);
+    render(<PopupHost />);
+    await screen.findByRole('dialog', { name: 'Your week: 2 Nov–8 Nov' });
+    await userEvent.keyboard(' ');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('renders nothing when no recap is pending', async () => {

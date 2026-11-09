@@ -25,6 +25,14 @@ function setup(api: MockApi = mockApi(), settings: PublicSettings = publicDefaul
   return api;
 }
 
+/** An fs failure as it arrives over IPC: its code and a path must never reach the screen (R38). */
+const fsFailure = (channel: string) =>
+  new Error(`Error invoking remote method '${channel}': Error: EACCES: permission denied, open 'C:\\x'`);
+
+const expectNoFsDetail = (el: HTMLElement) => {
+  expect(el.textContent).not.toMatch(/EACCES|permission denied|C:\\/);
+};
+
 const openSection = async (name: string) => {
   await userEvent.click(screen.getByRole('tab', { name }));
 };
@@ -33,6 +41,7 @@ beforeEach(() => {
   resetStudyStore();
   vi.clearAllMocks();
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
 describe('SettingsOverlay', () => {
@@ -253,7 +262,7 @@ describe('SettingsOverlay', () => {
         set: vi.fn(() =>
           Promise.reject(
             new Error(
-              "Error invoking remote method 'settings:set': Error: Ctrl+Alt+K is already used by another app",
+              "Error invoking remote method 'settings:set': Error: Ctrl+Alt+K is in use by another app. Choose another shortcut.",
             ),
           ),
         ),
@@ -265,7 +274,7 @@ describe('SettingsOverlay', () => {
     expect(field).toHaveValue('Ctrl+Alt+P');
     fireEvent.keyDown(field, { key: 'k', code: 'KeyK', ctrlKey: true, altKey: true });
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('Ctrl+Alt+K is already used by another app');
+    expect(alert).toHaveTextContent(/^Ctrl\+Alt\+K is in use by another app\. Choose another shortcut\.$/);
     expect(alert).not.toHaveTextContent('Error invoking');
     expect(api.settings.set).toHaveBeenCalledWith({
       globalHotkey: 'Ctrl+Alt+K',
@@ -316,24 +325,83 @@ describe('SettingsOverlay', () => {
     expect(api.data.restoreBackup).toHaveBeenCalledWith('daily-2026-11-07.sqlite');
   });
 
-  it("data: a refused restore shows main's clean message", async () => {
+  it('data: a failed restore shows a fixed line, never the path or the fs code', async () => {
     const api = mockApi({
       data: {
         listBackups: vi.fn(() =>
           Promise.resolve([{ name: 'b.sqlite', size: 10, createdAt: 1_762_473_600_000 }]),
         ),
-        restoreBackup: vi.fn(() =>
-          Promise.reject(
-            new Error("Error invoking remote method 'data:restoreBackup': Error: That backup is damaged"),
-          ),
-        ),
+        restoreBackup: vi.fn(() => Promise.reject(fsFailure('data:restoreBackup'))),
+        exportJson: vi.fn(() => Promise.reject(fsFailure('data:exportJson'))),
       },
     });
     setup(api);
     await openSection('Data');
     await userEvent.click(await screen.findByRole('button', { name: 'Restore b.sqlite' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      "Couldn't restore that backup. That backup is damaged",
+    let alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/^Couldn't restore that backup\.$/);
+    expectNoFsDetail(alert);
+    expect(console.warn).toHaveBeenCalledWith(
+      "Couldn't restore that backup.",
+      "EACCES: permission denied, open 'C:\\x'",
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Export JSON' }));
+    alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/^Couldn't export JSON\.$/);
+    expectNoFsDetail(alert);
+  });
+
+  it('shortcuts: a failure that is not a hotkey refusal shows the fixed line', async () => {
+    const api = mockApi({ settings: { set: vi.fn(() => Promise.reject(fsFailure('settings:set'))) } });
+    setup(api);
+    await openSection('Shortcuts');
+    fireEvent.keyDown(screen.getByLabelText('Start or pause the timer'), {
+      key: 'k',
+      code: 'KeyK',
+      ctrlKey: true,
+      altKey: true,
+    });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/^That shortcut couldn't be registered\.$/);
+    expectNoFsDetail(alert);
+  });
+
+  it('subjects: a failed add or change shows a fixed line, never the fs detail', async () => {
+    const api = mockApi({
+      subjects: {
+        create: vi.fn(() => Promise.reject(fsFailure('subjects:create'))),
+        archive: vi.fn(() => Promise.reject(fsFailure('subjects:archive'))),
+      },
+    });
+    setup(api);
+    await openSection('Subjects');
+    await userEvent.type(screen.getByLabelText('New subject'), 'Chemistry');
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+    let alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/^That subject couldn't be added\. Please try again\.$/);
+    expectNoFsDetail(alert);
+    const first = seedSubjects()[0]!;
+    await userEvent.click(screen.getByRole('button', { name: `Archive ${first.name}` }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        /^That change couldn't be saved\. Please try again\.$/,
+      ),
+    );
+    alert = screen.getByRole('alert');
+    expectNoFsDetail(alert);
+  });
+
+  it('a toggle that fails to save says so with a fixed line', async () => {
+    const api = mockApi({ settings: { set: vi.fn(() => Promise.reject(fsFailure('settings:set'))) } });
+    setup(api);
+    await openSection('General');
+    await userEvent.click(screen.getByRole('switch', { name: 'Launch at start-up' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/^Couldn't save that\. Please try again\.$/);
+    expectNoFsDetail(alert);
+    expect(screen.getByRole('switch', { name: 'Launch at start-up' })).toHaveAttribute(
+      'aria-checked',
+      'false',
     );
   });
 
@@ -612,25 +680,28 @@ describe('SettingsOverlay', () => {
       expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     });
 
-    it("shows main's refusal without the IPC prefix", async () => {
-      const api = mockApi({
-        calendar: {
-          setUrls: vi.fn(() =>
-            Promise.reject(
-              new Error(
-                "Error invoking remote method 'calendar:setUrls': Error: Calendar addresses must start with https://",
-              ),
-            ),
-          ),
-        },
-      });
-      setup(api);
+    it('an address that is not https is caught before it is sent', async () => {
+      const api = setup();
       await openSection('Calendar');
       await userEvent.type(screen.getByLabelText('Calendar address 1'), 'http://x');
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
       expect(await screen.findByRole('alert')).toHaveTextContent(
         /^Calendar addresses must start with https:\/\/$/,
       );
+      expect(api.calendar.setUrls).not.toHaveBeenCalled();
+    });
+
+    it("a failed save shows a fixed line, never main's reason", async () => {
+      const api = mockApi({
+        calendar: { setUrls: vi.fn(() => Promise.reject(fsFailure('calendar:setUrls'))) },
+      });
+      setup(api);
+      await openSection('Calendar');
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), 'https://example.com/a.ics');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(/^Couldn't save your calendars\. Please try again\.$/);
+      expectNoFsDetail(alert);
     });
 
     it('lists the connected calendars and can remove them all', async () => {
@@ -739,7 +810,9 @@ describe('SettingsOverlay', () => {
       await userEvent.type(box, 'Zzq');
       expect(await screen.findByText('No places found')).toBeInTheDocument();
       await userEvent.type(box, 'x');
-      expect(await screen.findByRole('alert')).toHaveTextContent(/^You seem to be offline$/);
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /^Couldn't search for places\. Please try again\.$/,
+      );
     });
 
     it('shows the chosen place and clears it', async () => {

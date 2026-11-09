@@ -5,6 +5,7 @@ import { type ComponentType, useEffect } from 'react';
 import type { WidgetId } from '../../shared/types';
 import '../styles/tokens.css';
 import { Dock } from './Dock';
+import { LoadFailed } from './LoadFailed';
 import { Overlay } from './Overlay';
 import styles from './shell.module.css';
 import { ShortcutsHelp } from './ShortcutsHelp';
@@ -48,6 +49,7 @@ const DEFAULT_AUTO_HIDE_SECONDS = 5;
 
 export function Shell({ registry }: { registry: Registry }) {
   const settings = useStudyStore((s) => s.settings);
+  const settingsFailed = useStudyStore((s) => s.settingsFailed);
   const openPanel = useStudyStore((s) => s.openPanel);
   const overlay = useStudyStore((s) => s.overlay);
   const setOverlay = useStudyStore((s) => s.setOverlay);
@@ -91,9 +93,16 @@ export function Shell({ registry }: { registry: Registry }) {
       )}
 
       {settings && !settings.onboarded && <Welcome />}
+      {!settings && settingsFailed && <LoadFailed />}
 
+      {/* Keyed so a swap (Settings to Stats with S) mounts a fresh dialog and focus moves into it. */}
       {overlay && (
-        <Overlay title={OVERLAY_TITLES[overlay]} onClose={() => setOverlay(null)} narrow={overlay === 'help'}>
+        <Overlay
+          key={overlay}
+          title={OVERLAY_TITLES[overlay]}
+          onClose={() => setOverlay(null)}
+          narrow={overlay === 'help'}
+        >
           {OverlayBody ? <OverlayBody /> : <ShortcutsHelp />}
         </Overlay>
       )}

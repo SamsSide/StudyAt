@@ -157,7 +157,7 @@
   transform: translateY(-50%);
   width: var(--dock-w);
   padding: var(--space-2) 6px;
-  border-radius: 26px;
+  border-radius: var(--radius-capsule);
 }
 
 .dockList {
@@ -202,7 +202,7 @@
   place-items: center;
   width: 38px;
   height: 38px;
-  border-radius: 12px;
+  border-radius: var(--radius-icon);
   background: var(--glass-fill-thin);
   box-shadow: var(--shadow-sm);
   transition:
@@ -571,7 +571,7 @@
   place-items: center;
   width: 52px;
   height: 52px;
-  border-radius: 16px;
+  border-radius: var(--radius-icon-lg);
   background: linear-gradient(160deg, #a8b9ff, #5f7ef0);
   color: var(--accent-text);
   box-shadow:
@@ -585,6 +585,38 @@
 }
 
 .welcome p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/* A save that didn't stick, under the button (fixed copy, ruling R38). */
+.welcome .failure {
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* Settings couldn't load at launch: one sentence and "Try again", centred in the window. */
+.loadFailed {
+  position: absolute;
+  z-index: var(--z-welcome);
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: min(380px, calc(100vw - 2 * var(--dock-w)));
+  padding: var(--space-6) var(--space-6) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  text-align: center;
+  background: var(--glass-sheen), var(--panel-strong);
+  box-shadow: var(--shadow-lg);
+  animation: popIn var(--duration-slow) var(--ease-spring);
+}
+
+.loadFailed p {
   margin: 0;
   font-size: 15px;
   line-height: 1.55;

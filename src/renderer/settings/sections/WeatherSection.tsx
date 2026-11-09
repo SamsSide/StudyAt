@@ -4,7 +4,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { WeatherUnits } from '../../../shared/types';
 import type { Place } from '../../../shared/widgets';
-import { ipcErrorMessage } from '../../lib/ipcError';
+import { logIpcError } from '../../lib/ipcError';
 import { useStudyStore } from '../../shell/store';
 import { placeLabel } from '../../weather/format';
 import { Row } from '../controls';
@@ -42,9 +42,9 @@ export function WeatherSection({ settings, update }: SectionProps) {
         },
         (err: unknown) => {
           if (mine !== seq.current) return;
-          console.error('Place search failed', err);
+          logIpcError('Place search failed', err);
           setResults(null);
-          setError(ipcErrorMessage(err) || SEARCH_FAILED);
+          setError(SEARCH_FAILED);
         },
       );
     }, DEBOUNCE_MS);
@@ -60,8 +60,8 @@ export function WeatherSection({ settings, update }: SectionProps) {
       setQuery('');
       setResults(null);
     } catch (err) {
-      console.error('Saving the weather place failed', err);
-      setError(ipcErrorMessage(err) || SAVE_FAILED);
+      logIpcError('Saving the weather place failed', err);
+      setError(SAVE_FAILED);
     } finally {
       setBusy(false);
     }

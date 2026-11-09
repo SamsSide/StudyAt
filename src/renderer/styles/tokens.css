@@ -5,13 +5,14 @@
    names, so a name is never removed; only values change.
 
    Contrast (WCAG AA, checked numerically): the glass is light enough for the space to show through
-   (macOS Liquid Glass): it keeps the space behind at 86 % brightness and lays a 62 % dark tint on
-   top, so over a pure white space a widget is at least rgb(96 97 101). On that worst case --text
-   is 5.8:1, --text-muted 5.0:1, --text-faint 4.6:1, --accent-bright 4.6:1 and --danger 4.6:1;
-   over a black space all of them are above 13:1. --panel-strong (overlays, menus) uses a 58 % tint
-   at 80 % brightness: over pure white it is rgb(96 97 101) on its own and rgb(71 72 77) over the
-   overlay scrim, so the same ratios hold. The sheen adds at most 5 % white at the very top edge,
-   fading out by 38 % of the height, above the text rows. */
+   (macOS Liquid Glass): it keeps the space behind at 86 % brightness and lays a 68 % dark tint on
+   top, so over a pure white space a widget is at least rgb(84 85 90). On that worst case --text
+   is 6.9:1, --text-muted 5.3:1, --text-faint 4.7:1, --accent-bright 5.5:1 and --danger 5.5:1;
+   over a black space all of them are above 11:1. The three text steps are far enough apart to read
+   as a hierarchy (primary, secondary, tertiary). --panel-strong (overlays, menus) uses a 64 % tint
+   at 80 % brightness: over pure white it is rgb(85 86 91) on its own (--text-faint 4.6:1) and
+   darker still over the overlay scrim, so the same ratios hold. The sheen adds at most 5 % white
+   at the very top edge, fading out by 38 % of the height, above the text rows. */
 :root {
   /* Type: the platform's own UI face. No bundled Apple fonts: on Windows this is Segoe UI Variable. */
   --font:
@@ -23,8 +24,8 @@
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
 
   /* Glass */
-  --glass-fill: rgba(20, 22, 29, 0.62);
-  --glass-fill-strong: rgba(18, 20, 27, 0.58);
+  --glass-fill: rgba(20, 22, 29, 0.68);
+  --glass-fill-strong: rgba(18, 20, 27, 0.64);
   /* Controls and cards that sit on a glass panel */
   --glass-fill-thin: rgba(255, 255, 255, 0.07);
   --glass-fill-raised: rgba(255, 255, 255, 0.16);
@@ -54,8 +55,8 @@
 
   /* Text */
   --text: #f5f7fa;
-  --text-muted: #e4e7ee;
-  --text-faint: #dadee6;
+  --text-muted: #d6dae3;
+  --text-faint: #c8cdd7;
 
   /* Accent: fills use --accent; accent-coloured text on glass uses --accent-bright (4.6:1 worst case). */
   --accent: #7c9cff;
@@ -63,15 +64,22 @@
   --accent-text: #0b0d12;
   --accent-soft: rgba(124, 156, 255, 0.28);
   --danger: #ffd4d4;
+  /* A destructive button's fill (dark --accent-text on it). */
+  --danger-fill: #f0a39a;
   /* A macOS-style soft ring: a thin dark gap so it reads on accent fills, then the accent halo. */
   --focus-ring: 0 0 0 1.5px rgba(10, 12, 18, 0.85), 0 0 0 4.5px rgba(140, 166, 255, 0.8);
 
   /* Shape */
+  /* The dock and the mini timer: capsules a little rounder than a panel. */
+  --radius-capsule: 26px;
   --radius-panel: 22px;
   --radius-widget: 18px;
   --radius: 14px;
   --radius-sm: 10px;
   --radius-xs: 6px;
+  /* App-icon squircles: the dock's icon tiles and the welcome glyph. */
+  --radius-icon: 12px;
+  --radius-icon-lg: 16px;
   --radius-pill: 999px;
 
   /* Rhythm */
@@ -214,4 +222,16 @@ textarea {
   display: none;
   width: 0;
   height: 0;
+}
+
+/* Sticky-note tints, shared by the Tasks and Notes widgets (spec §3.10, R27): pastel cards with
+   dark --note-text, which clears WCAG AA on every tint. */
+:root {
+  --note-yellow: #ecdc94;
+  --note-pink: #edb8ca;
+  --note-blue: #afcaef;
+  --note-green: #b8dcb9;
+  --note-purple: #d1bdec;
+  --note-grey: #d3d6dd;
+  --note-text: #1b1e27;
 }

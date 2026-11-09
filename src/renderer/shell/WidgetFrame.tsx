@@ -10,6 +10,7 @@ import {
   type PointerEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -75,6 +76,10 @@ export function WidgetFrame({ id, title, children }: { id: WidgetId; title: stri
   const [frame, setFrame] = useState<Box>({ w: 0, h: 0 });
   const [win, setWin] = useState<Box>(windowBox);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  // Removes a drag's window listeners; called on drag end, and on unmount mid-drag (the widget
+  // closed by a shortcut, say) so a later pointerup saves nothing.
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -114,10 +119,14 @@ export function WidgetFrame({ id, title, children }: { id: WidgetId; title: stri
       last = fractions(next.left, next.top, frame, w);
       setDrag(last);
     };
-    const end = (): void => {
+    const detach = (): void => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
+      stopDrag.current = null;
+    };
+    const end = (): void => {
+      detach();
       setDrag(null);
       // A click on the header without a move is not a drag: nothing to save.
       if (moved) save(last.x, last.y);
@@ -125,6 +134,8 @@ export function WidgetFrame({ id, title, children }: { id: WidgetId; title: stri
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
     window.addEventListener('pointercancel', end);
+    stopDrag.current?.();
+    stopDrag.current = detach;
     setDrag(last);
   };
 

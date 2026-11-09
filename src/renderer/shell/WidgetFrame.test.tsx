@@ -84,6 +84,27 @@ describe('WidgetFrame', () => {
     await waitFor(() => expect(useStudyStore.getState().settings?.widgets.tasks.x).toBe(0.888));
   });
 
+  it('unmounting mid-drag drops the window listeners and saves nothing', () => {
+    const api = mockApi();
+    installMockApi(api);
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    const removed = vi.spyOn(window, 'removeEventListener');
+    const { unmount } = render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <p>body</p>
+      </WidgetFrame>,
+    );
+    const handle = screen.getByRole('button', { name: 'Move Tasks' });
+    fireEvent.pointerDown(handle, { clientX: 500, clientY: 420, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 600, clientY: 520, pointerId: 1 });
+    unmount();
+    for (const type of ['pointermove', 'pointerup', 'pointercancel']) {
+      expect(removed).toHaveBeenCalledWith(type, expect.any(Function));
+    }
+    fireEvent.pointerUp(window, { clientX: 600, clientY: 520, pointerId: 1 });
+    expect(api.settings.set).not.toHaveBeenCalled();
+  });
+
   it('a click on the handle without a move saves nothing', () => {
     const api = mockApi();
     installMockApi(api);

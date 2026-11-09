@@ -124,6 +124,25 @@ describe('Shell', () => {
     expect(useStudyStore.getState().overlay).toBeNull();
   });
 
+  it('swapping overlays moves focus into the new one, and Esc gives it back to the dock', async () => {
+    const user = userEvent.setup();
+    installMockApi(onboardedApi());
+    const registry = testRegistry();
+    registry.overlays.settings = () => <button type="button">A settings control</button>;
+    render(<Shell registry={registry} />);
+    await waitFor(() => expect(useStudyStore.getState().settings).not.toBeNull());
+    const dockSettings = within(screen.getByRole('navigation', { name: 'Dock' })).getByRole('button', {
+      name: 'Settings',
+    });
+    await user.click(dockSettings);
+    screen.getByRole('button', { name: 'A settings control' }).focus();
+    await user.keyboard('s');
+    const stats = screen.getByRole('dialog', { name: 'Stats' });
+    expect(stats).toContainElement(document.activeElement as HTMLElement);
+    await user.keyboard('{Escape}');
+    expect(dockSettings).toHaveFocus();
+  });
+
   it('Space calls timer.start when idle and pause when running', async () => {
     const user = userEvent.setup();
     const api = await renderShell();
@@ -196,6 +215,42 @@ describe('Shell', () => {
     await user.click(screen.getByRole('button', { name: 'Got it' }));
     expect(api.settings.set).toHaveBeenCalledWith({ onboarded: true });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument());
+  });
+
+  it('when Got it fails to save, the welcome stays and says so kindly', async () => {
+    const user = userEvent.setup();
+    const api = mockApi();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.mocked(api.settings.set).mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'settings:set': Error: EACCES: permission denied, open 'C:\\x'",
+      ),
+    );
+    await renderShell(api);
+    await user.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't save that. Please try again.");
+    expect(screen.getByRole('region', { name: 'Welcome' }).textContent).not.toMatch(/EACCES|C:/);
+    await user.click(screen.getByRole('button', { name: 'Got it' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Got it' })).not.toBeInTheDocument());
+  });
+
+  it("when settings won't load, a calm message offers Try again", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const api = mockApi();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const get = vi.mocked(api.settings.get);
+    const real = get.getMockImplementation()!;
+    get.mockRejectedValue(new Error('EACCES: permission denied'));
+    installMockApi(api);
+    render(<Shell registry={testRegistry()} />);
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    const message = screen.getByRole('alert');
+    expect(message).toHaveTextContent("StudyAt couldn't load your settings.");
+    expect(message.textContent).not.toMatch(/EACCES/);
+    get.mockImplementation(real);
+    fireEvent.click(within(message).getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(useStudyStore.getState().settings).not.toBeNull());
+    expect(screen.queryByText("StudyAt couldn't load your settings.")).not.toBeInTheDocument();
   });
 
   it('auto-hide hides chrome after 5 s and mouse move shows it', async () => {

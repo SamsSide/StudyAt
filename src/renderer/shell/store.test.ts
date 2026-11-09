@@ -1,5 +1,5 @@
 import { act } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { idleTimerState, installMockApi, mockApi, seedSubjects } from '../test/mockApi';
 import { initStudyStore, resetStudyStore, useStudyStore } from './store';
 
@@ -107,11 +107,77 @@ describe('useStudyStore', () => {
     const stop = initStudyStore();
     await flush();
     const before = useStudyStore.getState().settings!.widgets.tasks;
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.mocked(api.settings.set).mockRejectedValueOnce(new Error('disk full'));
     await act(() => useStudyStore.getState().patchWidget('tasks', { x: 0.1, y: 0.2 }));
     expect(useStudyStore.getState().settings!.widgets.tasks).toEqual(before);
     stop();
+  });
+
+  it('refreshes the overview when the goal, streak threshold or rollover hour changes', async () => {
+    const api = mockApi();
+    installMockApi(api);
+    const stop = initStudyStore();
+    await flush();
+    const overview = vi.mocked(api.stats.overview);
+    const base = useStudyStore.getState().settings!;
+    let calls = overview.mock.calls.length;
+    // Anything else changing leaves the overview alone.
+    api.emitSettings({ ...base, autoHideSeconds: 9 });
+    expect(overview).toHaveBeenCalledTimes(calls);
+    api.emitSettings({ ...base, goalMinutes: 120 });
+    expect(overview).toHaveBeenCalledTimes(++calls);
+    api.emitSettings({ ...base, goalMinutes: 120, streakMinutes: 40 });
+    expect(overview).toHaveBeenCalledTimes(++calls);
+    await act(() => useStudyStore.getState().updateSettings({ rolloverHour: 5 }));
+    expect(overview).toHaveBeenCalledTimes(++calls);
+    stop();
+    api.emitSettings({ ...base, goalMinutes: 60 });
+    expect(overview).toHaveBeenCalledTimes(calls);
+  });
+
+  describe('a failed settings load', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('tries again with a backoff before giving up', async () => {
+      vi.useFakeTimers();
+      const api = mockApi();
+      installMockApi(api);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const get = vi.mocked(api.settings.get);
+      const real = get.getMockImplementation()!;
+      get.mockRejectedValueOnce(new Error('busy')).mockRejectedValueOnce(new Error('busy'));
+      const stop = initStudyStore();
+      await act(() => vi.advanceTimersByTimeAsync(0));
+      expect(get).toHaveBeenCalledTimes(1);
+      expect(useStudyStore.getState().settings).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(5_000));
+      expect(get).toHaveBeenCalledTimes(3);
+      expect(useStudyStore.getState().settings).not.toBeNull();
+      expect(useStudyStore.getState().settingsFailed).toBe(false);
+      expect(warn).toHaveBeenCalled();
+      get.mockImplementation(real);
+      stop();
+    });
+
+    it('after three failures says so, and retrySettings loads them', async () => {
+      vi.useFakeTimers();
+      const api = mockApi();
+      installMockApi(api);
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const get = vi.mocked(api.settings.get);
+      const real = get.getMockImplementation()!;
+      get.mockRejectedValue(new Error('busy'));
+      const stop = initStudyStore();
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
+      expect(get).toHaveBeenCalledTimes(3);
+      expect(useStudyStore.getState().settingsFailed).toBe(true);
+      get.mockImplementation(real);
+      await act(() => useStudyStore.getState().retrySettings());
+      expect(useStudyStore.getState().settingsFailed).toBe(false);
+      expect(useStudyStore.getState().settings).not.toBeNull();
+      stop();
+    });
   });
 
   it('setPanel and setOverlay', () => {

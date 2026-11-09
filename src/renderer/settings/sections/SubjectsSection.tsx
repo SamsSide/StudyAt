@@ -4,7 +4,7 @@
 import { useId, useState } from 'react';
 import { SEED_SUBJECTS } from '../../../shared/subjects';
 import type { Subject } from '../../../shared/types';
-import { ipcErrorMessage } from '../../lib/ipcError';
+import { logIpcError } from '../../lib/ipcError';
 import { useStudyStore } from '../../shell/store';
 import styles from '../settings.module.css';
 
@@ -60,12 +60,6 @@ function ColourPicker({
   );
 }
 
-/** A short failure line, plus main's reason when it gave one (a duplicate name, say). */
-const withReason = (failure: string, err: unknown): string => {
-  const reason = ipcErrorMessage(err);
-  return reason ? `${failure} ${reason}` : failure;
-};
-
 function SubjectRow({ subject, onError }: { subject: Subject; onError: (message: string) => void }) {
   const refresh = useStudyStore((s) => s.refreshSubjects);
   const [name, setName] = useState(subject.name);
@@ -75,8 +69,8 @@ function SubjectRow({ subject, onError }: { subject: Subject; onError: (message:
       await work();
       await refresh();
     } catch (err) {
-      console.error('Updating a subject failed', err);
-      onError(withReason("That change couldn't be saved.", err));
+      logIpcError('Updating a subject failed', err);
+      onError("That change couldn't be saved. Please try again.");
     }
   };
 
@@ -143,8 +137,8 @@ export function SubjectsSection() {
       setNewName('');
       setError('');
     } catch (err) {
-      console.error('Adding a subject failed', err);
-      setError(withReason("That subject couldn't be added.", err));
+      logIpcError('Adding a subject failed', err);
+      setError("That subject couldn't be added. Please try again.");
     }
   };
 

@@ -38,9 +38,17 @@ export function Toggle({
   label: string;
   hint?: string;
   checked: boolean;
-  onChange: (next: boolean) => void;
+  /** Saves the new state; resolves false when it couldn't be saved (a short message then shows). */
+  onChange: (next: boolean) => Promise<boolean> | void;
 }) {
   const id = useId();
+  const [failed, setFailed] = useState(false);
+
+  const flip = async (): Promise<void> => {
+    setFailed(false);
+    if ((await onChange(!checked)) === false) setFailed(true);
+  };
+
   return (
     <Row label={label} hint={hint} htmlFor={id}>
       <button
@@ -48,9 +56,15 @@ export function Toggle({
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-describedby={failed ? `${id}-error` : undefined}
         className={styles.toggle}
-        onClick={() => onChange(!checked)}
+        onClick={() => void flip()}
       />
+      {failed && (
+        <span id={`${id}-error`} role="alert" className={styles.error}>
+          Couldn&apos;t save that. Please try again.
+        </span>
+      )}
     </Row>
   );
 }

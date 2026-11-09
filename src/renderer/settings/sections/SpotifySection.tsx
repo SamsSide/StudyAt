@@ -2,7 +2,7 @@
 // connect / disconnect. A busy callback port gets the §7 copy.
 import { useEffect, useId, useState } from 'react';
 import type { SpotifyStatus } from '../../../shared/types';
-import { ipcErrorMessage } from '../../lib/ipcError';
+import { ipcErrorMessage, logIpcError } from '../../lib/ipcError';
 import { Row } from '../controls';
 import styles from '../settings.module.css';
 import type { SectionProps } from './types';
@@ -27,7 +27,7 @@ export function SpotifySection({ settings, update }: SectionProps) {
     let live = true;
     window.studyat.spotify.status().then(
       (s) => live && setStatus(s),
-      (err: unknown) => console.error('Spotify status failed', err),
+      (err: unknown) => logIpcError('Spotify status failed', err),
     );
     return () => {
       live = false;
@@ -46,7 +46,7 @@ export function SpotifySection({ settings, update }: SectionProps) {
     try {
       setStatus(await window.studyat.spotify.connect());
     } catch (err) {
-      console.error('Spotify connect failed', err);
+      logIpcError('Spotify connect failed', err);
       const text = ipcErrorMessage(err);
       setError(
         text.includes('Port 43821 is in use')
@@ -64,7 +64,7 @@ export function SpotifySection({ settings, update }: SectionProps) {
     try {
       setStatus(await window.studyat.spotify.disconnect());
     } catch (err) {
-      console.error('Spotify disconnect failed', err);
+      logIpcError('Spotify disconnect failed', err);
       setError("Couldn't disconnect. Please try again.");
     } finally {
       setBusy(false);

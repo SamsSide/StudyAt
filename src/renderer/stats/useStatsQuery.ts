@@ -5,6 +5,7 @@
 // week loads the query is 'loading', not the old answer. A revision reload keeps the current
 // answer on screen until the fresh one lands, so an edit doesn't flash the section empty.
 import { useCallback, useEffect, useState } from 'react';
+import { logIpcError } from '../lib/ipcError';
 
 export type Query<T> = { status: 'loading' } | { status: 'error' } | { status: 'ready'; data: T };
 
@@ -21,7 +22,8 @@ export function useStatsQuery<T, A>(load: (arg: A) => Promise<T>, arg: A, revisi
       (data) => {
         if (current) setAnswer({ arg, query: { status: 'ready', data } });
       },
-      () => {
+      (err: unknown) => {
+        logIpcError('Loading a stats section failed', err);
         if (current) setAnswer({ arg, query: { status: 'error' } });
       },
     );

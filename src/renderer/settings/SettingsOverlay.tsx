@@ -3,6 +3,7 @@
 // store; main sanitises and returns the merged settings.
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from 'react';
 import type { SettingsPatch } from '../../shared/types';
+import { logIpcError } from '../lib/ipcError';
 import { useStudyStore } from '../shell/store';
 import { CalendarSection } from './sections/CalendarSection';
 import { ChimesSection } from './sections/ChimesSection';
@@ -80,7 +81,7 @@ export function SettingsOverlay() {
       await updateSettings(patch);
       return true;
     } catch (err) {
-      console.error('Saving settings failed', err);
+      logIpcError('Saving settings failed', err);
       return false;
     }
   };

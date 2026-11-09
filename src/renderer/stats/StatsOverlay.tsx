@@ -5,6 +5,7 @@
 // Each section holds its place with a skeleton while it first loads, so the layout doesn't jump.
 import { useId, useState } from 'react';
 import type { HeatmapCell, StatsOverview } from '../../shared/types';
+import { logIpcError } from '../lib/ipcError';
 import { useStudyStore } from '../shell/store';
 import { Heatmap } from './Heatmap';
 import { LoadError } from './LoadError';
@@ -32,7 +33,7 @@ export function StatsOverlay() {
     useStudyStore
       .getState()
       .refreshOverview()
-      .catch(() => undefined);
+      .catch((err: unknown) => logIpcError('Loading the overview failed', err));
   };
 
   return (

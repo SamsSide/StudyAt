@@ -44,12 +44,12 @@ export function TimerSection({ settings, update }: SectionProps) {
       <Toggle
         label="Start breaks automatically"
         checked={settings.autoStartBreaks}
-        onChange={(v) => void update({ autoStartBreaks: v })}
+        onChange={(v) => update({ autoStartBreaks: v })}
       />
       <Toggle
         label="Start focus automatically"
         checked={settings.autoStartFocus}
-        onChange={(v) => void update({ autoStartFocus: v })}
+        onChange={(v) => update({ autoStartFocus: v })}
       />
       <NumberField
         label="Away check after"
