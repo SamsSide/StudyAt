@@ -9,10 +9,10 @@ import { protocol } from 'electron';
 
 export const MEDIA_SCHEME = 'studyat-media';
 
-export type MediaKind = 'space' | 'sound' | 'chime';
+export type MediaKind = 'space' | 'sound' | 'chime' | 'image';
 export type MediaResolver = (kind: MediaKind, id: number) => string | null;
 
-const KINDS: readonly string[] = ['space', 'sound', 'chime'];
+const KINDS: readonly string[] = ['space', 'sound', 'chime', 'image'];
 
 const CONTENT_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',

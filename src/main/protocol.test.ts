@@ -156,6 +156,31 @@ describe('handleMediaRequest', () => {
   });
 });
 
+describe('the image kind (v1.1 spec §3.6)', () => {
+  const GIF = Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0]);
+  const registered = (id: number, path: string) => (kind: string, got: number) =>
+    kind === 'image' && got === id ? path : null;
+
+  it('serves a registered id with the type from its extension', async () => {
+    const p = join(dir, '7.gif');
+    writeFileSync(p, GIF);
+    const res = await handleMediaRequest(req('studyat-media://image/7'), registered(7, p));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/gif');
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(GIF);
+  });
+
+  it('404s an unknown id and never reaches the resolver with a non-numeric one', async () => {
+    const p = join(dir, '7.gif');
+    expect((await handleMediaRequest(req('studyat-media://image/8'), registered(7, p))).status).toBe(404);
+    const resolve = vi.fn(() => p);
+    for (const url of ['studyat-media://image/abc', 'studyat-media://image/1.5']) {
+      expect((await handleMediaRequest(req(url), resolve)).status, url).toBe(400);
+    }
+    expect(resolve).not.toHaveBeenCalled();
+  });
+});
+
 describe('handleMediaRequest hardening', () => {
   it('lets id 0 reach the resolver (unknown -> 404)', async () => {
     const seen: number[] = [];

@@ -171,6 +171,13 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       relocate: resolves([]),
       setActive: resolves([]),
     },
+    images: {
+      list: resolves([]),
+      addFile: resolves({ error: '' }),
+      addUrl: resolves({ error: '' }),
+      update: resolves(null),
+      remove: resolves(undefined),
+    },
     sounds: {
       list: resolves([]),
       addFiles: resolves([]),
@@ -247,6 +254,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     subjects: { ...base.subjects, ...overrides.subjects },
     tasks: { ...base.tasks, ...overrides.tasks },
     spaces: { ...base.spaces, ...overrides.spaces },
+    images: { ...base.images, ...overrides.images },
     sounds: { ...base.sounds, ...overrides.sounds },
     mixes: { ...base.mixes, ...overrides.mixes },
     settings: { ...base.settings, ...overrides.settings },

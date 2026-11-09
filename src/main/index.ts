@@ -361,6 +361,7 @@ async function boot(): Promise<void> {
     win: () => mainWindow,
     app,
     shell,
+    fetch,
     paths: { userData, assets: paths.assets },
     now: Date.now,
     beforeRestore: stopTimerAndDb,

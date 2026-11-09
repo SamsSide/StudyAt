@@ -2,10 +2,12 @@
 // validated before it reaches a service (ids integers, strings <= 500 chars, enums checked).
 // Invalid input throws `IpcValidationError`, a rejected promise in the renderer. Electron is
 // injected (`ipc`, dialogs, window, app, shell) so every handler runs under a unit test.
+import { join } from 'node:path';
 import type { FileFilter, IpcMainInvokeEvent } from 'electron';
 import { CHANNELS } from '../shared/ipc';
 import { sanitisePlace, sanitiseSettingsPatch } from '../shared/settings';
 import type {
+  ImagePatch,
   Mode,
   PublicSettings,
   Settings,
@@ -15,6 +17,7 @@ import type {
 } from '../shared/types';
 import { localDateKey } from './db/backup';
 import type { Db } from './db/db';
+import { IMAGE_SCALE_MAX, IMAGE_SCALE_MIN } from './db/repos/images';
 import { mixesRepo } from './db/repos/mixes';
 import { NOTE_MAX_CHARS, notesRepo } from './db/repos/notes';
 import { type MainSettingsPatch, settingsRepo } from './db/repos/settings';
@@ -23,6 +26,7 @@ import { tasksRepo } from './db/repos/tasks';
 import type { MediaKind, MediaResolver } from './protocol';
 import { dataService } from './services/data';
 import type { CalendarService } from './services/calendar';
+import { imagesService, type ImagesService } from './services/images';
 import { recapsService } from './services/recaps';
 import { publicSettings } from './services/settings';
 import { AUDIO_EXTS, soundsService, type SoundsService } from './services/sounds';
@@ -66,6 +70,9 @@ const MAX_CALENDAR_FIELDS = 50;
 
 export const SPACE_FILTERS: FileFilter[] = [
   { name: 'Videos and images', extensions: [...VIDEO_EXTS, ...IMAGE_EXTS] },
+];
+export const IMAGE_FILTERS: FileFilter[] = [
+  { name: 'Images', extensions: ['gif', 'png', 'jpg', 'jpeg', 'webp'] },
 ];
 export const SOUND_FILTERS: FileFilter[] = [{ name: 'Audio', extensions: [...AUDIO_EXTS] }];
 
@@ -148,6 +155,8 @@ export interface IpcDeps {
   /** `app:flushed`: the sending window has saved what it held after an `app:flush`. */
   onFlushed?(sender: { id: number }): void;
   exists?: (path: string) => boolean;
+  /** Image links are downloaded here (main-only network); the global `fetch` when absent. */
+  fetch?: typeof fetch;
   /**
    * False rejects the call before any payload is read (study-dev rule 5): Task 13 checks the
    * sender frame is one of StudyAt's own windows. Absent, every sender is allowed.
@@ -159,8 +168,10 @@ export interface IpcDeps {
 export function createMediaResolver(
   spaces: Pick<SpacesService, 'pathOf'>,
   sounds: Pick<SoundsService, 'pathOf'>,
+  images: Pick<ImagesService, 'pathOf'>,
 ): MediaResolver {
-  return (kind: MediaKind, id: number) => (kind === 'space' ? spaces.pathOf(id) : sounds.pathOf(id));
+  return (kind: MediaKind, id: number) =>
+    kind === 'space' ? spaces.pathOf(id) : kind === 'image' ? images.pathOf(id) : sounds.pathOf(id);
 }
 
 /** Webcontents a push can go to. */
@@ -211,6 +222,20 @@ function taskPatch(v: unknown): { text?: string; colour?: TaskColour; done?: boo
   if (p.text !== undefined) out.text = assertStr(p.text, 'text', { nonEmpty: true });
   if (p.colour !== undefined) out.colour = assertEnum(p.colour, TASK_COLOURS, 'colour');
   if (p.done !== undefined) out.done = assertBool(p.done, 'done');
+  return out;
+}
+
+/** Image URLs are at most this long; the field in the add dialog is a pasted link. */
+const MAX_IMAGE_URL = 2048;
+
+/** x, y, scale as finite numbers (the repo clamps them) and bare as a boolean; nothing else passes. */
+function imagePatch(v: unknown): ImagePatch {
+  const p = assertRecord(v, 'patch');
+  const out: ImagePatch = {};
+  if (p.x !== undefined) out.x = clampNum(p.x, 0, 1, 'x');
+  if (p.y !== undefined) out.y = clampNum(p.y, 0, 1, 'y');
+  if (p.scale !== undefined) out.scale = clampNum(p.scale, IMAGE_SCALE_MIN, IMAGE_SCALE_MAX, 'scale');
+  if (p.bare !== undefined) out.bare = assertBool(p.bare, 'bare');
   return out;
 }
 
@@ -292,6 +317,12 @@ export function registerIpc(deps: IpcDeps) {
   const recaps = recapsService({ db, stats });
   const spaces = spacesService({ db, now, assetsDir: deps.paths.assets, exists: deps.exists });
   const sounds = soundsService({ db, assetsDir: deps.paths.assets, exists: deps.exists });
+  const images = imagesService({
+    db,
+    dir: join(deps.paths.userData, 'images'),
+    now,
+    fetch: deps.fetch ?? fetch,
+  });
   const data = dataService({
     db,
     dir: deps.paths.userData,
@@ -445,6 +476,19 @@ export function registerIpc(deps: IpcDeps) {
   });
 
   // ── Sounds and mixes (spec §3.9) ──────────────────────────────────────────
+  // ── Images (v1.1 spec §3.6) ────────────────────────────────────────────────
+  handle(C.images.list, () => images.list());
+  handle(C.images.addFile, async () => {
+    const [path] = await dialogs.openFiles(IMAGE_FILTERS, false);
+    // A cancelled dialog is not an error to show: the empty message is the "nothing happened" signal.
+    return path === undefined ? { error: '' } : images.addFile(path);
+  });
+  handle(C.images.addUrl, (url) =>
+    images.addUrl(assertStr(url, 'url', { max: MAX_IMAGE_URL, nonEmpty: true }).trim()),
+  );
+  handle(C.images.update, (id, patch) => images.update(assertInt(id), imagePatch(patch)));
+  handle(C.images.remove, (id) => images.remove(assertInt(id)));
+
   handle(C.sounds.list, () => sounds.list());
   handle(C.sounds.addFiles, async () => sounds.addFiles(await dialogs.openFiles(SOUND_FILTERS)));
   handle(C.sounds.remove, (id) => {
@@ -573,7 +617,15 @@ export function registerIpc(deps: IpcDeps) {
     deps.onFlushed?.(event.sender);
   });
 
-  return { stats, recaps, spaces, sounds, data, resolveMedia: createMediaResolver(spaces, sounds) };
+  return {
+    stats,
+    recaps,
+    spaces,
+    sounds,
+    images,
+    data,
+    resolveMedia: createMediaResolver(spaces, sounds, images),
+  };
 }
 
 export type IpcServices = ReturnType<typeof registerIpc>;

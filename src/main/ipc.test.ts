@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -216,7 +216,10 @@ describe('registerIpc', () => {
 
   it('timer:setTask takes an integer or null, rejects junk and unknown ids, and passes the task text', async () => {
     const { invoke } = setup();
-    const [task] = (await invoke(CHANNELS.tasks.create, { text: 'Revise trees', colour: 'yellow' })) as Task[];
+    const [task] = (await invoke(CHANNELS.tasks.create, {
+      text: 'Revise trees',
+      colour: 'yellow',
+    })) as Task[];
     const setTask = vi.spyOn(timer, 'setTask');
     const state = (await invoke(CHANNELS.timer.setTask, task!.id)) as TimerState;
     expect(setTask).toHaveBeenLastCalledWith(task!.id, 'Revise trees');
@@ -235,6 +238,82 @@ describe('registerIpc', () => {
     expect(await invoke(CHANNELS.stats.byTask, 'week')).toEqual([]);
     await expect(invoke(CHANNELS.stats.byTask, 'year')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.stats.byTask)).rejects.toThrow(IpcValidationError);
+  });
+
+  describe('images (v1.1 spec §3.6)', () => {
+    const GIF = Uint8Array.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 8, 0, 6, 0, 0, 0, 0, 0]);
+    const gifResponse = (): Response =>
+      new Response(GIF, { status: 200, headers: { 'content-type': 'image/gif' } });
+
+    it('lists, adds from the dialog, updates, removes, and resolves only registered ids', async () => {
+      const src = join(dir, 'pic.gif');
+      writeFileSync(src, GIF);
+      const { invoke, dialogs, services } = setup();
+      expect(await invoke(CHANNELS.images.list)).toEqual([]);
+      vi.mocked(dialogs.openFiles).mockResolvedValueOnce([src]);
+      const added = (await invoke(CHANNELS.images.addFile)) as { id: number; url: string };
+      expect(added.url).toBe(`studyat-media://image/${added.id}`);
+      expect(dialogs.openFiles).toHaveBeenLastCalledWith(expect.anything(), false);
+      const path = services.resolveMedia('image', added.id)!;
+      expect(path).toBe(join(dir, 'images', `${added.id}.gif`));
+      expect(existsSync(path)).toBe(true);
+      expect(services.resolveMedia('image', added.id + 1)).toBeNull();
+      expect(services.resolveMedia('space', added.id)).toBeNull();
+
+      expect(await invoke(CHANNELS.images.update, added.id, { x: 5, scale: 1.5, bare: true })).toMatchObject({
+        x: 1,
+        scale: 1.5,
+        bare: true,
+      });
+      expect(await invoke(CHANNELS.images.update, 9999, { x: 0.5 })).toBeNull();
+      await invoke(CHANNELS.images.remove, added.id);
+      expect(existsSync(path)).toBe(false);
+      expect(await invoke(CHANNELS.images.list)).toEqual([]);
+    });
+
+    it('a cancelled dialog adds nothing and shows no message', async () => {
+      const { invoke } = setup();
+      expect(await invoke(CHANNELS.images.addFile)).toEqual({ error: '' });
+      expect(await invoke(CHANNELS.images.list)).toEqual([]);
+    });
+
+    it('addUrl downloads with the injected fetch and validates the link', async () => {
+      const fetchFn = vi.fn(() => Promise.resolve(gifResponse()));
+      const { invoke } = setup({ fetch: fetchFn as never });
+      expect(await invoke(CHANNELS.images.addUrl, 'https://example.com/a.gif')).toMatchObject({
+        width: 8,
+        height: 6,
+      });
+      expect(await invoke(CHANNELS.images.addUrl, 'http://example.com/a.gif')).toEqual({
+        error: "Couldn't download that link. Check it and your connection.",
+      });
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      await expect(invoke(CHANNELS.images.addUrl, 5)).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.images.addUrl, '  ')).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.images.addUrl, `https://x.test/${'a'.repeat(2048)}`)).rejects.toThrow(
+        IpcValidationError,
+      );
+    });
+
+    it('validates ids and patches before the repo sees them', async () => {
+      const { invoke } = setup();
+      for (const id of ['1', 1.5, -1, null]) {
+        await expect(invoke(CHANNELS.images.remove, id)).rejects.toThrow(IpcValidationError);
+        await expect(invoke(CHANNELS.images.update, id, {})).rejects.toThrow(IpcValidationError);
+      }
+      for (const patch of [
+        null,
+        [],
+        { x: NaN },
+        { y: Infinity },
+        { x: '0.5' },
+        { scale: null },
+        { bare: 1 },
+        { bare: 'yes' },
+      ]) {
+        await expect(invoke(CHANNELS.images.update, 1, patch)).rejects.toThrow(IpcValidationError);
+      }
+    });
   });
 
   it('timer:start returns TimerState', async () => {

@@ -58,6 +58,23 @@ describe('preload api', () => {
     expect(ipc.invoke).toHaveBeenCalledWith('stats:byTask', 'month');
   });
 
+  it('exposes the five images channels (v1.1 spec §5)', async () => {
+    const { ipc } = fakeIpc();
+    const api = buildApi(ipc);
+    await api.images.list();
+    await api.images.addFile();
+    await api.images.addUrl('https://example.com/a.gif');
+    await api.images.update(3, { x: 0.2, bare: true });
+    await api.images.remove(3);
+    expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
+      ['images:list'],
+      ['images:addFile'],
+      ['images:addUrl', 'https://example.com/a.gif'],
+      ['images:update', 3, { x: 0.2, bare: true }],
+      ['images:remove', 3],
+    ]);
+  });
+
   it('subscriptions pass only the payload and unsubscribe', () => {
     const { ipc, emit, listeners } = fakeIpc();
     const api = buildApi(ipc);

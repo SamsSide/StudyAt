@@ -6,6 +6,9 @@ import type {
   BackupInfo,
   Device,
   HeatmapCell,
+  ImageAddResult,
+  ImagePatch,
+  ImageWidget,
   Mix,
   Mode,
   Note,
@@ -123,6 +126,15 @@ export interface StudyAtApi {
     remove(id: number): Promise<Space[]>;
     relocate(id: number): Promise<Space[]>;
     setActive(id: number): Promise<Space[]>;
+  };
+  /** Image and GIF widgets (v1.1 spec §3.6); `url` is `studyat-media://image/<id>`. */
+  images: {
+    list(): Promise<ImageWidget[]>;
+    /** Opens the file dialog; a cancelled dialog resolves `{ error: '' }`, which the UI ignores. */
+    addFile(): Promise<ImageAddResult>;
+    addUrl(url: string): Promise<ImageAddResult>;
+    update(id: number, patch: ImagePatch): Promise<ImageWidget | null>;
+    remove(id: number): Promise<void>;
   };
   sounds: {
     list(): Promise<Sound[]>;
@@ -261,6 +273,13 @@ export const CHANNELS = {
     remove: 'spaces:remove',
     relocate: 'spaces:relocate',
     setActive: 'spaces:setActive',
+  },
+  images: {
+    list: 'images:list',
+    addFile: 'images:addFile',
+    addUrl: 'images:addUrl',
+    update: 'images:update',
+    remove: 'images:remove',
   },
   sounds: {
     list: 'sounds:list',
