@@ -25,6 +25,7 @@ import type {
   SubjectTotal,
   Task,
   TaskColour,
+  TaskTotal,
   TimerState,
   TrendPoint,
   WeekBars,
@@ -77,6 +78,8 @@ export interface StudyAtApi {
     skip(): Promise<TimerState>;
     setMode(mode: Mode): Promise<TimerState>;
     setSubject(subjectId: number | null): Promise<TimerState>;
+    /** A task from the list, or `null` for none; main snapshots its text (v1.1 spec §3.3). */
+    setTask(taskId: number | null): Promise<TimerState>;
     answerAway(answer: 'keep' | 'discard'): Promise<TimerState>;
     onState(cb: (state: TimerState) => void): Unsubscribe;
     onAwayPrompt(cb: (prompt: AwayPrompt | null) => void): Unsubscribe;
@@ -88,6 +91,8 @@ export interface StudyAtApi {
     week(weekStart?: string): Promise<WeekBars>;
     trend(): Promise<TrendPoint[]>;
     bySubject(range: SubjectRange): Promise<SubjectTotal[]>;
+    /** Top 10 tasks for the range, largest first; untagged rows are left out (v1.1 spec §3.3). */
+    byTask(range: SubjectRange): Promise<TaskTotal[]>;
     sessions(filter?: SessionFilter): Promise<Session[]>;
     updateSession(id: number, patch: { subjectId: number | null }): Promise<void>;
     deleteSession(id: number): Promise<void>;
@@ -220,6 +225,7 @@ export const CHANNELS = {
     skip: 'timer:skip',
     setMode: 'timer:setMode',
     setSubject: 'timer:setSubject',
+    setTask: 'timer:setTask',
     answerAway: 'timer:answerAway',
   },
   stats: {
@@ -228,6 +234,7 @@ export const CHANNELS = {
     week: 'stats:week',
     trend: 'stats:trend',
     bySubject: 'stats:bySubject',
+    byTask: 'stats:byTask',
     sessions: 'stats:sessions',
     updateSession: 'stats:updateSession',
     deleteSession: 'stats:deleteSession',

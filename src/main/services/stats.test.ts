@@ -64,6 +64,32 @@ describe('statsService', () => {
     expect(stats.sessions().find((s) => s.id === running.id)?.focusMs).toBe(5 * MIN);
   });
 
+  it('byTask counts the running task row live, like bySubject', () => {
+    const repo = sessionsRepo(db);
+    const done = repo.insertRunning({
+      pomodoroId: 'a',
+      subjectId: null,
+      taskId: 7,
+      taskText: 'Revise trees',
+      startedAt: WED - 3 * 3_600_000,
+      dayKey: dayKeyOf(WED, 4),
+    });
+    repo.close(done.id, WED - 3 * 3_600_000 + 30 * MIN, 30 * MIN, 0);
+    const running = repo.insertRunning({
+      pomodoroId: 'live',
+      subjectId: null,
+      taskId: 7,
+      taskText: 'Revise trees and heaps',
+      startedAt: WED - 10 * MIN,
+      dayKey: dayKeyOf(WED, 4),
+    });
+    repo.checkpoint(running.id, 5 * MIN, WED - 5 * MIN);
+    addSession(WED - 5 * 3_600_000, 20); // untagged: not listed
+    const stats = statsService({ db, now: () => WED, liveTodayMs: () => 60 * MIN });
+    expect(stats.byTask('week')).toEqual([{ taskId: 7, text: 'Revise trees and heaps', ms: 40 * MIN }]);
+    expect(stats.byTask('all')).toEqual(stats.byTask('month'));
+  });
+
   it('week normalises any day to its Monday', () => {
     const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
     expect(stats.week('2026-11-13').weekStart).toBe('2026-11-09');

@@ -50,7 +50,7 @@ import type { TimerController } from './timer/controller';
 
 export { IpcValidationError, assertEnum, assertInt, assertStr } from './services/validate';
 
-const MODES: readonly Mode[] = ['focus', 'short', 'long'];
+const MODES: readonly Mode[] = ['focus', 'short', 'long', 'countdown'];
 const RANGES: readonly SubjectRange[] = ['week', 'month', 'all'];
 const TASK_COLOURS: readonly TaskColour[] = ['yellow', 'pink', 'blue', 'green', 'purple', 'grey'];
 /** Bounds on list payloads, far above anything Sam will have. */
@@ -92,6 +92,7 @@ export type TimerLike = Pick<
   | 'skip'
   | 'setMode'
   | 'setSubject'
+  | 'setTask'
   | 'answerAway'
   | 'applySettings'
 >;
@@ -339,6 +340,15 @@ export function registerIpc(deps: IpcDeps) {
     }
     return timer.setSubject(subjectId);
   });
+  // The text is snapshotted here, from the list, so a row keeps the name it was studied under
+  // (v1.1 spec §3.3). A done task is still a task: the picker hides those, main doesn't refuse.
+  handle(C.timer.setTask, (id) => {
+    const taskId = assertIntOrNull(id, 'taskId');
+    if (taskId === null) return timer.setTask(null, null);
+    const task = tasks.list().find((t) => t.id === taskId);
+    if (!task) throw new IpcValidationError('No such task');
+    return timer.setTask(task.id, task.text);
+  });
   handle(C.timer.answerAway, (answer) =>
     timer.answerAway(assertEnum(answer, ['keep', 'discard'] as const, 'answer')),
   );
@@ -351,6 +361,7 @@ export function registerIpc(deps: IpcDeps) {
   );
   handle(C.stats.trend, () => stats.trend());
   handle(C.stats.bySubject, (range) => stats.bySubject(assertEnum(range, RANGES, 'range')));
+  handle(C.stats.byTask, (range) => stats.byTask(assertEnum(range, RANGES, 'range')));
   handle(C.stats.sessions, (filter) => stats.sessions(sanitiseSessionFilter(filter)));
   handle(C.stats.updateSession, (id, patch) => {
     const p = assertRecord(patch, 'patch');

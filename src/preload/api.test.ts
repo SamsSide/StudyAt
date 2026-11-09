@@ -47,6 +47,17 @@ describe('preload api', () => {
     expect(ipc.invoke).toHaveBeenCalledWith('sounds:relocate', 7);
   });
 
+  it('exposes timer.setTask and stats.byTask on their channels (v1.1 spec §5)', async () => {
+    const { ipc } = fakeIpc();
+    const api = buildApi(ipc);
+    await api.timer.setTask(4);
+    expect(ipc.invoke).toHaveBeenCalledWith('timer:setTask', 4);
+    await api.timer.setTask(null);
+    expect(ipc.invoke).toHaveBeenCalledWith('timer:setTask', null);
+    await api.stats.byTask('month');
+    expect(ipc.invoke).toHaveBeenCalledWith('stats:byTask', 'month');
+  });
+
   it('subscriptions pass only the payload and unsubscribe', () => {
     const { ipc, emit, listeners } = fakeIpc();
     const api = buildApi(ipc);

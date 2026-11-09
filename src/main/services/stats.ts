@@ -4,7 +4,15 @@
 // topped up to the controller's `todayFocusMs`, the same figure the timer widget and top bar show.
 import { heatmap } from '../../core/stats/heatmap';
 import { overview } from '../../core/stats/overview';
-import { bySubject, dayTotals, todayKey, trend, weekBars, type StatsContext } from '../../core/stats/totals';
+import {
+  bySubject,
+  byTask,
+  dayTotals,
+  todayKey,
+  trend,
+  weekBars,
+  type StatsContext,
+} from '../../core/stats/totals';
 import { weekStartOf } from '../../core/time';
 import type { SessionFilter } from '../../shared/ipc';
 import type {
@@ -13,6 +21,7 @@ import type {
   StatsOverview,
   SubjectRange,
   SubjectTotal,
+  TaskTotal,
   TrendPoint,
   WeekBars,
 } from '../../shared/types';
@@ -120,6 +129,12 @@ export function statsService(deps: StatsServiceDeps) {
     bySubject(range: SubjectRange): SubjectTotal[] {
       const { ctx, rows } = current();
       return bySubject(rows, subjects.list(), range, ctx);
+    },
+
+    /** Top 10 tasks for `range`, largest first; the running row counts live (v1.1 spec §3.3). */
+    byTask(range: SubjectRange): TaskTotal[] {
+      const { ctx, rows } = current();
+      return byTask(rows, range, ctx);
     },
 
     /** Stored rows as they are (the running row at its last checkpoint). */

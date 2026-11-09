@@ -4,7 +4,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNELS } from '../shared/ipc';
 import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { Note, TimerState } from '../shared/types';
+import type { Note, Task, TimerState } from '../shared/types';
 import type { CalendarAgenda, CalendarStatus, Place, WeatherReport } from '../shared/widgets';
 import type { Db } from './db/db';
 import { sessionsRepo } from './db/repos/sessions';
@@ -212,6 +212,29 @@ describe('registerIpc', () => {
     await expect(invoke(CHANNELS.stats.bySubject, 'year')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.stats.week, '2026-13-45x')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.stats.sessions, { from: 'yesterday' })).rejects.toThrow(IpcValidationError);
+  });
+
+  it('timer:setTask takes an integer or null, rejects junk and unknown ids, and passes the task text', async () => {
+    const { invoke } = setup();
+    const [task] = (await invoke(CHANNELS.tasks.create, { text: 'Revise trees', colour: 'yellow' })) as Task[];
+    const setTask = vi.spyOn(timer, 'setTask');
+    const state = (await invoke(CHANNELS.timer.setTask, task!.id)) as TimerState;
+    expect(setTask).toHaveBeenLastCalledWith(task!.id, 'Revise trees');
+    expect(state).toMatchObject({ taskId: task!.id, taskText: 'Revise trees' });
+    expect(await invoke(CHANNELS.timer.setTask, null)).toMatchObject({ taskId: null, taskText: null });
+    expect(setTask).toHaveBeenLastCalledWith(null, null);
+    await expect(invoke(CHANNELS.timer.setTask, 'x')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.timer.setTask, 1.5)).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.timer.setTask, 9999)).rejects.toThrow('No such task');
+    expect(setTask).toHaveBeenCalledTimes(2);
+  });
+
+  it('timer:setMode accepts countdown; stats:byTask validates the range', async () => {
+    const { invoke } = setup();
+    expect(await invoke(CHANNELS.timer.setMode, 'countdown')).toMatchObject({ mode: 'countdown' });
+    expect(await invoke(CHANNELS.stats.byTask, 'week')).toEqual([]);
+    await expect(invoke(CHANNELS.stats.byTask, 'year')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.stats.byTask)).rejects.toThrow(IpcValidationError);
   });
 
   it('timer:start returns TimerState', async () => {

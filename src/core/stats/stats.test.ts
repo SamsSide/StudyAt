@@ -10,6 +10,7 @@ import {
   NO_SUBJECT_KEY,
   NO_SUBJECT_NAME,
   bySubject,
+  byTask,
   dayTotals,
   trend,
   weekBars,
@@ -289,6 +290,38 @@ describe('bySubject', () => {
     expect(bySubject([on('2026-11-08', 30, 99)], subjects, 'all', ctx)).toEqual([
       { subjectId: null, name: 'No subject', colour: '#8a8f98', ms: 30 * MIN },
     ]);
+  });
+});
+
+/** `session` tagged with a task, its text snapshot as recorded. */
+function tagged(s: Session, taskId: number, taskText: string): Session {
+  return { ...s, taskId, taskText };
+}
+
+describe('byTask', () => {
+  it('byTask groups by task id, labels with the newest text, top 10 largest first, skips untagged and other ranges', () => {
+    const sessions = [
+      tagged(on('2026-11-03', 5), 1, 'New'), // Tue, the later startedAt; listed first on purpose
+      tagged(on('2026-11-02', 10), 1, 'Old'), // Mon
+      tagged(on('2026-11-04', 20), 2, 'Read chapter 4'),
+      on('2026-11-05', 30), // untagged
+      tagged(on('2026-10-20', 45), 3, 'Last month'),
+    ];
+    expect(byTask(sessions, 'week', ctx)).toEqual([
+      { taskId: 2, text: 'Read chapter 4', ms: 20 * MIN },
+      { taskId: 1, text: 'New', ms: 15 * MIN },
+    ]);
+    expect(byTask(sessions, 'all', ctx).map((t) => [t.taskId, t.ms])).toEqual([
+      [3, 45 * MIN],
+      [2, 20 * MIN],
+      [1, 15 * MIN],
+    ]);
+
+    const twelve = Array.from({ length: 12 }, (_, i) => tagged(on('2026-11-08', i + 1), i + 1, `T${i + 1}`));
+    const top = byTask(twelve, 'week', ctx);
+    expect(top).toHaveLength(10);
+    expect(top[0]).toEqual({ taskId: 12, text: 'T12', ms: 12 * MIN });
+    expect(top[9]?.taskId).toBe(3);
   });
 });
 
