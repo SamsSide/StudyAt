@@ -1,4 +1,4 @@
-// Settings → Timer (spec §3.11): segment lengths, long-break cadence, auto-start, idle threshold.
+// Settings → Timer (spec §3.11): segment lengths, long-break cadence, auto-start, Countdown length, away prompt and idle threshold.
 import { NumberField, Toggle } from '../controls';
 import styles from '../settings.module.css';
 import type { SectionProps } from './types';
@@ -41,6 +41,15 @@ export function TimerSection({ settings, update }: SectionProps) {
         max={12}
         onCommit={(n) => update({ longEvery: n })}
       />
+      <NumberField
+        label="Countdown length"
+        hint="One focus block, set on the timer's Countdown tab"
+        value={settings.countdownMinutes}
+        min={1}
+        max={240}
+        unit="min"
+        onCommit={(n) => update({ countdownMinutes: n })}
+      />
       <Toggle
         label="Start breaks automatically"
         checked={settings.autoStartBreaks}
@@ -51,8 +60,15 @@ export function TimerSection({ settings, update }: SectionProps) {
         checked={settings.autoStartFocus}
         onChange={(v) => update({ autoStartFocus: v })}
       />
+      <Toggle
+        label="Ask if I've been away"
+        hint="Off: time while you're away from the keyboard still counts. Locking or sleeping the PC still pauses the timer."
+        checked={settings.awayPrompt}
+        onChange={(v) => update({ awayPrompt: v })}
+      />
       <NumberField
         label="Away check after"
+        disabled={!settings.awayPrompt}
         hint="While the timer runs, ask whether to keep time after this much inactivity"
         value={settings.idleMinutes}
         min={2}

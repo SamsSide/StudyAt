@@ -352,3 +352,60 @@
     opacity: 1;
   }
 }
+
+/* Countdown presets: small pills under the clock, shown while idle in Countdown (spec §3.2). */
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.preset {
+  height: 26px;
+  min-width: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.preset:hover {
+  color: var(--text);
+}
+
+.preset[aria-pressed='true'] {
+  background: var(--glass-fill-raised);
+  color: var(--text);
+}
+
+.preset:focus-visible,
+.presetInput:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.presetInput {
+  width: 56px;
+  height: 26px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preset {
+    transition: none;
+  }
+}

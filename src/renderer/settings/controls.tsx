@@ -76,6 +76,7 @@ export function NumberField({
   min,
   max,
   unit,
+  disabled,
   onCommit,
 }: {
   label: string;
@@ -84,6 +85,7 @@ export function NumberField({
   min: number;
   max: number;
   unit?: string;
+  disabled?: boolean;
   /** Saves the number; resolves false when it couldn't be saved (the field then reverts). */
   onCommit: (next: number) => Promise<boolean> | void;
 }) {
@@ -123,6 +125,7 @@ export function NumberField({
         min={min}
         max={max}
         value={draft}
+        disabled={disabled}
         aria-describedby={failed ? `${id}-error` : undefined}
         onChange={(e) => {
           setFailed(false);

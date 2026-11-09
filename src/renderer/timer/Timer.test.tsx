@@ -1,9 +1,9 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatClock as sharedFormatClock } from '../../shared/clock';
-import type { TimerState } from '../../shared/types';
+import type { Task, TimerState } from '../../shared/types';
 import { MiniTimer } from '../mini/MiniTimer';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { useShortcuts } from '../shell/useShortcuts';
@@ -11,8 +11,19 @@ import { idleTimerState, installMockApi, mockApi, seedSubjects, type MockApi } f
 import { AwayPrompt } from './AwayPrompt';
 import { formatClock } from './format';
 import { TimerWidget } from './TimerWidget';
+import { useClearHeldTask } from './useClearHeldTask';
 
 let api: MockApi;
+
+const task = (id: number, text: string, done = false): Task => ({
+  id,
+  text,
+  colour: 'yellow',
+  done,
+  sort: id,
+  createdAt: 0,
+  doneAt: done ? 1 : null,
+});
 
 function setup(timer: Partial<TimerState> = {}) {
   api = mockApi();
@@ -50,15 +61,15 @@ describe('TimerWidget', () => {
     render(<TimerWidget />);
     expect(screen.getByRole('toolbar', { name: 'Timer mode' })).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Short break' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Long break' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Short' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Long' }));
     expect(api.timer.setMode).toHaveBeenNthCalledWith(1, 'short');
     expect(api.timer.setMode).toHaveBeenNthCalledWith(2, 'long');
   });
 
   const modeButtons = (): HTMLElement[] => {
     const bar = screen.getByRole('toolbar', { name: 'Timer mode' });
-    return ['Pomodoro', 'Short break', 'Long break'].map((name) => within(bar).getByRole('button', { name }));
+    return ['Pomodoro', 'Short', 'Long'].map((name) => within(bar).getByRole('button', { name }));
   };
 
   it('arrow keys only move focus round the modes, so a stray key never ends a focus session', async () => {
@@ -76,13 +87,15 @@ describe('TimerWidget', () => {
     await user.keyboard('{ArrowRight}');
     expect(long).toHaveFocus();
     await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('button', { name: 'Countdown' })).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
     expect(focus).toHaveFocus();
     await user.keyboard('{ArrowLeft}');
-    expect(long).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Countdown' })).toHaveFocus();
     await user.keyboard('{ArrowUp}{ArrowDown}{Home}');
     expect(focus).toHaveFocus();
     await user.keyboard('{End}');
-    expect(long).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Countdown' })).toHaveFocus();
     expect(api.timer.setMode).not.toHaveBeenCalled();
     expect(focus).toHaveAttribute('aria-pressed', 'true');
   });
@@ -180,7 +193,129 @@ describe('TimerWidget', () => {
   });
 });
 
+describe('Countdown', () => {
+  const presetBar = () => screen.queryByRole('group', { name: 'Countdown length' });
+
+  it('adds Countdown to the mode control and picks it', async () => {
+    render(<TimerWidget />);
+    const bar = screen.getByRole('toolbar', { name: 'Timer mode' });
+    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      'Pomodoro',
+      'Short',
+      'Long',
+      'Countdown',
+    ]);
+    await userEvent.click(within(bar).getByRole('button', { name: 'Countdown' }));
+    expect(api.timer.setMode).toHaveBeenCalledWith('countdown');
+  });
+
+  it('shows presets and a 1 to 240 field while idle, and they set countdownMinutes', async () => {
+    const user = userEvent.setup();
+    setup({ mode: 'countdown', remainingMs: 60 * 60_000 });
+    render(<TimerWidget />);
+    const bar = presetBar()!;
+    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      '30',
+      '45',
+      '60',
+      '90',
+      '120',
+    ]);
+    await user.click(within(bar).getByRole('button', { name: '90' }));
+    expect(api.settings.set).toHaveBeenLastCalledWith({ countdownMinutes: 90 });
+    const field = within(bar).getByRole('spinbutton', { name: 'Countdown minutes' });
+    expect(field).toHaveAttribute('min', '1');
+    expect(field).toHaveAttribute('max', '240');
+    await user.clear(field);
+    await user.type(field, '999');
+    await user.tab();
+    expect(api.settings.set).toHaveBeenLastCalledWith({ countdownMinutes: 240 });
+  });
+
+  it('hides the presets while running, and in the other modes', () => {
+    setup({ mode: 'countdown', status: 'running' });
+    const { unmount } = render(<TimerWidget />);
+    expect(presetBar()).toBeNull();
+    unmount();
+    setup({ mode: 'focus' });
+    render(<TimerWidget />);
+    expect(presetBar()).toBeNull();
+  });
+});
+
+describe('TaskSelect', () => {
+
+  it('lists "No task" then the not-done tasks in order, and picks one', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.tasks.list).mockResolvedValue([task(1, 'Read ch. 3'), task(2, 'Old', true), task(3, 'Essay plan')]);
+    render(<TimerWidget />);
+    const box = screen.getByRole('combobox', { name: 'Task' });
+    expect(box).toHaveTextContent('No task');
+    await user.click(box);
+    await screen.findByRole('option', { name: 'Essay plan' });
+    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Essay plan']);
+    expect(screen.getByRole('option', { name: 'Essay plan' })).toHaveAttribute('title', 'Essay plan');
+    await user.click(screen.getByRole('option', { name: 'Essay plan' }));
+    expect(api.timer.setTask).toHaveBeenCalledWith(3);
+  });
+
+  it('is available in Countdown but not in a break', () => {
+    setup({ mode: 'countdown' });
+    const { unmount } = render(<TimerWidget />);
+    expect(screen.getByRole('combobox', { name: 'Task' })).toBeInTheDocument();
+    unmount();
+    setup({ mode: 'short' });
+    render(<TimerWidget />);
+    expect(screen.queryByRole('combobox', { name: 'Task' })).toBeNull();
+  });
+
+  it('a held task that is now done still shows its text while running', async () => {
+    setup({ status: 'running', taskId: 2, taskText: 'Old' });
+    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Old', true)]);
+    render(<TimerWidget />);
+    expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
+    await userEvent.click(screen.getByRole('combobox', { name: 'Task' }));
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
+    expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
+    expect(api.timer.setTask).not.toHaveBeenCalled();
+  });
+});
+
 const optionNames = (): string[] => screen.getAllByRole('option').map((o) => o.textContent ?? '');
+
+describe('useClearHeldTask', () => {
+  /** Mounted on its own, as the shell does: no timer widget is open. */
+  function Probe() {
+    useClearHeldTask();
+    return null;
+  }
+
+  it('clears a held task that is done or gone when a segment ends, with the timer widget closed', async () => {
+    setup({ taskId: 2, taskText: 'Old' });
+    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Old', true)]);
+    render(<Probe />);
+    expect(screen.queryByRole('combobox', { name: 'Task' })).toBeNull();
+    act(() => api.emitSegmentEnd({ mode: 'countdown', next: 'countdown' }));
+    await waitFor(() => expect(api.timer.setTask).toHaveBeenCalledWith(null));
+  });
+
+  it('clears a held task that was deleted', async () => {
+    setup({ taskId: 2, taskText: 'Gone' });
+    vi.mocked(api.tasks.list).mockResolvedValue([]);
+    render(<Probe />);
+    act(() => api.emitSegmentEnd({ mode: 'focus', next: 'short' }));
+    await waitFor(() => expect(api.timer.setTask).toHaveBeenCalledWith(null));
+  });
+
+  it('keeps a held task that is still open', async () => {
+    setup({ taskId: 2, taskText: 'Open' });
+    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Open')]);
+    render(<Probe />);
+    act(() => api.emitSegmentEnd({ mode: 'focus', next: 'short' }));
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
+    expect(api.timer.setTask).not.toHaveBeenCalled();
+  });
+});
 
 describe('SubjectSelect', () => {
   it('lists "No subject" first, then the live subjects, each with its colour dot', async () => {
@@ -395,6 +530,12 @@ describe('AwayPrompt', () => {
 });
 
 describe('MiniTimer', () => {
+  it('names Countdown as the mode', () => {
+    setup({ mode: 'countdown' });
+    render(<MiniTimer />);
+    expect(screen.getByText('Countdown')).toBeInTheDocument();
+  });
+
   it('shows the countdown, mode and subject, and toggles via start/pause', async () => {
     setup({ remainingMs: 5 * 60_000, mode: 'short', subjectId: 1 });
     render(<MiniTimer />);

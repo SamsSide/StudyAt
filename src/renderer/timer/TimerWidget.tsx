@@ -2,13 +2,25 @@
 // the clock: this only shows `timer` from the store and sends commands (appplan §5).
 import { type KeyboardEvent, useRef, useState } from 'react';
 import type { Mode } from '../../shared/types';
+import { isFocusMode } from '../../shared/modes';
 import { Icon } from '../shell/icons';
 import { useStudyStore } from '../shell/store';
 import { formatClock, MODE_LABEL, pauseMessage, startLabel, toggleTimer } from './format';
 import { SubjectSelect } from './SubjectSelect';
+import { TaskSelect } from './TaskSelect';
 import styles from './timer.module.css';
 
-const MODES: Mode[] = ['focus', 'short', 'long'];
+const MODES: Mode[] = ['focus', 'short', 'long', 'countdown'];
+/** The tab text: short beside the full MODE_LABEL names (spec §3.2). */
+const TAB_LABEL: Record<Mode, string> = {
+  focus: 'Pomodoro',
+  short: 'Short',
+  long: 'Long',
+  countdown: 'Countdown',
+};
+const COUNTDOWN_PRESETS = [30, 45, 60, 90, 120];
+const COUNTDOWN_MIN = 1;
+const COUNTDOWN_MAX = 240;
 const DEFAULT_LONG_EVERY = 4;
 const STEP: Partial<Record<string, number>> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 
@@ -23,7 +35,22 @@ export function TimerWidget() {
   const [roving, setRoving] = useState<{ base: Mode; at: Mode } | null>(null);
   if (roving && roving.base !== timer.mode) setRoving(null);
   const tabStop = roving?.base === timer.mode ? roving.at : timer.mode;
+  const countdownMinutes = useStudyStore((s) => s.settings?.countdownMinutes) ?? 60;
+  const updateSettings = useStudyStore((s) => s.updateSettings);
+  const [draft, setDraft] = useState<string | null>(null);
   const api = window.studyat.timer;
+
+  const saveMinutes = (n: number): void => {
+    void updateSettings({ countdownMinutes: n }).catch(() => undefined);
+  };
+  const commitMinutes = (raw: string): void => {
+    setDraft(null);
+    const n = Number(raw);
+    if (raw.trim() === '' || !Number.isFinite(n)) return;
+    const next = Math.min(COUNTDOWN_MAX, Math.max(COUNTDOWN_MIN, Math.round(n)));
+    if (next !== countdownMinutes) saveMinutes(next);
+  };
+  const showPresets = timer.mode === 'countdown' && timer.status === 'idle';
   const message = timer.status === 'paused' ? pauseMessage(timer.pauseReason) : null;
 
   // The modes are one tab stop. The arrow keys (and Home/End) only move focus: changing mode
@@ -56,7 +83,7 @@ export function TimerWidget() {
             className={styles.tab}
             onClick={() => void api.setMode(mode)}
           >
-            {MODE_LABEL[mode]}
+            {TAB_LABEL[mode]}
           </button>
         ))}
       </div>
@@ -64,6 +91,35 @@ export function TimerWidget() {
       <p className={styles.clock} role="timer" aria-label={`${MODE_LABEL[timer.mode]} time remaining`}>
         {formatClock(timer.remainingMs)}
       </p>
+      {showPresets && (
+        <div className={styles.presets} role="group" aria-label="Countdown length">
+          {COUNTDOWN_PRESETS.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={styles.preset}
+              aria-pressed={countdownMinutes === m}
+              onClick={() => saveMinutes(m)}
+            >
+              {m}
+            </button>
+          ))}
+          <input
+            type="number"
+            inputMode="numeric"
+            className={styles.presetInput}
+            aria-label="Countdown minutes"
+            min={COUNTDOWN_MIN}
+            max={COUNTDOWN_MAX}
+            value={draft ?? String(countdownMinutes)}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={(e) => commitMinutes(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitMinutes(e.currentTarget.value);
+            }}
+          />
+        </div>
+      )}
       <p className={styles.message} role="status">
         {message}
       </p>
@@ -107,6 +163,7 @@ export function TimerWidget() {
           </button>
         </div>
       </div>
+      {isFocusMode(timer.mode) && <TaskSelect />}
     </div>
   );
 }

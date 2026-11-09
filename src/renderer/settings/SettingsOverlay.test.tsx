@@ -97,9 +97,36 @@ describe('SettingsOverlay', () => {
     expect(inputs.length).toBeGreaterThanOrEqual(5);
     const units = inputs.map((input) => input.nextElementSibling);
     for (const unit of units) expect(unit).toHaveAttribute('data-unit');
-    expect(units.map((u) => u?.textContent)).toEqual(['min', 'min', 'min', '', 'min']);
+    expect(units.map((u) => u?.textContent)).toEqual(['min', 'min', 'min', '', 'min', 'min']);
     // The empty cell is decoration only.
     expect(units[3]).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('timer: "Ask if I\'ve been away" is on by default and turning it off disables the idle minutes', async () => {
+    const api = setup();
+    const sw = screen.getByRole('switch', { name: "Ask if I've been away" });
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.getByText(
+        "Off: time while you're away from the keyboard still counts. Locking or sleeping the PC still pauses the timer.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Away check after')).toBeEnabled();
+    await userEvent.click(sw);
+    expect(api.settings.set).toHaveBeenCalledWith({ awayPrompt: false });
+    await waitFor(() => expect(screen.getByLabelText('Away check after')).toBeDisabled());
+  });
+
+  it('timer: Countdown length is a 1 to 240 minute field that saves', async () => {
+    const api = setup();
+    const field = screen.getByLabelText('Countdown length');
+    expect(field).toHaveValue(60);
+    expect(field).toHaveAttribute('min', '1');
+    expect(field).toHaveAttribute('max', '240');
+    await userEvent.clear(field);
+    await userEvent.type(field, '500');
+    await userEvent.tab();
+    expect(api.settings.set).toHaveBeenCalledWith({ countdownMinutes: 240 });
   });
 
   it('chime selects list Bell, Singing bowl, Wood block, Marimba, Soft digital and Custom file…', async () => {

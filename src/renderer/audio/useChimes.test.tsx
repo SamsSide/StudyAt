@@ -115,6 +115,21 @@ describe('useChimes', () => {
     expect(tick).toHaveBeenCalledTimes(2);
   });
 
+  it('counts Countdown as focus: end chime, last-minute tick and start chime', async () => {
+    const api = setup({ tickLastMinute: true, chimeOnStart: true, chimeFocusEnd: 'bell', chimeBreakEnd: 'marimba' });
+    await flush();
+    const cd = { ...idleTimerState(), mode: 'countdown' as const };
+    api.emitState(cd);
+    api.emitState({ ...cd, status: 'running', remainingMs: 59_000 });
+    await flush();
+    expect(playChime).toHaveBeenCalledWith('woodblock', expect.anything());
+    expect(tick).toHaveBeenCalledTimes(1);
+    playChime.mockClear();
+    api.emitSegmentEnd({ mode: 'countdown', next: 'countdown' });
+    await flush();
+    expect(playChime).toHaveBeenCalledWith('bell', expect.anything());
+  });
+
   it('does not tick when tickLastMinute is off', async () => {
     const api = setup({ tickLastMinute: false });
     await flush();

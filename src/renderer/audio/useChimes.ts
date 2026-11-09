@@ -1,6 +1,7 @@
 // Plays chimes from main's timer events (spec §3.9). Mount once, in App. Chimes are triggered by the
 // events rather than by timers in the renderer, so they still play while the window is hidden.
 import { useEffect } from 'react';
+import { isFocusMode } from '../../shared/modes';
 import type { ChimeId, PublicSettings, SegmentEnd, TimerState } from '../../shared/types';
 import { audioEngine, CHIME_REPEAT_GAP } from './engine';
 
@@ -57,7 +58,7 @@ export function useChimes(): void {
     const onSegmentEnd = (e: SegmentEnd): void => {
       void refresh().then((s) => {
         if (disposed || !s) return;
-        playRepeated(e.mode === 'focus' ? s.chimeFocusEnd : s.chimeBreakEnd, s);
+        playRepeated(isFocusMode(e.mode) ? s.chimeFocusEnd : s.chimeBreakEnd, s);
       });
     };
 
@@ -66,8 +67,8 @@ export function useChimes(): void {
       prev = s;
       const running = s.status === 'running';
 
-      // Soft tick, once per remaining second, in the final minute of a focus segment.
-      if (running && s.mode === 'focus' && s.remainingMs > 0 && s.remainingMs <= LAST_MINUTE_MS) {
+      // Soft tick, once per remaining second, in the final minute of a focus segment (Pomodoro or Countdown).
+      if (running && isFocusMode(s.mode) && s.remainingMs > 0 && s.remainingMs <= LAST_MINUTE_MS) {
         const second = Math.ceil(s.remainingMs / 1000);
         if (second !== lastTickSecond) {
           lastTickSecond = second;
@@ -82,7 +83,7 @@ export function useChimes(): void {
       const started =
         before !== null &&
         running &&
-        s.mode === 'focus' &&
+        isFocusMode(s.mode) &&
         (before.status === 'idle' || before.mode !== s.mode);
       if (started) {
         void refresh().then((fresh) => {
