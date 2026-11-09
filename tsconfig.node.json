@@ -21,8 +21,6 @@
     "src/core/**/*",
     "src/shared/**/*",
     "electron.vite.config.ts",
-    "vitest.config.mts",
-    "playwright.config.ts",
-    "e2e/**/*"
+    "vitest.config.mts"
   ]
 }
