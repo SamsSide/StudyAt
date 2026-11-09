@@ -5,7 +5,7 @@ import type { NotePatch } from '../../shared/ipc';
 import type { Note, TaskColour } from '../../shared/types';
 import { installMockApi, mockApi, type MockApi } from '../test/mockApi';
 import { NotesWidget } from './NotesWidget';
-import { resetNoteSaves } from './noteSaves';
+import { editNote, resetNoteSaves } from './noteSaves';
 
 const note = (id: number, text: string, over: Partial<Note> = {}): Note => ({
   id,
@@ -427,5 +427,29 @@ describe('NotesWidget', () => {
     expect(await screen.findByText("Couldn't load your notes.")).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByDisplayValue('Back')).toBeInTheDocument();
+  });
+
+  it("sends queued text when main's quit-time flush arrives, and the flush waits for the save", async () => {
+    let finish: (() => void) | undefined;
+    const { api } = setup([note(1, 'old')], {
+      update: vi.fn(
+        (_id: number, _patch: NotePatch) =>
+          new Promise<Note[]>((resolve) => {
+            finish = () => resolve([note(1, 'typed')]);
+          }),
+      ),
+    });
+    await screen.findByRole('textbox', { name: /^Note/ });
+    act(() => editNote(1, 'typed'));
+    let done = false;
+    const flushed = api.emitFlush().then(() => void (done = true));
+    await act(async () => {});
+    expect(api.notes.update).toHaveBeenCalledWith(1, { text: 'typed' });
+    expect(done).toBe(false);
+    await act(async () => {
+      finish?.();
+      await flushed;
+    });
+    expect(done).toBe(true);
   });
 });

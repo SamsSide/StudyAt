@@ -12,6 +12,7 @@ import type {
 } from '../../shared/types';
 import { NO_SUBJECT_KEY } from '../../core/stats/totals';
 import { addDays } from '../../core/time';
+import { useWindowVisibility } from '../spaces/windowVisibility';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { installMockApi, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
 import { formatDayMonth, formatDelta, recapTitle } from './format';
@@ -590,6 +591,64 @@ describe('useRecapPopup', () => {
     expect(api.recaps.pending).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(api.recaps.markShown).not.toHaveBeenCalled();
+  });
+
+  describe('asking again', () => {
+    const at = (iso: string) => vi.useFakeTimers({ toFake: ['Date'], now: new Date(iso) });
+
+    it('asks again when the window comes back on a new study day, and shows a recap once', async () => {
+      at('2026-11-09T10:00:00');
+      const pending = vi.fn().mockResolvedValueOnce(null).mockResolvedValue(recap());
+      api = mockApi({ recaps: { pending } });
+      installMockApi(api);
+      render(
+        <StrictMode>
+          <PopupHost />
+        </StrictMode>,
+      );
+      await act(async () => {});
+      expect(pending).toHaveBeenCalledTimes(1);
+
+      // Same day: hiding and showing the window does not ask again.
+      act(() => useWindowVisibility.getState().setVisible(false));
+      act(() => useWindowVisibility.getState().setVisible(true));
+      await act(async () => {});
+      expect(pending).toHaveBeenCalledTimes(1);
+
+      // Slept past the rollover: back on screen, the next day, it asks.
+      at('2026-11-10T10:00:00');
+      act(() => useWindowVisibility.getState().setVisible(false));
+      act(() => useWindowVisibility.getState().setVisible(true));
+      await act(async () => {});
+      expect(pending).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole('dialog', { name: 'Your week: 2 Nov–8 Nov' })).toBeInTheDocument();
+      expect(api.recaps.markShown).toHaveBeenCalledTimes(1);
+
+      // Another day, the same recap offered again: it is not marked twice.
+      at('2026-11-11T10:00:00');
+      act(() => void window.dispatchEvent(new Event('focus')));
+      await act(async () => {});
+      expect(pending).toHaveBeenCalledTimes(3);
+      expect(api.recaps.markShown).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
+
+    it('asks again on window focus on a new day, but not twice on one day', async () => {
+      at('2026-11-09T10:00:00');
+      const pending = vi.fn(() => Promise.resolve(null));
+      api = mockApi({ recaps: { pending } });
+      installMockApi(api);
+      render(<PopupHost />);
+      await act(async () => {});
+      act(() => void window.dispatchEvent(new Event('focus')));
+      expect(pending).toHaveBeenCalledTimes(1);
+      at('2026-11-10T10:00:00');
+      act(() => void window.dispatchEvent(new Event('focus')));
+      act(() => void window.dispatchEvent(new Event('focus')));
+      await act(async () => {});
+      expect(pending).toHaveBeenCalledTimes(2);
+      vi.useRealTimers();
+    });
   });
 });
 

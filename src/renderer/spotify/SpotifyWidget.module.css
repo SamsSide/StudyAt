@@ -271,6 +271,19 @@
   box-shadow: var(--focus-ring);
 }
 
+/* These classes set their own shadow, which outranks the global focus ring: keep both. */
+.primary:focus-visible {
+  outline: none;
+  box-shadow:
+    var(--focus-ring),
+    0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.textButton:focus-visible,
+.select:focus-visible {
+  box-shadow: var(--focus-ring), var(--shadow-sm);
+}
+
 /* Pickers: a label above a glass pop-up button with a drawn chevron */
 .field {
   display: flex;

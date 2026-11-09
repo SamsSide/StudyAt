@@ -22,6 +22,8 @@ let drafts = new Map<number, string>();
 const pending = new Map<number, string>();
 const lastSent = new Map<number, number>();
 const failed = new Set<number>();
+/** Saves sent and not yet answered; main's quit-time flush waits for them. */
+const inflight = new Set<Promise<void>>();
 let seq = 0;
 /** How many Notes widgets are open; timed retries run only while none is. */
 let mounted = 0;
@@ -65,10 +67,13 @@ function listen(): void {
   const stopVisibility = window.studyat.app.onVisibility((visible) => {
     if (!visible) flushNotes();
   });
+  // Main asks every renderer to flush before it quits, and waits for the answer.
+  const stopFlush = window.studyat.app.onFlush(() => flushNotesAndWait());
   stopListening = () => {
     document.removeEventListener('visibilitychange', onHidden);
     window.removeEventListener('pagehide', onPageHide);
     stopVisibility();
+    stopFlush();
   };
 }
 
@@ -84,10 +89,10 @@ function setDraft(id: number, text: string | null): void {
   drafts = next;
 }
 
-function send(id: number, text: string): void {
+function send(id: number, text: string): Promise<void> {
   const n = ++seq;
   lastSent.set(id, n);
-  window.studyat.notes.update(id, { text }).then(
+  const done: Promise<void> = window.studyat.notes.update(id, { text }).then(
     (list) => {
       if (lastSent.get(id) === n) failed.delete(id);
       if (failed.size === 0) retries = 0;
@@ -105,6 +110,9 @@ function send(id: number, text: string): void {
       scheduleRetry();
     },
   );
+  inflight.add(done);
+  void done.then(() => inflight.delete(done));
+  return done;
 }
 
 /** Records typed text: shown at once, sent on the next flush. */
@@ -118,11 +126,17 @@ export function editNote(id: number, text: string): void {
 
 /** Sends every unsaved text now. A failure puts it back in the queue for the next try. */
 export function flushNotes(): void {
+  void flushNotesAndWait();
+}
+
+/** As `flushNotes`, resolving once every save in flight (including older ones) has been answered. */
+export function flushNotesAndWait(): Promise<void> {
   listen();
   cancelRetry();
   const queue = [...pending];
   pending.clear();
-  for (const [id, text] of queue) send(id, text);
+  for (const [id, text] of queue) void send(id, text);
+  return Promise.allSettled([...inflight]).then(() => undefined);
 }
 
 /** Drops everything held for a note main has deleted. */
@@ -173,6 +187,7 @@ export function resetNoteSaves(): void {
   pending.clear();
   lastSent.clear();
   failed.clear();
+  inflight.clear();
   seq = 0;
   savedListeners.clear();
   changed();

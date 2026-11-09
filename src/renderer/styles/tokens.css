@@ -235,3 +235,9 @@ textarea {
   --note-grey: #d3d6dd;
   --note-text: #1b1e27;
 }
+
+/* Quieter ink on a sticky note (Tasks and Notes): --note-text at 72 %, about 5:1 on the palest
+   tint, for done tasks, hints and checkbox edges. */
+:root {
+  --note-text-soft: rgba(27, 30, 39, 0.72);
+}

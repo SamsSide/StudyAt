@@ -132,6 +132,21 @@
   box-shadow: var(--focus-ring);
 }
 
+/* These classes set their own shadow, which outranks the global focus ring: keep both. */
+.btn:focus-visible {
+  box-shadow: var(--focus-ring), var(--shadow-sm);
+}
+
+.tab[aria-pressed='true']:focus-visible {
+  box-shadow: var(--focus-ring), var(--shadow-sm);
+}
+
+.chip:focus-visible {
+  box-shadow:
+    var(--focus-ring),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
 .primary {
   background: var(--accent);
   color: var(--accent-text);
@@ -353,7 +368,7 @@
   height: 28px;
   padding: 0;
   color: #fff;
-  background: rgba(12, 14, 20, 0.62);
+  background: var(--glass-fill-strong);
   backdrop-filter: blur(14px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-pill);
@@ -365,7 +380,7 @@
 }
 
 .chip:hover {
-  background: rgba(30, 33, 42, 0.78);
+  background: var(--panel);
 }
 
 .chip:active {
