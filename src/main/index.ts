@@ -298,9 +298,9 @@ async function boot(): Promise<void> {
         // Review Focus 1: the prompt lives in the main window, so a hidden one comes back.
         main?.onAwayPrompt(p);
       },
-      segmentEnd: (e) => {
+      segmentEnd: (e, segmentMs) => {
         broadcaster.send(CHANNELS.events.timerSegmentEnd, e);
-        notifier.notifySegmentEnd(e);
+        notifier.notifySegmentEnd(e, segmentMs);
       },
     },
   });

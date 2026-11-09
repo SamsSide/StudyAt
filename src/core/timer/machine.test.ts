@@ -16,6 +16,7 @@ const cfg: TimerConfig = {
   longEvery: 4,
   autoStartBreaks: false,
   autoStartFocus: false,
+  countdownMs: 60 * MIN,
 };
 const T0 = 1_700_000_000_000;
 
@@ -387,5 +388,60 @@ describe('step', () => {
         [{ type: 'skip' }, T0 + 2000],
       ]),
     ).not.toThrow();
+  });
+});
+
+describe('countdown (spec §3.2)', () => {
+  it('countdown accrues like focus and ends idle in countdown without a break', () => {
+    const s = step(initialState(cfg), { type: 'setMode', mode: 'countdown' }, 0, cfg).state;
+    const started = step(s, { type: 'start' }, 0, cfg);
+    expect(started.effects).toContainEqual({ type: 'focusStarted' });
+    const end = step(started.state, { type: 'tick' }, 60 * MIN, {
+      ...cfg,
+      autoStartBreaks: true,
+      autoStartFocus: true,
+    });
+    expect(end.effects).toContainEqual({ type: 'accrue', ms: 60 * MIN });
+    expect(end.effects).toContainEqual({ type: 'focusStopped', reason: 'end' });
+    expect(end.effects).toContainEqual({ type: 'segmentEnded', mode: 'countdown', next: 'countdown' });
+    expect(end.state).toMatchObject({
+      mode: 'countdown',
+      status: 'idle',
+      remainingMs: 60 * MIN,
+      completedFocusCount: 0,
+    });
+  });
+
+  it('skip in countdown resets to full length idle countdown', () => {
+    const s = step(initialState(cfg), { type: 'setMode', mode: 'countdown' }, T0, cfg).state;
+    const r = run(s, [
+      [{ type: 'start' }, T0],
+      [{ type: 'skip' }, T0 + 10 * MIN],
+    ]);
+    expect(accrued(r.effects)).toBe(10 * MIN);
+    expect(r.effects).toContainEqual({ type: 'focusStopped', reason: 'skip' });
+    expect(r.state).toMatchObject({ mode: 'countdown', status: 'idle', remainingMs: 60 * MIN, completedFocusCount: 0 });
+  });
+
+  it('a paused countdown accrues only running time', () => {
+    const s = step(initialState(cfg), { type: 'setMode', mode: 'countdown' }, T0, cfg).state;
+    const r = run(s, [
+      [{ type: 'start' }, T0],
+      [{ type: 'pause', reason: 'user' }, T0 + 5 * MIN],
+      [{ type: 'resume' }, T0 + 20 * MIN],
+      [{ type: 'tick' }, T0 + 22 * MIN],
+    ]);
+    expect(accrued(r.effects)).toBe(7 * MIN);
+    expect(r.state.remainingMs).toBe(53 * MIN);
+  });
+
+  it('leaving a started countdown for another mode stops focus', () => {
+    const s = step(initialState(cfg), { type: 'setMode', mode: 'countdown' }, T0, cfg).state;
+    const r = run(s, [
+      [{ type: 'start' }, T0],
+      [{ type: 'setMode', mode: 'focus' }, T0 + 3 * MIN],
+    ]);
+    expect(r.effects).toContainEqual({ type: 'focusStopped', reason: 'mode' });
+    expect(r.state).toMatchObject({ mode: 'focus', status: 'idle', remainingMs: 25 * MIN });
   });
 });

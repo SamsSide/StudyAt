@@ -5,7 +5,7 @@ import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { one } from '../db/sql';
-import { AWAY_MARKER_KEY } from './away-marker';
+import { AWAY_MARKER_KEY, readAwayMarker } from './away-marker';
 import { SLEEP_GAP_MS, TimerController } from './controller';
 import { FakeClock } from './test-clock';
 
@@ -20,6 +20,8 @@ describe('TimerController', () => {
   let states: TimerState[];
   let aways: (AwayPrompt | null)[];
   let ends: SegmentEnd[];
+  /** The segment length passed with each segment end, for the notification. */
+  let endLengths: number[];
   let ids: number;
   let c: TimerController;
 
@@ -34,7 +36,10 @@ describe('TimerController', () => {
       emit: {
         state: (s) => states.push(s),
         away: (p) => aways.push(p),
-        segmentEnd: (e) => ends.push(e),
+        segmentEnd: (e, segmentMs) => {
+          ends.push(e);
+          endLengths.push(segmentMs);
+        },
       },
     });
 
@@ -51,6 +56,7 @@ describe('TimerController', () => {
     states = [];
     aways = [];
     ends = [];
+    endLengths = [];
     ids = 0;
     c = make();
   }
@@ -814,5 +820,218 @@ describe('TimerController', () => {
     at(12 * MIN);
     crashAndRelaunch();
     expect(rows().map((r) => [r.subjectId, r.focusMs])).toEqual([[1, MIN]]);
+  });
+
+  // ── v1.1: the away-prompt switch (spec §3.1) ──
+
+  it('awayPrompt off: 15 idle minutes during focus keep all focus and never prompt', () => {
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    c.start();
+    lastInput = NOW + MIN;
+    at(16 * MIN); // idle seconds pass 600 at 11:00 and keep rising
+    lastInput = clock.time;
+    at(FOCUS);
+    expect(aways.filter((p) => p !== null)).toEqual([]);
+    expect(rows()).toEqual([expect.objectContaining({ status: 'done', focusMs: FOCUS, discardedMs: 0 })]);
+    expect(readAwayMarker(db)).toBeNull();
+  });
+
+  it('awayPrompt off: the timer never reads idle time', () => {
+    settingsRepo(db).set({ awayPrompt: false });
+    const polls = vi.fn(() => 0);
+    c.dispose();
+    c = new TimerController({
+      db,
+      now: clock.now,
+      setInterval: clock.setInterval,
+      clearInterval: clock.clearInterval,
+      uuid: () => `p-${++ids}`,
+      idleSeconds: polls,
+      emit: { state: () => undefined, away: () => undefined, segmentEnd: () => undefined },
+    });
+    c.start();
+    at(5 * MIN);
+    expect(polls).not.toHaveBeenCalled();
+  });
+
+  it('turning awayPrompt off drops an unprompted away period and clears the marker', () => {
+    c.start();
+    lastInput = NOW + MIN;
+    at(11 * MIN); // away since 1:00, marker written
+    expect(readAwayMarker(db)).not.toBeNull();
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    expect(readAwayMarker(db)).toBeNull();
+    at(12 * MIN + 2_000);
+    lastInput = clock.time; // back
+    at(FOCUS);
+    expect(aways.filter((p) => p !== null)).toEqual([]);
+    expect(rows()).toEqual([expect.objectContaining({ status: 'done', focusMs: FOCUS, discardedMs: 0 })]);
+    expect(readAwayMarker(db)).toBeNull();
+  });
+
+  it('turning awayPrompt off leaves a showing prompt to resolve', () => {
+    awayTwelveMinutes();
+    const away = 11 * MIN + 5_000;
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    expect(aways).toHaveLength(1);
+    c.answerAway('discard');
+    expect(aways.at(-1)).toBeNull();
+    expect(rows()[0]).toMatchObject({ focusMs: MIN, discardedMs: away });
+    expect(readAwayMarker(db)).toBeNull();
+  });
+
+  it('turning awayPrompt off leaves a showing prompt to auto-discard', () => {
+    awayTwelveMinutes();
+    const away = 11 * MIN + 5_000;
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    at(12 * MIN + 5_000 + 120_000);
+    expect(aways.at(-1)).toBeNull();
+    expect(rows()[0]).toMatchObject({ discardedMs: away });
+  });
+
+  it('turning awayPrompt back on applies from the next poll', () => {
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    c.start();
+    lastInput = NOW + MIN;
+    at(5 * MIN);
+    settingsRepo(db).set({ awayPrompt: true });
+    c.applySettings();
+    at(12 * MIN + 2_000); // a poll sees over 10 min idle: away since 1:00
+    lastInput = clock.time;
+    at(12 * MIN + 5_000);
+    expect(aways).toEqual([{ awayMs: 11 * MIN + 5_000, deadline: NOW + 12 * MIN + 5_000 + 120_000 }]);
+  });
+
+  // ── v1.1: Countdown (spec §3.2) ──
+
+  it('countdown writes one row with its focus and fires segment end with mode countdown', () => {
+    c.setMode('countdown');
+    expect(c.start()).toMatchObject({ mode: 'countdown', status: 'running', segmentMs: 60 * MIN });
+    at(30 * MIN);
+    expect(rows()[0]).toMatchObject({ status: 'running', focusMs: 30 * MIN });
+    at(60 * MIN);
+    expect(ends).toEqual([{ mode: 'countdown', next: 'countdown' }]);
+    expect(endLengths).toEqual([60 * MIN]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ pomodoroId: 'p-1', status: 'done', focusMs: 60 * MIN, endedAt: NOW + 60 * MIN }),
+    ]);
+    expect(c.getState()).toMatchObject({
+      mode: 'countdown',
+      status: 'idle',
+      remainingMs: 60 * MIN,
+      completedFocusCount: 0,
+      todayFocusMs: 60 * MIN,
+    });
+  });
+
+  it('a countdown length changed mid-run applies at the next start; the end reports the run length', () => {
+    c.setMode('countdown');
+    c.start();
+    settingsRepo(db).set({ countdownMinutes: 90 });
+    c.applySettings();
+    at(60 * MIN);
+    expect(endLengths).toEqual([60 * MIN]);
+    expect(c.getState()).toMatchObject({ mode: 'countdown', status: 'idle', remainingMs: 90 * MIN });
+  });
+
+  it('countdown takes its length from countdownMinutes, resizing the idle segment', () => {
+    c.setMode('countdown');
+    settingsRepo(db).set({ countdownMinutes: 90 });
+    expect(c.applySettings()).toMatchObject({ mode: 'countdown', remainingMs: 90 * MIN, segmentMs: 90 * MIN });
+  });
+
+  it('countdown does not auto-start, whatever the toggles say', () => {
+    settingsRepo(db).set({ autoStartBreaks: true, autoStartFocus: true, countdownMinutes: 30 });
+    c.setMode('countdown');
+    c.start();
+    at(35 * MIN);
+    expect(c.getState()).toMatchObject({ mode: 'countdown', status: 'idle', remainingMs: 30 * MIN });
+    expect(rows()).toHaveLength(1);
+  });
+
+  it('countdown accrues no time while paused and skip drops a row under a minute', () => {
+    c.setMode('countdown');
+    c.start();
+    at(40_000);
+    c.pause();
+    at(10 * MIN);
+    c.skip();
+    expect(rows()).toEqual([]);
+    expect(c.getState()).toMatchObject({ mode: 'countdown', status: 'idle', remainingMs: 60 * MIN });
+  });
+
+  it('an away discard in a countdown takes the time out and gives it back', () => {
+    c.setMode('countdown');
+    awayTwelveMinutes();
+    const away = 11 * MIN + 5_000;
+    const s = c.answerAway('discard');
+    expect(s.remainingMs).toBe(60 * MIN - (12 * MIN + 5_000) + away);
+    expect(rows()[0]).toMatchObject({ focusMs: MIN, discardedMs: away });
+  });
+
+  it('todayFocusMs counts a running countdown live', () => {
+    c.setMode('countdown');
+    c.start();
+    clock.time = NOW + 7_100; // between ticks
+    expect(c.getState().todayFocusMs).toBe(7_100);
+  });
+
+  // ── v1.1: a task on the timer (spec §3.3) ──
+
+  it('the held task is written on the row and in the state', () => {
+    expect(c.setTask(1, 'A')).toMatchObject({ taskId: 1, taskText: 'A', status: 'idle' });
+    c.start();
+    expect(rows()[0]).toMatchObject({ taskId: 1, taskText: 'A' });
+    expect(states.at(-1)).toMatchObject({ taskId: 1, taskText: 'A' });
+  });
+
+  it("setTask mid-segment splits the row on the pomodoro's day key", async () => {
+    c.dispose();
+    await db.close();
+    cleanup();
+    await setup(new Date(2026, 10, 9, 3, 50, 0).getTime());
+    c.setTask(1, 'A');
+    c.start();
+    clock.advance(10 * MIN); // 04:00, the rollover
+    expect(c.setTask(2, 'B')).toMatchObject({ taskId: 2, taskText: 'B', status: 'running' });
+    clock.advance(15 * MIN);
+    expect(ends).toEqual([{ mode: 'focus', next: 'short' }]);
+    expect(rows().map((r) => [r.pomodoroId, r.dayKey, r.taskId, r.taskText, r.focusMs])).toEqual([
+      ['p-1', '2026-11-08', 1, 'A', 10 * MIN],
+      ['p-1', '2026-11-08', 2, 'B', 15 * MIN],
+    ]);
+  });
+
+  it('setTask while idle changes the state without a row', () => {
+    const before = states.length;
+    expect(c.setTask(3, 'Read ch. 4')).toMatchObject({ taskId: 3, taskText: 'Read ch. 4' });
+    expect(rows()).toEqual([]);
+    expect(states.length).toBeGreaterThan(before);
+    expect(c.setTask(null, null)).toMatchObject({ taskId: null, taskText: null });
+  });
+
+  it('setTask same id is a no-op', () => {
+    c.setTask(1, 'A');
+    c.start();
+    at(2 * MIN);
+    c.setTask(1, 'A edited');
+    expect(rows()).toHaveLength(1);
+    expect(c.getState()).toMatchObject({ taskId: 1, taskText: 'A' });
+  });
+
+  it('the held task carries over a segment end into the next focus row', () => {
+    settingsRepo(db).set({ autoStartBreaks: true, autoStartFocus: true });
+    c.setTask(1, 'A');
+    c.start();
+    at(FOCUS + 5 * MIN + MIN);
+    expect(rows().map((r) => [r.pomodoroId, r.taskId])).toEqual([
+      ['p-1', 1],
+      ['p-2', 1],
+    ]);
   });
 });

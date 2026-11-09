@@ -6,6 +6,9 @@ import type { SegmentEnd, Settings } from '../shared/types';
 export const FOCUS_DONE = 'Focus done — time for a break.';
 export const BREAK_DONE = 'Break over — ready to focus?';
 export const TRAY_NOTICE = 'StudyAt is still running in the tray.';
+/** A Countdown end (spec §3.2): this title, and the body from `countdownBody`. */
+export const COUNTDOWN_DONE_TITLE = 'Countdown done';
+const countdownBody = (minutes: number): string => `${minutes} min of focus.`;
 
 export interface NotificationLike {
   on(event: 'click' | 'close', listener: () => void): void;
@@ -29,9 +32,9 @@ export function createNotifier(deps: NotifyDeps) {
   // until it is clicked or closed.
   const live = new Set<NotificationLike>();
 
-  const show = (body: string): boolean => {
+  const show = (body: string, title = 'StudyAt'): boolean => {
     if (!deps.isSupported()) return false;
-    const n = deps.create({ title: 'StudyAt', body, icon: deps.icon, silent: true });
+    const n = deps.create({ title, body, icon: deps.icon, silent: true });
     live.add(n);
     n.on('click', () => {
       live.delete(n);
@@ -43,9 +46,13 @@ export function createNotifier(deps: NotifyDeps) {
   };
 
   return {
-    /** Spec §3.11 `notifications`; true when a notification was shown. */
-    notifySegmentEnd(e: SegmentEnd): boolean {
+    /**
+     * Spec §3.11 `notifications`; true when a notification was shown. `segmentMs` is the length of
+     * the segment that ended, which a Countdown reports as its minutes of focus.
+     */
+    notifySegmentEnd(e: SegmentEnd, segmentMs: number): boolean {
       if (!deps.settings().notifications || deps.isMainFocused()) return false;
+      if (e.mode === 'countdown') return show(countdownBody(Math.round(segmentMs / 60_000)), COUNTDOWN_DONE_TITLE);
       return show(e.mode === 'focus' ? FOCUS_DONE : BREAK_DONE);
     },
     /**

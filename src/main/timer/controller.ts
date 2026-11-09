@@ -2,16 +2,19 @@
 // machine with a 250 ms tick and turns its effects into session rows: a row is inserted when a
 // focus segment starts, checkpointed every 15 s and on every pause, and closed (or deleted if under
 // a minute) when it ends. Suspend and lock pause it; idle time over the threshold becomes an away
-// prompt that is discarded if not answered in 2 minutes, renderer or not. No clock inside: time,
-// intervals and idle seconds are injected.
+// prompt that is discarded if not answered in 2 minutes, renderer or not, unless the away prompt
+// is switched off (v1.1 spec §3.1). A Countdown is a focus segment like a Pomodoro focus (spec
+// §3.2). No clock inside: time, intervals and idle seconds are injected.
 import {
   initialState,
+  lengthOf,
   step,
   type MachineState,
   type TimerConfig,
   type TimerEvent,
 } from '../../core/timer/machine';
 import { dayKeyOf } from '../../core/time';
+import { isFocusMode } from '../../shared/modes';
 import type { AwayPrompt, Mode, SegmentEnd, TimerState } from '../../shared/types';
 import type { Db } from '../db/db';
 import { sessionsRepo, type SessionsRepo } from '../db/repos/sessions';
@@ -45,7 +48,8 @@ export interface ControllerDeps {
   emit: {
     state(s: TimerState): void;
     away(p: AwayPrompt | null): void;
-    segmentEnd(e: SegmentEnd): void;
+    /** `segmentMs` is the length of the segment that ended (a Countdown's notification shows it). */
+    segmentEnd(e: SegmentEnd, segmentMs: number): void;
   };
 }
 
@@ -74,6 +78,7 @@ interface Emitted {
   pauseReason: MachineState['pauseReason'];
   completedFocusCount: number;
   subjectId: number | null;
+  taskId: number | null;
   second: number;
   at: number;
 }
@@ -83,9 +88,14 @@ export class TimerController {
   private readonly settings: SettingsRepo;
   private cfg!: TimerConfig;
   private idleThresholdMs = 10 * MINUTE;
+  /** Off: idle time is never polled, so no away period, prompt or discard (spec §3.1). */
+  private awayPrompt = true;
   private rolloverHour = 4;
   private machine: MachineState;
   private subjectId: number | null = null;
+  /** The task held on the timer and its text as chosen (spec §3.3); kept even if later ticked off. */
+  private taskId: number | null = null;
+  private taskText: string | null = null;
   /** The focus row of the current segment, open from focus start to its end. */
   private open: Row | null = null;
   /** Rows the ledger or a pending prompt can still charge, plus the open one. */
@@ -169,7 +179,7 @@ export class TimerController {
   }
 
   private liveState(now: number): TimerState {
-    this.lastTodayFocusMs = this.todayFocusMs(now, this.machine.mode === 'focus' ? this.liveMs(now) : 0);
+    this.lastTodayFocusMs = this.todayFocusMs(now, isFocusMode(this.machine.mode) ? this.liveMs(now) : 0);
     return this.snapshot(now, this.lastTodayFocusMs);
   }
 
@@ -193,8 +203,8 @@ export class TimerController {
       subjectId: this.subjectId,
       pauseReason: m.pauseReason,
       todayFocusMs,
-      taskId: null,
-      taskText: null,
+      taskId: this.taskId,
+      taskText: this.taskText,
     };
   }
 
@@ -236,13 +246,31 @@ export class TimerController {
     return this.command((now) => {
       if (id === this.subjectId) return;
       this.subjectId = id;
-      if (!this.open) return;
-      // The whole pomodoro is credited to its start day, even if the change comes after the
-      // rollover (Sam's ruling A3, 2026-11-08).
-      const { pomodoroId, dayKey } = this.open;
-      this.closeOpen(now);
-      this.openRow(pomodoroId, now, dayKey);
+      this.split(now);
     });
+  }
+
+  /**
+   * Spec §3.3: a task change splits the row exactly like a subject change. `text` is the task's
+   * text now, recorded on the row so Stats keeps its old name. The same id again changes nothing.
+   */
+  setTask(id: number | null, text: string | null): TimerState {
+    return this.command((now) => {
+      if (id === this.taskId) return;
+      this.taskId = id;
+      this.taskText = id === null ? null : text;
+      this.split(now);
+    });
+  }
+
+  /** Mid-segment, closes the open row and opens one on the same pomodoro and day key. */
+  private split(now: number): void {
+    if (!this.open) return;
+    // The whole pomodoro is credited to its start day, even if the change comes after the
+    // rollover (Sam's ruling A3, 2026-11-08).
+    const { pomodoroId, dayKey } = this.open;
+    this.closeOpen(now);
+    this.openRow(pomodoroId, now, dayKey);
   }
 
   /** Keep changes nothing; discard takes the away time out of the rows it covered (rule 4). */
@@ -256,7 +284,11 @@ export class TimerController {
     return this.machine.status === 'running' ? this.pause() : this.resume();
   }
 
-  /** Re-reads settings; a fresh idle segment takes the new length now rather than at its start. */
+  /**
+   * Re-reads settings; a fresh idle segment takes the new length now rather than at its start. The
+   * away prompt switched off drops an unprompted away period (its time is kept); a prompt already
+   * showing still resolves (spec §3.1).
+   */
   applySettings(): TimerState {
     return this.command(() => {
       this.loadSettings();
@@ -365,7 +397,7 @@ export class TimerController {
           this.openRow(this.deps.uuid(), now);
           break;
         case 'segmentEnded':
-          this.deps.emit.segmentEnd({ mode: effect.mode, next: effect.next });
+          this.deps.emit.segmentEnd({ mode: effect.mode, next: effect.next }, before.segmentMs);
           break;
       }
     }
@@ -412,6 +444,7 @@ export class TimerController {
 
   /** Writes what changed, starts or stops intervals, and emits state if it changed (or always). */
   private settle(now: number, always = false): void {
+    this.dropAwayIfOff();
     this.pruneLedger(now);
     this.syncTimers();
     if (this.dirty) {
@@ -431,6 +464,7 @@ export class TimerController {
       pauseReason: m.pauseReason,
       completedFocusCount: m.completedFocusCount,
       subjectId: this.subjectId,
+      taskId: this.taskId,
       second: Math.ceil(Math.max(0, remaining) / 1000),
       at: now,
     };
@@ -442,6 +476,7 @@ export class TimerController {
       last.pauseReason !== next.pauseReason ||
       last.completedFocusCount !== next.completedFocusCount ||
       last.subjectId !== next.subjectId ||
+      last.taskId !== next.taskId ||
       last.second !== next.second ||
       now - last.at >= EMIT_EVERY_MS;
     if (!always && !changed) return;
@@ -454,9 +489,9 @@ export class TimerController {
     const running = this.machine.status === 'running';
     this.tickTimer = this.keep(this.tickTimer, running, TICK_MS, () => this.onTick());
     // Polling goes on after a pause or a segment end while away, so the return is still noticed.
-    this.pollTimer = this.keep(this.pollTimer, running || this.idle.since !== null, IDLE_POLL_MS, () =>
-      this.onPoll(),
-    );
+    // With the away prompt off there is nothing to poll for (spec §3.1).
+    const poll = this.awayPrompt && (running || this.idle.since !== null);
+    this.pollTimer = this.keep(this.pollTimer, poll, IDLE_POLL_MS, () => this.onPoll());
     // The auto-discard runs here in main, whether or not any renderer is listening.
     this.awayTimer = this.keep(this.awayTimer, this.pending !== null, AWAY_CHECK_MS, () =>
       this.onAwayCheck(),
@@ -476,8 +511,8 @@ export class TimerController {
     const s = this.sessions.insertRunning({
       pomodoroId,
       subjectId: this.subjectId,
-      taskId: null,
-      taskText: null,
+      taskId: this.taskId,
+      taskText: this.taskText,
       startedAt: now,
       dayKey,
     });
@@ -533,6 +568,10 @@ export class TimerController {
     if (this.disposed) return;
     const now = this.deps.now();
     if (this.pending) return;
+    if (!this.awayPrompt) {
+      this.syncTimers();
+      return;
+    }
     const result = this.idle.poll(
       this.deps.idleSeconds(),
       now,
@@ -582,6 +621,16 @@ export class TimerController {
     writeAwayMarker(this.deps.db, { since, charges: charges.map(({ rowId, ms }) => ({ rowId, ms })) });
     this.markerOpen = true;
     this.dirty = true;
+  }
+
+  /**
+   * Spec §3.1: with the away prompt off, an away period not yet prompted is dropped, its time kept,
+   * and its crash marker cleared. A pending prompt is left to resolve as normal.
+   */
+  private dropAwayIfOff(): void {
+    if (this.awayPrompt || this.pending || this.idle.since === null) return;
+    this.idle.clear();
+    this.clearMarker();
   }
 
   private clearMarker(): void {
@@ -679,7 +728,9 @@ export class TimerController {
       longEvery: s.longEvery,
       autoStartBreaks: s.autoStartBreaks,
       autoStartFocus: s.autoStartFocus,
+      countdownMs: s.countdownMinutes * MINUTE,
     };
+    this.awayPrompt = s.awayPrompt;
     this.idleThresholdMs = s.idleMinutes * MINUTE;
     this.rolloverHour = s.rolloverHour;
   }
@@ -688,8 +739,7 @@ export class TimerController {
   private resizeIdle(): void {
     const m = this.machine;
     if (m.status !== 'idle' || m.remainingMs !== m.segmentMs) return;
-    const len =
-      m.mode === 'focus' ? this.cfg.focusMs : m.mode === 'short' ? this.cfg.shortMs : this.cfg.longMs;
+    const len = lengthOf(m.mode, this.cfg);
     this.machine = { ...m, segmentMs: len, remainingMs: len };
   }
 }
