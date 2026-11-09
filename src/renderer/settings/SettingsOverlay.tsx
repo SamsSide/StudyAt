@@ -4,6 +4,7 @@
 import { type KeyboardEvent, type ReactNode, useState } from 'react';
 import type { SettingsPatch } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
+import { CalendarSection } from './sections/CalendarSection';
 import { ChimesSection } from './sections/ChimesSection';
 import { DataSection } from './sections/DataSection';
 import { GeneralSection } from './sections/GeneralSection';
@@ -12,6 +13,7 @@ import { ShortcutsSection } from './sections/ShortcutsSection';
 import { SpotifySection } from './sections/SpotifySection';
 import { SubjectsSection } from './sections/SubjectsSection';
 import { TimerSection } from './sections/TimerSection';
+import { WeatherSection } from './sections/WeatherSection';
 import type { SectionProps } from './sections/types';
 import styles from './settings.module.css';
 
@@ -21,6 +23,8 @@ const SECTIONS = [
   'Goals & streak',
   'Subjects',
   'Spotify',
+  'Calendar',
+  'Weather',
   'Shortcuts',
   'Data',
   'General',
@@ -39,6 +43,10 @@ const render = (name: SectionName, props: SectionProps): ReactNode => {
       return <SubjectsSection />;
     case 'Spotify':
       return <SpotifySection {...props} />;
+    case 'Calendar':
+      return <CalendarSection />;
+    case 'Weather':
+      return <WeatherSection {...props} />;
     case 'Shortcuts':
       return <ShortcutsSection {...props} />;
     case 'Data':

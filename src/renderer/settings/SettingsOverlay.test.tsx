@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 
 describe('SettingsOverlay', () => {
-  it('lists the eight sections', () => {
+  it('lists the ten sections', () => {
     setup();
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Timer',
@@ -44,6 +44,8 @@ describe('SettingsOverlay', () => {
       'Goals & streak',
       'Subjects',
       'Spotify',
+      'Calendar',
+      'Weather',
       'Shortcuts',
       'Data',
       'General',
@@ -503,5 +505,192 @@ describe('SettingsOverlay', () => {
     expect(screen.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
     await userEvent.keyboard('{Home}');
     expect(screen.getByRole('tab', { name: 'Timer' })).toHaveFocus();
+  });
+
+  describe('Calendar', () => {
+    const ICS = 'https://calendar.google.com/calendar/ical/me%40gmail.com/private-abc/basic.ics';
+    const ICS2 = 'https://calendar.google.com/calendar/ical/b/private-def/basic.ics';
+    const linked = { configured: true, calendars: [{ name: 'Lectures', colour: '#7c9cff' }] };
+
+    it('shows the three steps and the privacy note verbatim', async () => {
+      setup();
+      await openSection('Calendar');
+      expect(screen.getByText('Open Google Calendar on the web and go to Settings.')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "Under 'Settings for my calendars', choose your calendar, then 'Integrate calendar'.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Copy the 'Secret address in iCal format' and paste it here."),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('This link is private — StudyAt keeps it encrypted on this PC.'),
+      ).toBeInTheDocument();
+    });
+
+    it('address fields are password-style, and up to five can be added and removed', async () => {
+      setup();
+      await openSection('Calendar');
+      expect(screen.getByLabelText('Calendar address 1')).toHaveAttribute('type', 'password');
+      const add = screen.getByRole('button', { name: 'Add calendar' });
+      for (let i = 0; i < 4; i++) await userEvent.click(add);
+      expect(screen.getByLabelText('Calendar address 5')).toBeInTheDocument();
+      expect(add).toBeDisabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Remove calendar address 5' }));
+      expect(screen.queryByLabelText('Calendar address 5')).toBeNull();
+      expect(add).toBeEnabled();
+    });
+
+    it('Save sends the trimmed, non-blank addresses once, then shows the calendars', async () => {
+      const api = mockApi({ calendar: { setUrls: vi.fn(() => Promise.resolve(linked)) } });
+      setup(api);
+      await openSection('Calendar');
+      const save = screen.getByRole('button', { name: 'Save' });
+      expect(save).toBeDisabled();
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), `  ${ICS} `);
+      await userEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
+      await userEvent.type(screen.getByLabelText('Calendar address 3'), ICS2);
+      await userEvent.click(save);
+      expect(api.calendar.setUrls).toHaveBeenCalledTimes(1);
+      expect(api.calendar.setUrls).toHaveBeenCalledWith([ICS, ICS2]);
+      const list = await screen.findByRole('list', { name: 'Connected calendars' });
+      expect(within(list).getByText('Lectures')).toBeInTheDocument();
+      // The secret leaves the page once saved.
+      expect(screen.getByLabelText('Calendar address 1')).toHaveValue('');
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    });
+
+    it('does not call setUrls again for the same list', async () => {
+      const api = mockApi({ calendar: { setUrls: vi.fn(() => Promise.resolve(linked)) } });
+      setup(api);
+      await openSection('Calendar');
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), ICS);
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByRole('list', { name: 'Connected calendars' });
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), ` ${ICS}`);
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    });
+
+    it("shows main's refusal without the IPC prefix", async () => {
+      const api = mockApi({
+        calendar: {
+          setUrls: vi.fn(() =>
+            Promise.reject(
+              new Error(
+                "Error invoking remote method 'calendar:setUrls': Error: Calendar addresses must start with https://",
+              ),
+            ),
+          ),
+        },
+      });
+      setup(api);
+      await openSection('Calendar');
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), 'http://x');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        /^Calendar addresses must start with https:\/\/$/,
+      );
+    });
+
+    it('lists the connected calendars and can remove them all', async () => {
+      const api = mockApi({ calendar: { status: vi.fn(() => Promise.resolve(linked)) } });
+      setup(api);
+      await openSection('Calendar');
+      const list = await screen.findByRole('list', { name: 'Connected calendars' });
+      expect(within(list).getByText('Lectures')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Remove all calendars' }));
+      expect(api.calendar.setUrls).toHaveBeenCalledWith([]);
+      await waitFor(() => expect(screen.queryByRole('list', { name: 'Connected calendars' })).toBeNull());
+    });
+  });
+
+  describe('Weather', () => {
+    const DURHAM = {
+      name: 'Durham',
+      latitude: 54.78,
+      longitude: -1.57,
+      country: 'United Kingdom',
+      admin1: 'England',
+    };
+
+    it('searches 300 ms after typing stops and saves the picked place', async () => {
+      const after = { ...publicDefaults(), weatherPlace: DURHAM };
+      const api = mockApi({
+        weather: {
+          searchPlaces: vi.fn(() => Promise.resolve([DURHAM])),
+          setPlace: vi.fn(() => Promise.resolve(after)),
+        },
+      });
+      setup(api);
+      await openSection('Weather');
+      vi.useFakeTimers();
+      try {
+        const box = screen.getByLabelText('Search for a place');
+        fireEvent.change(box, { target: { value: 'Du' } });
+        fireEvent.change(box, { target: { value: 'Durh' } });
+        await act(() => vi.advanceTimersByTimeAsync(299));
+        expect(api.weather.searchPlaces).not.toHaveBeenCalled();
+        await act(() => vi.advanceTimersByTimeAsync(1));
+        expect(api.weather.searchPlaces).toHaveBeenCalledTimes(1);
+        expect(api.weather.searchPlaces).toHaveBeenCalledWith('Durh');
+      } finally {
+        vi.useRealTimers();
+      }
+      const pick = await screen.findByRole('button', { name: 'Durham, England, United Kingdom' });
+      await userEvent.click(pick);
+      expect(api.weather.setPlace).toHaveBeenCalledWith(DURHAM);
+      await waitFor(() => expect(useStudyStore.getState().settings?.weatherPlace).toEqual(DURHAM));
+      expect(screen.getByLabelText('Search for a place')).toHaveValue('');
+    });
+
+    it('does not search for fewer than two characters', async () => {
+      const api = setup();
+      await openSection('Weather');
+      await userEvent.type(screen.getByLabelText('Search for a place'), 'D');
+      await new Promise((r) => setTimeout(r, 350));
+      expect(api.weather.searchPlaces).not.toHaveBeenCalled();
+    });
+
+    it('says when nothing was found, and shows a failed search kindly', async () => {
+      const api = mockApi({
+        weather: {
+          searchPlaces: vi
+            .fn()
+            .mockResolvedValueOnce([])
+            .mockRejectedValueOnce(
+              new Error("Error invoking remote method 'weather:searchPlaces': Error: You seem to be offline"),
+            ),
+        },
+      });
+      setup(api);
+      await openSection('Weather');
+      const box = screen.getByLabelText('Search for a place');
+      await userEvent.type(box, 'Zzq');
+      expect(await screen.findByText('No places found')).toBeInTheDocument();
+      await userEvent.type(box, 'x');
+      expect(await screen.findByRole('alert')).toHaveTextContent(/^You seem to be offline$/);
+    });
+
+    it('shows the chosen place and clears it', async () => {
+      const api = mockApi({ weather: { setPlace: vi.fn(() => Promise.resolve(publicDefaults())) } });
+      setup(api, { ...publicDefaults(), weatherPlace: DURHAM });
+      await openSection('Weather');
+      expect(screen.getByText('Durham, England, United Kingdom')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+      expect(api.weather.setPlace).toHaveBeenCalledWith(null);
+      await waitFor(() => expect(useStudyStore.getState().settings?.weatherPlace).toBeNull());
+      expect(screen.getByText('Not set')).toBeInTheDocument();
+    });
+
+    it('units is a Celsius / Fahrenheit segmented control that saves', async () => {
+      const api = setup();
+      await openSection('Weather');
+      const group = screen.getByRole('group', { name: 'Units' });
+      expect(within(group).getByRole('button', { name: 'Celsius' })).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.click(within(group).getByRole('button', { name: 'Fahrenheit' }));
+      expect(api.settings.set).toHaveBeenCalledWith({ weatherUnits: 'fahrenheit' });
+    });
   });
 });

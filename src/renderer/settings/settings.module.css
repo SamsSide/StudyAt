@@ -394,3 +394,95 @@
   width: 96px;
   font-family: var(--font-mono);
 }
+
+/* A label read by screen readers but not shown (the calendar address fields) */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* Place search results: a glass menu with 10 px items and an accent highlight */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-1);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  list-style: none;
+}
+
+.result {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-md);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease);
+}
+
+.result:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.result:focus-visible,
+.segment:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Segmented control: a recessed glass track; the chosen option is a raised pill */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.segment {
+  height: 26px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment[aria-pressed='true'] {
+  background: var(--glass-fill-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
