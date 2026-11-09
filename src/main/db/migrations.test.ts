@@ -4,7 +4,7 @@ import initSqlJs from 'sql.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DB_FILE, nodeFs, type DbFs } from './db';
 import { LATEST_VERSION, MIGRATIONS, NewerSchemaError, migrate, schemaVersion } from './migrations';
-import { NOW, WASM_PATH, openTestDb, tempDir } from './test-helpers';
+import { NOW, WASM_PATH, openTestDb, recordingFs, tempDir } from './test-helpers';
 
 describe('migrations', () => {
   let dir: string;
@@ -44,6 +44,20 @@ describe('migrations', () => {
     expect(db.recovered).toBe('ok');
     expect(schemaVersion(db.raw)).toBe(1);
     expect(readdirSync(join(dir, 'backups')).some((f) => f.startsWith('pre-migration-v0-'))).toBe(true);
+    await db.close();
+  });
+
+  it('the pre-migration backup reaches the disk before the migrated database replaces studyat.sqlite', async () => {
+    const file = join(dir, DB_FILE);
+    writeFileSync(file, new Uint8Array(0));
+    const { fs, log } = recordingFs();
+    const db = await openTestDb(dir, NOW, fs);
+    const backup = join(dir, 'backups', 'pre-migration-v0-2026-11-08-120000.sqlite');
+    const sync = log.indexOf(`syncFile ${backup}.tmp`);
+    const publish = log.indexOf(`rename ${backup}.tmp -> ${backup}`);
+    expect(sync).toBeGreaterThanOrEqual(0);
+    expect(publish).toBeGreaterThan(sync);
+    expect(log.indexOf(`rename ${file}.tmp -> ${file}`)).toBeGreaterThan(publish);
     await db.close();
   });
 

@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { dailyBackup, fileStamp, latestBackupBefore, listBackups, localDateKey } from './backup';
-import { DB_FILE, nodeFs, type DbFs } from './db';
-import { NOW, tempDir } from './test-helpers';
+import { DB_FILE, isReadableDatabase, nodeFs, type DbFs } from './db';
+import { NOW, WASM_PATH, openTestDb, tempDir } from './test-helpers';
 
 describe('backups', () => {
   let dir: string;
@@ -158,5 +158,42 @@ describe('backups', () => {
     writeFileSync(join(backups, 'daily-2026-11-07.sqlite'), 'x');
     writeFileSync(join(backups, `pre-restore-${fileStamp(NOW + 1000)}.sqlite`), 'fresh');
     expect((await latestBackupBefore(dir, NOW + 60_000))?.name).toBe('daily-2026-11-07.sqlite');
+  });
+
+  // Corrupt, Sam restores daily-11-07, and it is itself corrupt: the next corrupt launch offers the
+  // older good daily, not the damaged one again.
+  it('latestBackupBefore skips a backup that fails the check', async () => {
+    const backups = join(dir, 'backups');
+    mkdirSync(backups);
+    writeFileSync(join(backups, 'daily-2026-11-06.sqlite'), 'good');
+    writeFileSync(join(backups, 'daily-2026-11-07.sqlite'), 'bad');
+    const checked: string[] = [];
+    const isReadable = async (path: string): Promise<boolean> => {
+      checked.push(path);
+      return readFileSync(path, 'utf8') === 'good';
+    };
+    expect((await latestBackupBefore(dir, NOW, isReadable))?.name).toBe('daily-2026-11-06.sqlite');
+    expect(checked).toEqual([join(backups, 'daily-2026-11-07.sqlite'), join(backups, 'daily-2026-11-06.sqlite')]);
+    expect(await latestBackupBefore(dir, NOW, () => Promise.resolve(false))).toBeNull();
+  });
+
+  it('latestBackupBefore with the sql.js check skips a damaged daily for an older good one', async () => {
+    const good = await openTestDb(join(dir, 'good'));
+    await good.close();
+    const backups = join(dir, 'backups');
+    mkdirSync(backups);
+    copyFileSync(join(dir, 'good', DB_FILE), join(backups, 'daily-2026-11-06.sqlite'));
+    writeFileSync(join(backups, 'daily-2026-11-07.sqlite'), Buffer.from('not sqlite'.repeat(500)));
+    const isReadable = (path: string) => isReadableDatabase(path, WASM_PATH);
+    expect((await latestBackupBefore(dir, NOW, isReadable))?.name).toBe('daily-2026-11-06.sqlite');
+  });
+
+  it('isReadableDatabase passes a real database and fails a damaged or missing file', async () => {
+    const good = await openTestDb(join(dir, 'good'));
+    await good.close();
+    expect(await isReadableDatabase(join(dir, 'good', DB_FILE), WASM_PATH)).toBe(true);
+    writeFileSync(join(dir, 'bad.sqlite'), Buffer.from('not sqlite'.repeat(500)));
+    expect(await isReadableDatabase(join(dir, 'bad.sqlite'), WASM_PATH)).toBe(false);
+    expect(await isReadableDatabase(join(dir, 'missing.sqlite'), WASM_PATH)).toBe(false);
   });
 });

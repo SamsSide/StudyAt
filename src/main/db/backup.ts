@@ -98,8 +98,19 @@ export async function listBackups(dir: string): Promise<BackupInfo[]> {
  * this is the backup the corrupt dialog's "Restore latest backup" restores (spec §3.3, R16):
  * anything made after the corruption was found is a copy of the fresh database. `pre-restore-`
  * copies are never offered: one made from the corrupt dialog is the empty fresh database.
+ * With `isReadable` (production passes `isReadableDatabase`), a backup that fails it is skipped
+ * for the next older one: after restoring a backup that was itself damaged, the next corrupt
+ * launch offers an older good one instead of the same damaged file again.
  */
-export async function latestBackupBefore(dir: string, ts: number): Promise<BackupInfo | null> {
+export async function latestBackupBefore(
+  dir: string,
+  ts: number,
+  isReadable?: (path: string) => Promise<boolean>,
+): Promise<BackupInfo | null> {
   const list = await listBackups(dir);
-  return list.find((b) => stampedAt(b.name) !== null && b.createdAt < ts) ?? null;
+  for (const b of list) {
+    if (stampedAt(b.name) === null || b.createdAt >= ts) continue;
+    if (!isReadable || (await isReadable(join(dir, BACKUPS_DIR, b.name)))) return b;
+  }
+  return null;
 }

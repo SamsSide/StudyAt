@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { corruptState, markCorruptRestoreAttempt, resolveCorrupt } from './corrupt';
 import { DB_FILE, nodeFs, type Db, type DbFs } from './db';
-import { NOW, openTestDb, tempDir } from './test-helpers';
+import { NOW, openTestDb, recordingFs, tempDir } from './test-helpers';
 
 const corruptFiles = (dir: string): string[] => readdirSync(dir).filter((f) => /^studyat\.corrupt-.+\.sqlite$/.test(f));
 
@@ -62,6 +62,25 @@ describe('corrupt state in meta', () => {
     expect(db.corruptAt).not.toBeNull();
     expect(corruptState(db.raw).pendingAt).toBe(db.corruptAt);
     for (const f of corruptFiles(dir)) expect(readFileSync(join(dir, f))).toEqual(damaged);
+  });
+
+  // The corrupt copy is the only copy of Sam's history once the fresh database replaces
+  // studyat.sqlite, so its bytes are fsynced (from memory, not re-read) before that rename.
+  it('the corrupt copy is written durably before the fresh database replaces studyat.sqlite', async () => {
+    const damaged = Buffer.from('not sqlite'.repeat(500));
+    const file = join(dir, DB_FILE);
+    writeFileSync(file, damaged);
+    const { fs, log } = recordingFs();
+    db = await openTestDb(dir, NOW + 5000, fs);
+    const kept = join(dir, 'studyat.corrupt-2026-11-08-120005.sqlite');
+    const writeAside = log.indexOf(`writeDurable ${kept}.tmp`);
+    const publishAside = log.indexOf(`rename ${kept}.tmp -> ${kept}`);
+    const replaceDb = log.indexOf(`rename ${file}.tmp -> ${file}`);
+    expect(writeAside).toBeGreaterThanOrEqual(0);
+    expect(publishAside).toBeGreaterThan(writeAside);
+    expect(replaceDb).toBeGreaterThan(publishAside);
+    expect(log.some((l) => l.startsWith(`copyFile ${file} `))).toBe(false);
+    expect(readFileSync(kept)).toEqual(damaged);
   });
 
   it('the damaged file is never taken as a pre-migration backup', async () => {

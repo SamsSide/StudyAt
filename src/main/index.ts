@@ -24,7 +24,7 @@ import {
 } from 'electron';
 import { dailyBackup, fileStamp, latestBackupBefore } from './db/backup';
 import { corruptState, markCorruptRestoreAttempt, resolveCorrupt } from './db/corrupt';
-import { NewerSchemaError, openDatabase, type Db } from './db/db';
+import { NewerSchemaError, isReadableDatabase, openDatabase, type Db } from './db/db';
 import { settingsRepo } from './db/repos/settings';
 import { GlobalHotkey, guardHotkeySetting } from './hotkey';
 import { createBroadcaster, registerIpc, type Dialogs } from './ipc';
@@ -155,7 +155,7 @@ async function openDb(paths: { assets: string; wasm: string }): Promise<Db | nul
  * backup (the app relaunches onto it) or starts fresh. True to carry on with the fresh database.
  * R32: the fresh file stays marked corrupt (no daily backup, this dialog again) until Start fresh.
  */
-async function recoverCorruptDb(db: Db): Promise<boolean> {
+async function recoverCorruptDb(db: Db, wasmPath: string): Promise<boolean> {
   const corruptAt = db.corruptAt ?? Date.now();
   // The dialog is the confirmation, so the restore path's own confirm box is skipped.
   const data = dataService({
@@ -170,7 +170,8 @@ async function recoverCorruptDb(db: Db): Promise<boolean> {
     const outcome = await resolveCorruptDb({
       showMessageBox: (opts) => dialog.showMessageBox(opts),
       keptAs: `studyat.corrupt-${fileStamp(corruptAt)}.sqlite`,
-      latestBackup: () => latestBackupBefore(userData, corruptAt),
+      // A backup that would itself open corrupt is skipped for the next older one.
+      latestBackup: () => latestBackupBefore(userData, corruptAt, (path) => isReadableDatabase(path, wasmPath)),
       restore: (name) => data.restoreBackup(name),
       restoreFailed: corruptState(db.raw).restoreFailed,
       markRestoreAttempt: () => markCorruptRestoreAttempt(db),
@@ -208,7 +209,7 @@ async function boot(): Promise<void> {
   // openDatabase runs the migrations (with their backup) and the first-run seed.
   const db = await openDb(paths);
   if (!db) return;
-  if (db.recovered === 'corrupt' && !(await recoverCorruptDb(db))) return;
+  if (db.recovered === 'corrupt' && !(await recoverCorruptDb(db, paths.wasm))) return;
   // After a corrupt launch the file is a fresh database: it must not become today's daily (R16).
   await dailyBackup(userData, Date.now(), { skip: db.recovered === 'corrupt' }).catch((err: unknown) =>
     console.error('StudyAt: daily backup failed', err),

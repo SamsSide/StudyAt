@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import initSqlJs, { type Database as SqlJsDatabase, type SqlJsStatic } from 'sql.js';
 import { DB_FILE, fileStamp } from './backup';
 import { corruptState, markCorruptPending } from './corrupt';
-import { copyAtomic, nodeFs, renameWithRetry, type DbFs } from './db-fs';
+import { nodeFs, renameWithRetry, type DbFs } from './db-fs';
 import { migrate } from './migrations';
 import { seedIfEmpty, type BuiltinAssets } from './seed';
 
@@ -76,6 +76,32 @@ function assertReadable(raw: SqlJsDatabase): void {
 }
 
 /**
+ * Whether the file at `path` opens as SQLite and passes `PRAGMA quick_check`, the same test
+ * `openDatabase` applies; false for a missing or damaged file. Passed to `latestBackupBefore` so
+ * the corrupt dialog never offers a backup that would itself open corrupt (spec §3.3, R16).
+ */
+export async function isReadableDatabase(path: string, wasmPath?: string, fs: DbFs = nodeFs): Promise<boolean> {
+  const SQL = await loadSqlJs(wasmPath);
+  let bytes: Uint8Array | null;
+  try {
+    bytes = await fs.readFile(path);
+  } catch {
+    return false;
+  }
+  if (bytes === null) return false;
+  let opened: SqlJsDatabase | null = null;
+  try {
+    opened = new SQL.Database(bytes);
+    assertReadable(opened);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    opened?.close();
+  }
+}
+
+/**
  * Opens (or creates) `<dir>/studyat.sqlite`, then migrates it (with a pre-migration backup) and
  * seeds it, and writes it back. A file that fails to open is copied aside, never deleted, and a fresh
  * database is returned with `recovered: 'corrupt'`; the dialog is the caller's. A database from a
@@ -105,8 +131,12 @@ export async function openDatabase(opts: OpenOptions): Promise<Db> {
       corruptAt = opts.now();
       // Copied aside, not renamed: the damaged file stays as `studyat.sqlite` until the fresh,
       // corrupt-marked database replaces it by rename in the flush below. A kill in between
-      // relaunches onto the damaged file and finds it corrupt again, never onto a first run.
-      await copyAtomic(fs, file, join(opts.dir, `studyat.corrupt-${fileStamp(corruptAt)}.sqlite`));
+      // relaunches onto the damaged file and finds it corrupt again, never onto a first run. The
+      // bytes already read are written and fsynced before the rename, so the copy is on disk
+      // before the fresh database can replace the original.
+      const kept = join(opts.dir, `studyat.corrupt-${fileStamp(corruptAt)}.sqlite`);
+      await fs.writeDurable(`${kept}.tmp`, bytes);
+      await renameWithRetry(fs, `${kept}.tmp`, kept);
       raw = new SQL.Database();
       recovered = 'corrupt';
     }

@@ -10,6 +10,8 @@ export interface DbFs {
   writeDurable(path: string, data: Uint8Array): Promise<void>;
   rename(from: string, to: string): Promise<void>;
   copyFile(from: string, to: string): Promise<void>;
+  /** Fsyncs an existing file's contents to disk, changing nothing. */
+  syncFile(path: string): Promise<void>;
   /** Creates the directory and any parents; fine if it exists. */
   mkdir(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
@@ -35,6 +37,14 @@ export const nodeFs: DbFs = {
   },
   rename: (from, to) => rename(from, to),
   copyFile: (from, to) => copyFile(from, to),
+  async syncFile(path) {
+    const handle = await open(path, 'r+');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  },
   async mkdir(path) {
     await mkdir(path, { recursive: true });
   },
@@ -73,11 +83,13 @@ export async function renameWithRetry(fs: DbFs, from: string, to: string): Promi
 }
 
 /**
- * Copies `from` to `<to>.tmp`, then renames it to `to`, so a crash mid-copy never leaves a
- * truncated file under the final name (a backup that would be offered for restore).
+ * Copies `from` to `<to>.tmp`, fsyncs it, then renames it to `to`, so neither a crash mid-copy nor
+ * a power cut just after the rename leaves a truncated or empty file under the final name (a
+ * backup that would be offered for restore, or a restored `studyat.sqlite`).
  */
 export async function copyAtomic(fs: DbFs, from: string, to: string): Promise<void> {
   const tmp = `${to}.tmp`;
   await fs.copyFile(from, tmp);
+  await fs.syncFile(tmp);
   await renameWithRetry(fs, tmp, to);
 }

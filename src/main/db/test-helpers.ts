@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { openDatabase, type Db, type DbFs } from './db';
+import { nodeFs, openDatabase, type Db, type DbFs } from './db';
 
 export const WASM_PATH = resolve(__dirname, '../../../node_modules/sql.js/dist/sql-wasm.wasm');
 export const BUILTIN_PATH = resolve(__dirname, '../../../assets/builtin.json');
@@ -17,4 +17,32 @@ export function tempDir(): { dir: string; cleanup: () => void } {
 
 export function openTestDb(dir: string, now = NOW, fs?: DbFs): Promise<Db> {
   return openDatabase({ dir, now: () => now, wasmPath: WASM_PATH, builtinPath: BUILTIN_PATH, fs });
+}
+
+/**
+ * The real disk, with every write-side call logged in order as `op path` (or `op from -> to`), so a
+ * test can check that a copy reaches the disk before the rename that publishes it.
+ */
+export function recordingFs(): { fs: DbFs; log: string[] } {
+  const log: string[] = [];
+  const fs: DbFs = {
+    ...nodeFs,
+    async writeDurable(path, data) {
+      log.push(`writeDurable ${path}`);
+      await nodeFs.writeDurable(path, data);
+    },
+    async copyFile(from, to) {
+      log.push(`copyFile ${from} -> ${to}`);
+      await nodeFs.copyFile(from, to);
+    },
+    async syncFile(path) {
+      log.push(`syncFile ${path}`);
+      await nodeFs.syncFile(path);
+    },
+    async rename(from, to) {
+      log.push(`rename ${from} -> ${to}`);
+      await nodeFs.rename(from, to);
+    },
+  };
+  return { fs, log };
 }
