@@ -1,0 +1,83 @@
+/* The Quote widget's contents; the glass tile and title come from the shell's WidgetFrame.
+   A macOS-widget feel: large serif quote text from the system's own serif faces (no bundled
+   fonts), the author in small caps, and a quiet capsule button. */
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 320px;
+  margin: 0;
+  color: var(--text);
+}
+
+.quote {
+  margin: 0;
+  /* Room for a long quote without the tile growing past the window. */
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.quote p {
+  margin: 0;
+  font-family: 'New York', 'Iowan Old Style', Georgia, serif;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.38;
+  letter-spacing: -0.005em;
+  text-wrap: pretty;
+  hanging-punctuation: first;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.author {
+  min-width: 0;
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: var(--text-md);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author::before {
+  content: '\2014\00a0';
+}
+
+.another {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.another:hover {
+  background: var(--glass-fill-raised);
+  color: var(--text);
+}
+
+.another:active {
+  transform: scale(0.96);
+}
+
+.another:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

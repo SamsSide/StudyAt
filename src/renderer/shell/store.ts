@@ -27,13 +27,17 @@ export interface StudyState {
   fullscreen: boolean;
   /** What this window last asked of the mini timer; main has no event for it. */
   miniShown: boolean;
+  /** The dock's Widgets popover (widgets addendum §1). */
+  widgetsPopover: boolean;
 
   setPanel(panel: PanelId | null): void;
   /** Opens `panel`, or closes it if it is already open. */
   togglePanel(panel: PanelId): void;
   setOverlay(overlay: OverlayId | null): void;
-  /** Opens `overlay`, or closes it if it is already on top. */
+  /** Opens `overlay`, or closes it if it is already on top. Opening one closes the Widgets popover. */
   toggleOverlay(overlay: OverlayId): void;
+  setWidgetsPopover(open: boolean): void;
+  toggleWidgetsPopover(): void;
   refreshOverview(): Promise<void>;
   refreshSettings(): Promise<void>;
   refreshSubjects(): Promise<void>;
@@ -68,6 +72,7 @@ const initialData = () => ({
   overlay: null,
   fullscreen: false,
   miniShown: false,
+  widgetsPopover: false,
 });
 
 const api = () => window.studyat;
@@ -77,8 +82,12 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
 
   setPanel: (openPanel) => set({ openPanel }),
   togglePanel: (panel) => set((s) => ({ openPanel: s.openPanel === panel ? null : panel })),
-  setOverlay: (overlay) => set({ overlay }),
-  toggleOverlay: (overlay) => set((s) => ({ overlay: s.overlay === overlay ? null : overlay })),
+  // A full-window overlay covers the dock, so the popover beside it goes.
+  setOverlay: (overlay) => set(overlay ? { overlay, widgetsPopover: false } : { overlay }),
+  toggleOverlay: (overlay) =>
+    set((s) => (s.overlay === overlay ? { overlay: null } : { overlay, widgetsPopover: false })),
+  setWidgetsPopover: (widgetsPopover) => set({ widgetsPopover }),
+  toggleWidgetsPopover: () => set((s) => ({ widgetsPopover: !s.widgetsPopover })),
 
   refreshOverview: async () => set({ overview: await api().stats.overview() }),
   refreshSettings: async () => set({ settings: await api().settings.get() }),

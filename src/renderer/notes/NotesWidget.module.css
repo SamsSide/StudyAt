@@ -1,0 +1,336 @@
+/* The Notes widget's contents; the glass frame and title come from the shell's WidgetFrame.
+   One note at a time as a soft sticky sheet in the task colours (R27): a pastel tint that lets a
+   little of the glass through, a top sheen and a bright top edge, with dark text (AA on every tint). */
+.widget {
+  --note-yellow: #ecdc94;
+  --note-pink: #edb8ca;
+  --note-blue: #afcaef;
+  --note-green: #b8dcb9;
+  --note-purple: #d1bdec;
+  --note-grey: #d3d6dd;
+  --note-text: #1b1e27;
+  --note-soft: rgba(27, 30, 39, 0.55);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 280px;
+  min-height: 120px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+/* Colour classes set one variable that the sheet (--tint), dots and swatches read. */
+.yellow {
+  --tint: var(--note-yellow);
+}
+.pink {
+  --tint: var(--note-pink);
+}
+.blue {
+  --tint: var(--note-blue);
+}
+.green {
+  --tint: var(--note-green);
+}
+.purple {
+  --tint: var(--note-purple);
+}
+.grey {
+  --tint: var(--note-grey);
+}
+
+/* Header row: ‹ dots › on the left, + and delete on the right. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.tool {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.tool svg {
+  width: 17px;
+  height: 17px;
+}
+
+.tool:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.tool:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.dots {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* A 16 px target round a 7 px dot in the note's own colour; the shown note's dot is wider. */
+.dot {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  cursor: pointer;
+}
+
+.dot::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--tint);
+  opacity: 0.45;
+  transition:
+    width var(--duration-slow) var(--ease-spring),
+    opacity var(--duration) var(--ease);
+}
+
+.dot:hover::after {
+  opacity: 0.8;
+}
+
+.dot[aria-current='true']::after {
+  width: 14px;
+  opacity: 1;
+}
+
+.counter {
+  padding: 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.confirmText {
+  flex: 1;
+  padding-left: var(--space-1);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* The sheet: the note itself. */
+.sheet {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0) 45%),
+    color-mix(in srgb, var(--tint) 92%, transparent);
+  backdrop-filter: blur(12px) saturate(160%);
+  color: var(--note-text);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 1px 2px rgba(0, 0, 0, 0.2),
+    0 6px 18px rgba(0, 0, 0, 0.24);
+  transition:
+    background-color var(--duration-slow) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.sheet:focus-within {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 6px 18px rgba(0, 0, 0, 0.24),
+    var(--focus-ring);
+}
+
+.text {
+  display: block;
+  width: 100%;
+  height: 200px;
+  margin: 0;
+  padding: var(--space-3) var(--space-3) var(--space-3);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--note-text);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  caret-color: var(--note-text);
+}
+
+.text:focus,
+.text:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.text::placeholder {
+  color: var(--note-soft);
+}
+
+.text::selection {
+  background: rgba(27, 30, 39, 0.18);
+}
+
+.text::-webkit-scrollbar-thumb {
+  background-color: rgba(27, 30, 39, 0.25);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.swatches {
+  display: flex;
+  gap: var(--space-2);
+  padding: 2px;
+}
+
+/* A colour dot; the chosen one gets a ring with a gap, as in macOS's accent picker. */
+.swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition:
+    transform var(--duration-fast) var(--ease),
+    box-shadow var(--duration) var(--ease);
+}
+
+.swatch:hover {
+  transform: scale(1.1);
+}
+
+.swatch[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px rgba(12, 14, 20, 0.85),
+    0 0 0 4px var(--text);
+}
+
+.tool:focus-visible,
+.dot:focus-visible,
+.swatch:focus-visible,
+.textButton:focus-visible,
+.dangerButton:focus-visible,
+.primaryButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Capsule buttons: glass secondary, red-tinted destructive, accent primary. */
+.textButton,
+.dangerButton,
+.primaryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.textButton:hover {
+  background: var(--glass-fill-raised);
+}
+
+.dangerButton {
+  border-color: rgba(255, 155, 155, 0.35);
+  background: rgba(255, 110, 110, 0.18);
+  color: var(--danger);
+}
+
+.dangerButton:hover {
+  background: rgba(255, 110, 110, 0.28);
+}
+
+.primaryButton {
+  height: var(--control-h);
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.primaryButton:hover {
+  background: var(--accent-bright);
+}
+
+.primaryButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.textButton:active,
+.dangerButton:active,
+.primaryButton:active {
+  transform: scale(0.96);
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  min-height: 160px;
+  text-align: center;
+}
+
+.message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.error {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}

@@ -8,12 +8,17 @@ export type IconName =
   | 'timer'
   | 'tasks'
   | 'spotify'
+  | 'widgets'
   | 'stats'
   | 'settings'
   | 'mini'
   | 'fullscreen'
   | 'exitFullscreen'
-  | 'close';
+  | 'close'
+  | 'chevronLeft'
+  | 'chevronRight'
+  | 'plus'
+  | 'trash';
 
 const PATHS: Record<IconName, ReactNode> = {
   spaces: (
@@ -44,6 +49,14 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="17.5" cy="16" r="2.5" />
     </>
   ),
+  // Four rounded tiles, one of them a wide one: a home screen of widgets.
+  widgets: (
+    <>
+      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2" />
+      <rect x="13" y="3.5" width="7.5" height="7.5" rx="2" />
+      <rect x="3.5" y="13" width="17" height="7.5" rx="2" />
+    </>
+  ),
   stats: <path d="M4 20h16M7 16v-5M12 16V6M17 16v-8" />,
   settings: (
     <>
@@ -60,6 +73,15 @@ const PATHS: Record<IconName, ReactNode> = {
   fullscreen: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
   exitFullscreen: <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,
+  chevronLeft: <path d="m14.5 6-6 6 6 6" />,
+  chevronRight: <path d="m9.5 6 6 6-6 6" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  trash: (
+    <>
+      <path d="M4.5 7h15M10 4h4M6.5 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4l.8-12" />
+      <path d="M10 11v5.5M14 11v5.5" />
+    </>
+  ),
 };
 
 export function Icon({ name }: { name: IconName }) {

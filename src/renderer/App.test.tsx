@@ -28,7 +28,7 @@ describe('App', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders background, away prompt host, dock with seven items (Spaces, Sounds, Timer, Tasks, Spotify, Stats, Settings), timer widget open by default, and mounts useChimes and useRecapPopup', async () => {
+  it('renders background, away prompt host, dock with eight items (Spaces, Sounds, Timer, Tasks, Spotify, Widgets, Stats, Settings), timer widget open by default, and mounts useChimes and useRecapPopup', async () => {
     installMockApi(mockApi());
     render(<App />);
 
@@ -41,7 +41,8 @@ describe('App', () => {
     const labels = within(dock)
       .getAllByRole('button')
       .map((b) => b.textContent?.trim());
-    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Stats', 'Settings']);
+    // Spec §4's seven items plus Widgets, after Spotify (widgets addendum §1).
+    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Widgets', 'Stats', 'Settings']);
 
     expect(screen.getByTestId('app-background')).toBeInTheDocument();
     expect(screen.getByTestId('away-prompt-host')).toBeInTheDocument();

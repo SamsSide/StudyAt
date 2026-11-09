@@ -33,7 +33,15 @@ export const WIDGET_TITLES: Record<WidgetId, string> = {
   quote: 'Quote',
   notes: 'Notes',
 };
-const WIDGET_ORDER: readonly WidgetId[] = ['timer', 'tasks', 'spotify', 'calendar', 'weather', 'quote', 'notes'];
+const WIDGET_ORDER: readonly WidgetId[] = [
+  'timer',
+  'tasks',
+  'spotify',
+  'calendar',
+  'weather',
+  'quote',
+  'notes',
+];
 const OVERLAY_TITLES = { stats: 'Stats', settings: 'Settings', help: 'Keyboard shortcuts' } as const;
 
 const DEFAULT_AUTO_HIDE_SECONDS = 5;

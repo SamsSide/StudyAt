@@ -27,14 +27,14 @@ beforeEach(() => resetStudyStore());
 afterEach(() => vi.useRealTimers());
 
 describe('Shell', () => {
-  it('renders the background, the seven dock items and the timer widget open by default', async () => {
+  it('renders the background, the eight dock items and the timer widget open by default', async () => {
     await renderShell();
     expect(screen.getByTestId('background')).toBeInTheDocument();
     const dock = screen.getByRole('navigation', { name: 'Dock' });
     const labels = within(dock)
       .getAllByRole('button')
       .map((b) => b.textContent);
-    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Stats', 'Settings']);
+    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Widgets', 'Stats', 'Settings']);
     expect(screen.getByTestId('timer-widget')).toBeInTheDocument();
     expect(screen.queryByTestId('tasks-widget')).not.toBeInTheDocument();
   });
@@ -106,7 +106,7 @@ describe('Shell', () => {
     const user = userEvent.setup();
     const api = await renderShell();
     act(() => useStudyStore.getState().setOverlay('settings'));
-    await user.keyboard(' rn123kgtmf');
+    await user.keyboard(' rn123kgtmfw');
     expect(api.timer.start).not.toHaveBeenCalled();
     expect(api.timer.reset).not.toHaveBeenCalled();
     expect(api.timer.skip).not.toHaveBeenCalled();
@@ -115,6 +115,7 @@ describe('Shell', () => {
     expect(api.app.toggleFullscreen).not.toHaveBeenCalled();
     expect(api.settings.set).not.toHaveBeenCalled();
     expect(useStudyStore.getState().openPanel).toBeNull();
+    expect(useStudyStore.getState().widgetsPopover).toBe(false);
     await user.keyboard('s');
     expect(useStudyStore.getState().overlay).toBe('stats');
     await user.keyboard('?');
@@ -179,8 +180,9 @@ describe('Shell', () => {
     const keys = within(help)
       .getAllByRole('term')
       .map((k) => k.textContent);
-    expect(keys).toEqual(['Space', 'R', 'N', '1 / 2 / 3', 'S', 'T', 'K', 'G', 'M', 'F', 'Esc', '?']);
-    expect(SHORTCUTS).toHaveLength(12);
+    expect(keys).toEqual(['Space', 'R', 'N', '1 / 2 / 3', 'S', 'T', 'W', 'K', 'G', 'M', 'F', 'Esc', '?']);
+    expect(SHORTCUTS).toHaveLength(13);
+    expect(SHORTCUTS.find((k) => k.keys === 'W')?.action).toBe('Widgets');
   });
 
   it('welcome card shows until Got it then sets onboarded', async () => {
@@ -208,5 +210,88 @@ describe('Shell', () => {
     expect(shell).toHaveAttribute('data-chrome', 'hidden');
     fireEvent.mouseMove(window);
     expect(shell).toHaveAttribute('data-chrome', 'shown');
+  });
+
+  describe('Widgets popover', () => {
+    const popover = () => screen.getByRole('dialog', { name: 'Widgets' });
+
+    it('the dock Widgets item opens a popover of four switches, focusing the first', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      const trigger = screen.getByRole('button', { name: 'Widgets' });
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await user.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      const switches = within(popover()).getAllByRole('switch');
+      expect(switches.map((s) => s.textContent)).toEqual(['Calendar', 'Weather', 'Quote', 'Notes']);
+      for (const s of switches) expect(s).toHaveAttribute('aria-checked', 'false');
+      expect(switches[0]).toHaveFocus();
+    });
+
+    it('a switch toggles its widget through settings.set', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('switch', { name: 'Notes' }));
+      expect(api.settings.set).toHaveBeenCalledWith({
+        widgets: { notes: { ...DEFAULT_SETTINGS.widgets.notes, open: true } },
+      });
+      expect(await screen.findByTestId('notes-widget')).toBeInTheDocument();
+      expect(within(popover()).getByRole('switch', { name: 'Notes' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+      await user.click(within(popover()).getByRole('switch', { name: 'Notes' }));
+      await waitFor(() => expect(screen.queryByTestId('notes-widget')).not.toBeInTheDocument());
+    });
+
+    it('Esc closes only the popover and gives focus back to the dock item', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Spaces' }));
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('spaces-panel')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Widgets' })).toHaveFocus();
+    });
+
+    it('a click outside closes it; a second click on the dock item does too', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      const trigger = screen.getByRole('button', { name: 'Widgets' });
+      await user.click(trigger);
+      await user.click(screen.getByTestId('background'));
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+      await user.click(trigger);
+      expect(popover()).toBeInTheDocument();
+      await user.click(trigger);
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+    });
+
+    it('W toggles it, but not while typing', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      const box = document.createElement('textarea');
+      document.body.appendChild(box);
+      box.focus();
+      await user.keyboard('w');
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+      box.remove();
+      await user.keyboard('w');
+      expect(popover()).toBeInTheDocument();
+      // Focus is on the first switch now; W still closes it.
+      await user.keyboard('w');
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+    });
+
+    it('opening a full-window overlay closes it', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.keyboard('s');
+      expect(screen.getByRole('dialog', { name: 'Stats' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+    });
   });
 });
