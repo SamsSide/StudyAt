@@ -3,8 +3,9 @@
 // the Spotify widget's unconfigured state. Every test launches the BUILT app on a throwaway
 // STUDYAT_USER_DATA (the fixtures), and screenshots go to STUDYAT_SHOTS_DIR when it is set.
 import type { Page } from '@playwright/test';
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { expect, prepare, queryDb, quitApp, shot, sleep, test, type Launched } from './fixtures';
 
 const SUBJECT = 'COMP2261 Artificial Intelligence';
@@ -79,6 +80,41 @@ function makeGif(path: string): void {
   }
   bytes.push(0, 0x3b);
   writeFileSync(path, Buffer.from(bytes));
+}
+
+/** A plain RGB PNG of the given size, two-tone stripes, written by hand: no committed media. */
+function makePng(path: string, w: number, h: number): void {
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer): number => {
+    let c = 0xffffffff;
+    for (const b of buf) c = (table[(c ^ b) & 0xff] ?? 0) ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const sum = Buffer.alloc(4);
+    sum.writeUInt32BE(crc(body));
+    return Buffer.concat([len, body, sum]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const o = y * (w * 3 + 1) + 1 + x * 3;
+      raw.set(Math.floor(x / 50) % 2 ? [0x4d, 0xb6, 0xac] : [0xf4, 0x8f, 0xb1], o);
+    }
+  }
+  const sig = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  writeFileSync(path, Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]));
 }
 
 test('Countdown: one minute with a task records a session and By task lists it', async ({ launch, dataDir }) => {
@@ -427,6 +463,150 @@ test('Images: file, link, errors, background toggle, drag and remove', async ({ 
   await win.getByRole('group', { name: 'Remove this image?' }).getByRole('button', { name: 'Remove' }).click();
   await expect.poll(async () => (await win.evaluate(() => window.studyat.images.list())).length).toBe(count - 1);
   expect(imagesOnDisk()).toHaveLength(count - 1);
+});
+
+// Task 9 fix (00b6f85): a link without a scheme gets the app's own answer, a bare image shows its
+// toolbar on keyboard focus and hides it in focus view, and a thin missing image keeps its
+// "Image missing" and Remove readable.
+test('Images: a link without a scheme, the bare toolbar on Tab and in focus view, a thin missing image', async ({ launch, dataDir }) => {
+  const png = join(dataDir, 'thin.png');
+  makePng(png, 1000, 100);
+  const { app, win } = await launch();
+  await prepare(win);
+  const imagesDir = join(dataDir, 'images');
+  const imagesOnDisk = (): string[] => (existsSync(imagesDir) ? readdirSync(imagesDir) : []);
+  // The bare toolbar's computed style, read by text: a role locator can't see it once focus view
+  // makes it visibility: hidden (it leaves the accessibility tree), and would wait forever.
+  const toolsStyle = (): Promise<{ opacity: string; visibility: string }> =>
+    win.evaluate(() => {
+      const button = [...document.querySelectorAll('[role="group"][aria-label="Image 1"] button')].find(
+        (b) => b.textContent === 'Show background',
+      );
+      const cs = getComputedStyle(button?.parentElement ?? document.body);
+      return { opacity: button ? cs.opacity : 'none', visibility: button ? cs.visibility : 'none' };
+    });
+  const toolsOpacity = async (): Promise<string> => (await toolsStyle()).opacity;
+
+  await dock(win, 'Widgets').click();
+  await win.getByRole('dialog', { name: 'Widgets' }).getByRole('button', { name: /Add image/ }).click();
+  const dialog = win.getByRole('dialog', { name: 'Add image' });
+  await expect(dialog).toBeVisible();
+
+  // A link without a scheme: no browser bubble (the form doesn't validate), main answers instead.
+  const link = dialog.getByLabel('Link');
+  await link.fill('example.com/a.png');
+  expect(await link.evaluate((el) => (el as HTMLInputElement).form?.noValidate)).toBe(true);
+  const validity = await link.evaluate((el) => (el as HTMLInputElement).validity.valid);
+  test.info().annotations.push({ type: 'scheme-less link', description: `type=url validity.valid=${validity}` });
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(win.getByRole('alert')).toHaveText("Couldn't download that link. Check it and your connection.");
+  await expect(dialog).toBeVisible();
+  await shot(win, 'v11-fix9-link-no-scheme.png');
+  expect(imagesOnDisk()).toHaveLength(0);
+
+  // A thin (10:1) PNG from disk.
+  await app.evaluate(({ dialog: d }, f) => {
+    const pick = async (): Promise<Electron.OpenDialogReturnValue> => ({ canceled: false, filePaths: [f] });
+    d.showOpenDialog = pick as typeof d.showOpenDialog;
+  }, png);
+  await dialog.getByRole('button', { name: 'Choose file…' }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.images.list())).length).toBe(1);
+  const row = (await win.evaluate(() => window.studyat.images.list()))[0];
+  expect([row?.width, row?.height]).toEqual([1000, 100]);
+  expect(imagesOnDisk().filter((f) => f.endsWith('.png'))).toHaveLength(1);
+  await expect.poll(() => widget(win, 'Image').locator('img').evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBe(1000);
+
+  // Background off, then focus it with Tab while the pointer is elsewhere.
+  await widget(win, 'Image').getByRole('button', { name: 'Hide background' }).click();
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.images.list()))[0]?.bare).toBe(true);
+  const group = widget(win, 'Image 1');
+  const body = win.getByRole('button', { name: 'Image 1', exact: true });
+  await expect(body).toBeVisible();
+  await win.mouse.move(1260, 790);
+  await sleep(500);
+  await win.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await expect.poll(toolsOpacity).toBe('0');
+  let tabs = 0;
+  for (; tabs < 80; tabs++) {
+    if (await body.evaluate((el) => el === document.activeElement)) break;
+    await win.keyboard.press('Tab');
+  }
+  test.info().annotations.push({ type: 'tab presses to the bare image', description: String(tabs) });
+  await expect(body).toBeFocused();
+  expect(await group.evaluate((el) => el.matches(':hover'))).toBe(false);
+  await expect.poll(toolsOpacity).toBe('1');
+  await shot(win, 'v11-fix9-bare-tab-toolbar.png');
+
+  // Focus view: the toolbar goes with the chrome; the image stays.
+  await win.keyboard.press('h');
+  await expect(shell(win)).toHaveAttribute('data-focus-view', 'on');
+  await expect.poll(toolsStyle).toEqual({ opacity: '0', visibility: 'hidden' });
+  await expect(group.locator('img')).toBeVisible();
+  await sleep(300);
+  await shot(win, 'v11-fix9-bare-focus-view-no-toolbar.png');
+  await win.keyboard.press('h');
+  await expect(shell(win)).toHaveAttribute('data-focus-view', 'off');
+
+  // A look call for Sam, not asserted: click the bare image, move well away, does the toolbar stay?
+  const bb = await body.boundingBox();
+  if (!bb) throw new Error('no bare image box');
+  await win.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
+  await win.mouse.move(1260, 790, { steps: 6 });
+  await sleep(800);
+  const afterClick = await toolsOpacity();
+  const focused = await body.evaluate((el) => el === document.activeElement);
+  test.info().annotations.push({ type: 'bare toolbar after click', description: `opacity=${afterClick} bodyFocused=${focused}` });
+  await shot(win, 'v11-fix9-bare-after-click.png');
+
+  // Make it missing: quit, delete its stored file, relaunch on the same data. (A reload alone can
+  // still paint the picture from the renderer's cache, so it isn't a reliable way to lose it.)
+  expect(await quitApp(app)).toBe(0);
+  const stored = imagesOnDisk();
+  expect(stored).toHaveLength(1);
+  for (const f of stored) rmSync(join(imagesDir, f));
+  expect(imagesOnDisk()).toHaveLength(0);
+  const again = await launch();
+  const win2 = again.win;
+  await expect.poll(async () => (await win2.evaluate(() => window.studyat.images.list())).length).toBe(1);
+  // A missing image shows in the glass (framed), whatever its background setting.
+  const missing = widget(win2, 'Image');
+  const message = missing.getByText('Image missing', { exact: true });
+  const remove = message.locator('xpath=..').getByRole('button', { name: 'Remove', exact: true });
+  await expect(message).toBeVisible();
+  await expect(remove).toBeVisible();
+  await calm(win2);
+  const box = await message.evaluate((el) => {
+    const r = (e: Element): { l: number; t: number; r: number; b: number } => {
+      const b = e.getBoundingClientRect();
+      return { l: b.left, t: b.top, r: b.right, b: b.bottom };
+    };
+    const area = el.parentElement as HTMLElement;
+    const picture = area.parentElement as HTMLElement;
+    const button = area.querySelector('button') as HTMLElement;
+    return {
+      picture: r(picture),
+      area: r(area),
+      text: r(el),
+      button: r(button),
+      overflow: area.scrollHeight > area.clientHeight || area.scrollWidth > area.clientWidth,
+      pictureCss: { w: picture.style.width, h: picture.style.height },
+    };
+  });
+  test.info().annotations.push({ type: 'missing frame', description: JSON.stringify(box) });
+  expect(box.pictureCss).toEqual({ w: '240px', h: '80px' });
+  expect(box.overflow).toBe(false);
+  for (const inner of [box.text, box.button]) {
+    expect(inner.l).toBeGreaterThanOrEqual(box.picture.l - 0.5);
+    expect(inner.t).toBeGreaterThanOrEqual(box.picture.t - 0.5);
+    expect(inner.r).toBeLessThanOrEqual(box.picture.r + 0.5);
+    expect(inner.b).toBeLessThanOrEqual(box.picture.b + 0.5);
+    expect(inner.b - inner.t).toBeGreaterThan(8);
+  }
+  await shot(win2, 'v11-fix9-thin-image-missing.png');
+
+  await remove.click();
+  await expect.poll(async () => (await win2.evaluate(() => window.studyat.images.list())).length).toBe(0);
 });
 
 test('YouTube: dQw4w9WgXcQ plays, jfKfPfyJRdk cannot be embedded, starter spaces load', async ({ launch }) => {
