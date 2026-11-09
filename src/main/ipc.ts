@@ -475,8 +475,7 @@ export function registerIpc(deps: IpcDeps) {
     return list;
   });
 
-  // ── Sounds and mixes (spec §3.9) ──────────────────────────────────────────
-  // ── Images (v1.1 spec §3.6) ────────────────────────────────────────────────
+  // ── Images (v1.1 spec §3.6) ───────────────────────────────────────────────
   handle(C.images.list, () => images.list());
   handle(C.images.addFile, async () => {
     const [path] = await dialogs.openFiles(IMAGE_FILTERS, false);
@@ -489,6 +488,7 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.images.update, (id, patch) => images.update(assertInt(id), imagePatch(patch)));
   handle(C.images.remove, (id) => images.remove(assertInt(id)));
 
+  // ── Sounds and mixes (spec §3.9) ──────────────────────────────────────────
   handle(C.sounds.list, () => sounds.list());
   handle(C.sounds.addFiles, async () => sounds.addFiles(await dialogs.openFiles(SOUND_FILTERS)));
   handle(C.sounds.remove, (id) => {

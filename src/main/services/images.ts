@@ -21,8 +21,10 @@ import { imagesRepo, type ImageRow } from '../db/repos/images';
 export const IMAGE_FETCH_TIMEOUT_MS = 30_000;
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-/** Where a new image lands, as fractions of the window. */
+/** Where the first image lands, as fractions of the window. */
 const START = { x: 0.5, y: 0.3 } as const;
+/** Each further image steps down and right, so new ones don't stack; it wraps to stay on screen. */
+const CASCADE = { x: 0.03, y: 0.04, steps: 6 } as const;
 
 export interface ImagesServiceDeps {
   db: Db;
@@ -135,13 +137,14 @@ export function imagesService(deps: ImagesServiceDeps) {
     sniffed: SniffedImage,
     sourceUrl: string | null,
   ): Promise<ImageWidget> {
+    const step = repo.count() % CASCADE.steps;
     const row = repo.create({
       ext: sniffed.ext,
       width: sniffed.width,
       height: sniffed.height,
       sourceUrl,
-      x: START.x,
-      y: START.y,
+      x: START.x + CASCADE.x * step,
+      y: START.y + CASCADE.y * step,
       createdAt: deps.now(),
     });
     const target = pathFor(row);

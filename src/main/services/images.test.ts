@@ -98,6 +98,28 @@ describe('addFile', () => {
   });
 });
 
+describe('cascade', () => {
+  it('starts the first image at START and offsets each later one, wrapping after 6', async () => {
+    const svc = make();
+    const src = file('a.gif', gif());
+    const at: { x: number; y: number }[] = [];
+    for (let i = 0; i < 8; i++) at.push((await svc.addFile(src)) as { x: number; y: number });
+    expect(at[0]).toMatchObject({ x: 0.5, y: 0.3 });
+    expect(at[1]!.x).toBeCloseTo(0.53);
+    expect(at[1]!.y).toBeCloseTo(0.34);
+    expect(at[5]!.x).toBeCloseTo(0.65);
+    expect(at[5]!.y).toBeCloseTo(0.5);
+    expect(at[6]).toMatchObject({ x: 0.5, y: 0.3 });
+    expect(at[7]!.x).toBeCloseTo(0.53);
+    for (const p of at) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(1);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
 describe('addUrl', () => {
   it('refuses http without fetching', async () => {
     const fetchFn = vi.fn();
