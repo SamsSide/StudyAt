@@ -16,18 +16,8 @@
   grid-column: span 3;
 }
 
-.third {
-  grid-column: span 2;
-}
-
-.twoThirds {
-  grid-column: span 4;
-}
-
 @media (max-width: 900px) {
-  .half,
-  .third,
-  .twoThirds {
+  .half {
     grid-column: 1 / -1;
   }
 }

@@ -511,7 +511,8 @@
 }
 
 .widget:hover .bareTools,
-.widget:focus-within .bareTools {
+.widget:has(:focus-visible) .bareTools,
+.bareTools:focus-within {
   opacity: 1;
 }
 

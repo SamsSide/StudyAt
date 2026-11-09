@@ -104,7 +104,8 @@ export function ImageWidget({ image, n }: { image: ImageData; n: number }) {
       {missing ? (
         <div className={styles.missing}>
           <span>Image missing</span>
-          <button type="button" className={styles.dangerButton} onClick={() => void remove(image.id)}>
+          {/* A load error can also mean a file that is there but won't decode, so Remove asks first. */}
+          <button type="button" className={styles.dangerButton} onClick={ask}>
             Remove
           </button>
         </div>

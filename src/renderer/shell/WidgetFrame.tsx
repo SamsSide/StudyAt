@@ -184,7 +184,7 @@ export function WidgetFrame({
     else if (id) void patchWidget(id, { open: false });
   };
 
-  // The one scale every path below uses; `pos.scale` itself is never read again.
+  // The one scale every path below uses; every path below uses it, except `setScale`, which compares against the raw `pos.scale` so a step or reset repairs a bad stored value.
   const stored = usableScale(pos.scale);
   const current: Placed = preview?.at ?? { x: pos.x, y: pos.y, scale: stored };
   const s = renderedScale(frame, current.scale, win);

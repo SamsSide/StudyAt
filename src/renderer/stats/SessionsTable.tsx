@@ -230,7 +230,9 @@ export function SessionsTable({
                         )}
                       </select>
                     </td>
-                    <td className={styles.taskCell}>{s.taskText}</td>
+                    <td className={styles.taskCell} title={s.taskText ?? undefined}>
+                      {s.taskText}
+                    </td>
                     <td className={styles.numeric}>
                       {running ? (
                         <span className={styles.running}>In progress</span>

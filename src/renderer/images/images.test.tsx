@@ -87,7 +87,9 @@ describe('Add image dialog', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add image' });
     await user.type(within(dialog).getByRole('textbox', { name: 'Link' }), 'https://example.com/page');
     await user.click(within(dialog).getByRole('button', { name: 'Add' }));
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/^That isn't a GIF, PNG, JPEG or WebP image\.$/);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      /^That isn't a GIF, PNG, JPEG or WebP image\.$/,
+    );
     expect(api.images.addUrl).toHaveBeenCalledWith('https://example.com/page');
 
     await user.click(within(dialog).getByRole('button', { name: 'Add' }));
@@ -251,7 +253,10 @@ describe('Image widget', () => {
   });
 
   it('numbers images in order: Image 1, Image 2', () => {
-    renderImages([image({ id: 4, bare: true }), image({ id: 9, bare: true, url: 'studyat-media://image/9' })]);
+    renderImages([
+      image({ id: 4, bare: true }),
+      image({ id: 9, bare: true, url: 'studyat-media://image/9' }),
+    ]);
     expect(screen.getByRole('img', { name: 'Image 2' })).toHaveAttribute('src', 'studyat-media://image/9');
   });
 
@@ -262,6 +267,17 @@ describe('Image widget', () => {
     expect(screen.getByText('Image missing')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Remove' }));
+    // Remove asks first: a failed load can be a file that is there but won't decode.
+    expect(api.images.remove).not.toHaveBeenCalled();
+    const ask = screen.getByRole('group', { name: 'Remove this image?' });
+    await user.click(within(ask).getByRole('button', { name: 'Cancel' }));
+    expect(api.images.remove).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    await user.click(
+      within(screen.getByRole('group', { name: 'Remove this image?' })).getByRole('button', {
+        name: 'Remove',
+      }),
+    );
     expect(api.images.remove).toHaveBeenCalledWith(1);
   });
 
