@@ -478,6 +478,15 @@
   box-shadow: var(--focus-ring);
 }
 
+/* Sessions: the task a row was spent on, truncated rather than wrapping the table. */
+.taskCell {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
 /* By subject */
 .subjects {
   display: flex;

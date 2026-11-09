@@ -188,6 +188,7 @@ export function SessionsTable({
                   Focus
                 </th>
                 <th scope="col">Subject</th>
+                <th scope="col">Task</th>
                 <th scope="col">
                   <span className={styles.visuallyHidden}>Actions</span>
                 </th>
@@ -229,6 +230,7 @@ export function SessionsTable({
                         )}
                       </select>
                     </td>
+                    <td className={styles.taskCell}>{s.taskText}</td>
                     <td className={styles.numeric}>
                       {running ? (
                         <span className={styles.running}>In progress</span>
@@ -249,7 +251,7 @@ export function SessionsTable({
                   </tr>,
                   confirming === s.id && (
                     <tr key={`${s.id}-confirm`}>
-                      <td colSpan={5}>
+                      <td colSpan={6}>
                         <div
                           className={styles.confirm}
                           role="group"

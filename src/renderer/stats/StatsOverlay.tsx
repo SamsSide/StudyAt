@@ -14,6 +14,7 @@ import { SessionsTable } from './SessionsTable';
 import { Skeleton } from './Skeleton';
 import styles from './stats.module.css';
 import { SubjectBreakdown } from './SubjectBreakdown';
+import { TaskBreakdown } from './TaskBreakdown';
 import { Tiles } from './Tiles';
 import { TrendChart } from './TrendChart';
 import { useStatsQuery } from './useStatsQuery';
@@ -66,11 +67,12 @@ export function StatsOverlay() {
       <WeekChart revision={revision} className={`${styles.section} ${styles.half}`} />
       <TrendChart revision={revision} className={`${styles.section} ${styles.half}`} />
 
-      <SubjectBreakdown revision={revision} className={`${styles.section} ${styles.third}`} />
+      <SubjectBreakdown revision={revision} className={`${styles.section} ${styles.half}`} />
+      <TaskBreakdown revision={revision} className={`${styles.section} ${styles.half}`} />
       <SessionsTable
         revision={revision}
         onChanged={onChanged}
-        className={`${styles.section} ${styles.twoThirds}`}
+        className={`${styles.section} ${styles.full}`}
       />
 
       <RecapList revision={revision} className={`${styles.section} ${styles.full}`} />

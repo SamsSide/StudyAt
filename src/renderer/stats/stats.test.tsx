@@ -7,6 +7,7 @@ import type {
   Session,
   StatsOverview,
   SubjectTotal,
+  TaskTotal,
   WeekBars,
   WeeklyRecap,
 } from '../../shared/types';
@@ -22,6 +23,7 @@ import { RecapList } from './RecapList';
 import { SessionsTable } from './SessionsTable';
 import { StatsOverlay } from './StatsOverlay';
 import { SubjectBreakdown } from './SubjectBreakdown';
+import { TaskBreakdown } from './TaskBreakdown';
 import { Tiles } from './Tiles';
 import { TrendChart } from './TrendChart';
 import { useRecapPopup } from './useRecapPopup';
@@ -362,6 +364,34 @@ describe('SubjectBreakdown', () => {
   });
 });
 
+describe('TaskBreakdown', () => {
+  it('lists tasks as text and time, follows the range picker', async () => {
+    const totals: TaskTotal[] = [
+      { taskId: 2, text: 'Past papers', ms: 2 * HOUR + 10 * MINUTE },
+      { taskId: 1, text: 'Read chapter 4', ms: 45 * MINUTE },
+    ];
+    const byTask = vi.fn(() => Promise.resolve(totals));
+    api = mockApi({ stats: { byTask } });
+    installMockApi(api);
+    render(<TaskBreakdown revision={0} />);
+    const items = await screen.findAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('Past papers');
+    expect(items[0]).toHaveTextContent('2h 10m');
+    expect(items[1]).toHaveTextContent('Read chapter 4');
+    expect(items[1]).toHaveTextContent('0h 45m');
+    expect(byTask).toHaveBeenLastCalledWith('week');
+    await userEvent.click(screen.getByRole('radio', { name: 'Month' }));
+    expect(byTask).toHaveBeenLastCalledWith('month');
+    await userEvent.click(screen.getByRole('radio', { name: 'All time' }));
+    expect(byTask).toHaveBeenLastCalledWith('all');
+  });
+
+  it('says so kindly when no task is linked', async () => {
+    render(<TaskBreakdown revision={0} />);
+    expect(await screen.findByText('No tasks linked yet')).toBeInTheDocument();
+  });
+});
+
 describe('SessionsTable', () => {
   const setupSessions = (rows: Session[]) => {
     const sessions = vi.fn(() => Promise.resolve(rows));
@@ -371,6 +401,19 @@ describe('SessionsTable', () => {
     render(<SessionsTable revision={0} onChanged={onChanged} />);
     return { onChanged };
   };
+
+  it('shows each session’s task, blank when it has none', async () => {
+    setupSessions([
+      session({ id: 1, taskId: 4, taskText: 'Past papers' }),
+      session({ id: 2, startedAt: new Date(2026, 10, 2, 9, 0).getTime(), focusMs: 20 * MINUTE }),
+    ]);
+    expect(await screen.findByRole('columnheader', { name: 'Task' })).toBeInTheDocument();
+    const withTask = (await screen.findByText('1h 05m')).closest('tr') as HTMLElement;
+    expect(within(withTask).getByText('Past papers')).toBeInTheDocument();
+    const blank = screen.getByText('0h 20m').closest('tr') as HTMLElement;
+    const cells = within(blank).getAllByRole('cell');
+    expect(cells[4]).toBeEmptyDOMElement();
+  });
 
   it('sessions table changes subject via updateSession and deletes after confirm', async () => {
     const { onChanged } = setupSessions([session({ id: 7 })]);
@@ -664,6 +707,7 @@ describe('StatsOverlay', () => {
         week: never<WeekBars>(),
         trend: never<{ weekStart: string; ms: number }[]>(),
         bySubject: never<SubjectTotal[]>(),
+        byTask: never<TaskTotal[]>(),
         sessions: never<Session[]>(),
       },
       recaps: { list: never<WeeklyRecap[]>() },
@@ -671,8 +715,8 @@ describe('StatsOverlay', () => {
     installMockApi(api);
     const { container } = render(<StatsOverlay />);
     await act(async () => {});
-    expect(container.querySelectorAll('[data-skeleton]')).toHaveLength(7);
-    expect(container.querySelectorAll('section[aria-busy="true"]')).toHaveLength(7);
+    expect(container.querySelectorAll('[data-skeleton]')).toHaveLength(8);
+    expect(container.querySelectorAll('section[aria-busy="true"]')).toHaveLength(8);
   });
 
   it('drops the skeletons once main answers', async () => {
@@ -697,7 +741,7 @@ describe('StatsOverlay', () => {
         '+25% vs last week',
       ),
     );
-    for (const name of ['This week', 'Last 12 weeks', 'By subject', 'Sessions', 'Weekly recaps']) {
+    for (const name of ['This week', 'Last 12 weeks', 'By subject', 'By task', 'Sessions', 'Weekly recaps']) {
       expect(screen.getByRole('heading', { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole('heading', { name: 'Stats' })).not.toBeInTheDocument();
@@ -717,6 +761,7 @@ describe('StatsOverlay', () => {
     expect(api.stats.week).toHaveBeenCalledTimes(2);
     expect(api.stats.trend).toHaveBeenCalledTimes(2);
     expect(api.stats.bySubject).toHaveBeenCalledTimes(2);
+    expect(api.stats.byTask).toHaveBeenCalledTimes(2);
     expect(api.stats.sessions).toHaveBeenCalledTimes(2);
     expect(api.recaps.list).toHaveBeenCalledTimes(2);
   });
