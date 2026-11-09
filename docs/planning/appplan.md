@@ -5,7 +5,8 @@
 > (`docs/superpowers/specs/2026-11-08-studyat-design.md`); section numbers are kept identical.
 > When a spec changes how the app works, its plan's last task updates the section here.
 > Updated on 2026-11-09 for the v1 build (`docs/planning/specs/2026-11-08-app-v1-design.md` and
-> `docs/planning/specs/2026-11-09-widgets-addendum.md`).
+> `docs/planning/specs/2026-11-09-widgets-addendum.md`), and again for v1.1 polish
+> (`docs/planning/specs/2026-11-09-v1-1-polish-design.md`).
 
 ## Feature status
 
@@ -25,6 +26,7 @@
 | Weather widget (Open-Meteo) | §4.10, §6.2 | W | built |
 | Quote widget | §4.10 | W | built |
 | Notes widget | §4.10, §6.4 | W | built |
+| v1.1 polish: away switch, Countdown, task on the timer, focus view, scaling and resizable widgets, image/GIF widgets, pop-out Spotify, YouTube fix | §4.1, §4.2, §4.4, §4.6, §4.7, §4.9, §4.10, §5, §6.2, §6.4 | V1.1 | built |
 
 ## 1. Intent
 
@@ -52,7 +54,7 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - Custom spaces: their own video files, images and YouTube links as the background.
 - Ambient soundboard with per-sound volume, plus their own sound files.
 - Sticky-note tasks.
-- Spotify widget (they have Premium): now playing, play/pause/next/previous, pick a playlist.
+- Spotify widget (they have Premium): now playing, play/pause/next/previous.
 - Free-floating draggable widgets over the space, like LifeAt.
 
 **Non-goals** (LifeAt features deliberately left out)
@@ -77,12 +79,12 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 | Topic | Decision |
 | --- | --- |
 | Platform | **Electron + React + TypeScript**, running as a normal Windows app |
-| What counts as study | **Only time the focus (Pomodoro) timer is running.** Breaks, pauses, idle and app-open time never count |
+| What counts as study | **Only time a focus timer (Pomodoro or Countdown) is running.** Breaks, pauses, idle and app-open time never count (idle counts only if Sam turns the away prompt off, §5) |
 | Subjects | **Optional subject tag** per focus session; stats break down by subject |
 | Streak rule | A day counts if it has **≥ 25 minutes of focus** (one full Pomodoro's worth) |
 | Weekly recap | **Pop-up card on first open of a new week**, past recaps browsable in Stats |
 | Widget layout | **Free-floating, draggable**, opened from a side dock, positions remembered |
-| Spotify | They have **Premium** → full widget (now-playing, controls, playlists) via a one-time Spotify developer app setup |
+| Spotify | They have **Premium** → widget (now-playing, controls; a pop-out style since v1.1) via a one-time Spotify developer app setup |
 | Repo tooling | A repo skill set **first**, mirroring their Stitched Off repos (§8), then the app |
 
 ## 4. The app, screen by screen
@@ -98,6 +100,19 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   widgets stay (each widget can be pinned or set to auto-hide). Moving the mouse brings it back.
 - Widgets are draggable by their header, clamped to the window, positions/open state persisted
   per widget, and re-clamped when the window is resized.
+- **Proportional layout (v1.1):** positions are fractions of the window, and every widget scales
+  with it: `layoutScale = clamp(min(width / 1920, height / 1080), 0.5, 2)` (`LAYOUT_REF` is one
+  constant). A smaller window shrinks the layout in place instead of piling widgets at the edges.
+- **Resizable widgets (v1.1):** a 16 px corner handle (bottom-right, shown on hover or keyboard
+  focus, fading with auto-hide) sets each widget's own scale, 0.5–2 (`+`/`-` step 0.1, `0` or a
+  double-click resets). Rendered scale = layout scale × widget scale, shrunk for display only if
+  the widget wouldn't fit.
+- **Focus view (v1.1):** `H` or the top bar's "Hide interface" button hides the dock, top bar,
+  side panel and auto-hide widgets, and they stay hidden through mouse moves and typing. `H`,
+  `Esc` (when no overlay is open) or a "Show interface" capsule that appears only while the
+  pointer is in the top-left 64 × 64 px corner bring them back. Shortcuts keep working: S and ?
+  open their overlay over focus view; W, K and G (and T for an auto-hide Tasks widget) leave focus
+  view so what they open is visible. Not remembered between launches.
 
 ### 4.2 Spaces
 - Library grid with tabs: **All · Videos · Images · YouTube · Favourites**, a search box, and a
@@ -112,6 +127,10 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   (checked embeddable) and 4 bundled free-licence still images. No bundled video files, to keep
   the installer small.
 - The last-used space is restored on launch.
+- **YouTube embeds (v1.1):** the renderer is served as `http://localhost:<port>` because YouTube
+  answers error 150 to a bare-IP referrer for rights-managed videos. Videos whose owner blocks
+  embedding still show "This video can't be embedded"; player configuration errors 152/153 show
+  the "couldn't play" message and are logged.
 
 ### 4.3 Sounds (soundboard)
 - Master volume; the space's audio volume; a list of ambience channels, each with a mute toggle
@@ -125,12 +144,21 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   policy requires it).
 
 ### 4.4 Timer widget
-- Modes: **Pomodoro · Short break · Long break**; defaults 25 / 5 / 15 min, long break after
+- Modes: **Pomodoro · Short · Long · Countdown**; defaults 25 / 5 / 15 min, long break after
   every 4 Pomodoros; all editable in the widget's settings.
+- **Countdown (v1.1):** one focus block of 1–240 min (default 60; shortcut `4`). While idle in
+  Countdown, presets 30 · 45 · 60 · 90 · 120 and a number field set its length. It is study time
+  exactly like a Pomodoro focus segment. At the end: the focus-done chime and "Countdown done"
+  ("{n} min of focus."), then idle in Countdown at full length — no break, no auto-start, and the
+  Pomodoro long-break cycle is unaffected. Skip in Countdown resets it.
 - Big countdown, Start/Pause, Reset, Skip. Toggles: auto-start breaks, auto-start next
   Pomodoro.
 - **Subject picker** on the widget (blank = untagged). Subjects are managed in Settings (name +
   colour). Changing the subject mid-session applies from that point on.
+- **Task picker (v1.1)** under the subject picker, in Pomodoro and Countdown: "No task" plus every
+  not-done task in list order. Changing the task mid-session splits the session like a subject
+  change. A held task that is ticked off or deleted stays until the segment ends, then the picker
+  goes back to "No task".
 - **Chimes (Sam asked for these explicitly):** a sound plays at the end of every segment, with
   **separate chimes for "focus done → break" and "break done → back to focus"**. Choose each
   from **five chimes synthesised in code** — Bell, Singing bowl, Wood block, Marimba, Soft
@@ -157,8 +185,11 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   Client ID; the app signs in with **Authorization Code + PKCE** using a loopback redirect
   (`http://127.0.0.1:<port>/callback`). Tokens are stored locally and refreshed automatically.
   The settings page shows step-by-step instructions for this.
-- Shows album art, track, artist and progress; play/pause, previous, next; a playlist picker
-  from their library; a device picker.
+- **Pop-out style (v1.1), like the Windows media flyout:** album art (64 px), title, artist, a
+  thin progress line that moves smoothly between polls, and previous / play-pause / next —
+  nothing else while playing. Title and artist truncate with the full text in a tooltip. The
+  playlist and device pickers were removed from the widget (the main-process API stays); with no
+  active device it still lists device buttons to wake one.
 - **Playback happens in their Spotify app (desktop or phone) via Spotify Connect**, controlled
   through the Web API. (Playing audio *inside* Electron would need the Widevine DRM build of
   Electron; not worth it.) If no device is active, the widget says so and offers to open
@@ -173,8 +204,10 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - **This week**: bar chart of hours per day (Mon–Sun), bars stacked by subject.
 - **Weeks over time**: hours per week for the last 12 weeks (trend line or bars).
 - **By subject**: hours per subject for a chosen range (week / month / all time).
-- **Sessions list**: every focus session (date, start–end, minutes, subject), filterable.
-  Sessions can be edited (subject, delete) to fix mistakes.
+- **By task (v1.1)**: next to By subject, minutes per task for the same range, largest first,
+  top 10, labelled with the task's newest name; sessions without a task aren't listed.
+- **Sessions list**: every focus session (date, start–end, minutes, subject, task), filterable.
+  Sessions can be edited (subject, delete) to fix mistakes; the task isn't editable.
 - **Weekly recaps** list (§4.8).
 - Range picker on the charts: week · month · 12 weeks · year · all.
 
@@ -191,6 +224,9 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   (off by default).
 - Also: daily goal, global hotkey, mini timer when hidden, Calendar addresses, Weather place and
   units (§4.10).
+- Timer (v1.1): **"Ask if I've been away"** (on by default; off: away time still counts, while
+  locking or sleeping still pauses — the idle-minutes control is disabled while it's off), and
+  **Countdown length** (1–240 min).
 
 ### 4.10 Extras (added by Sam during planning and the build)
 - **Daily goal**: default 3 h. A progress ring in the top bar shows today against it; goal-hit
@@ -202,8 +238,9 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   while the timer runs (setting, on by default), and can be toggled from the tray, the timer
   widget or `M`. Its position is remembered.
 - **In-app shortcuts** (ignored while typing): `Space` start/pause · `R` reset · `N` skip ·
-  `1`/`2`/`3` Pomodoro/short/long · `S` stats · `T` tasks · `K` sounds · `G` spaces · `W` widgets
-  popover · `M` mini timer · `F` fullscreen · `Esc` close the top overlay or panel · `?` help.
+  `1`/`2`/`3`/`4` Pomodoro/short/long/Countdown · `S` stats · `T` tasks · `K` sounds · `G`
+  spaces · `W` widgets popover · `M` mini timer · `F` fullscreen · `H` hide or show the interface
+  (focus view, §4.1) · `Esc` close the top overlay, leave focus view, or close the panel · `?` help.
 - **Pre-filled subjects**: Sam's six modules (COMP2181, COMP2211, COMP2221, COMP2261, COMP2271,
   COMP2281), each with its own colour, ready on first launch.
 - **Widgets popover**: a dock item after Spotify that lists Calendar, Weather, Quote and Notes
@@ -220,6 +257,13 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   bundled list of public-domain quotes, with an "Another" button.
 - **Notes**: several sticky notes, one shown at a time, in the six task colours, up to 5,000
   characters each. They save themselves as you type, on switching note, on hide and on quit.
+- **Image / GIF widgets (v1.1)**: up to 12, added from the Widgets popover's "Add image…" — a
+  GIF, PNG, JPEG or WebP file (checked by its bytes, not its name) or an `https` link (a Giphy
+  page link is mapped to its GIF), up to 20 MB. Each is copied once into the data folder's
+  `images/` and served through the media protocol. A widget is **framed** (the usual glass, title
+  "Image") or **bare** (just the image with rounded corners; a hover toolbar has "Show background"
+  and "Remove"). Drag to move, resize from the corner, remove after "Remove this image?". A file
+  deleted by hand shows "Image missing" with Remove.
 - **Look**: a macOS / Liquid Glass feel throughout — layered translucent glass, soft shadows,
   larger rounded corners, capsule buttons, segmented controls and toggles, system fonts. Own
   icons only, no Apple assets. Text keeps WCAG AA contrast and every control has a visible
@@ -227,8 +271,9 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 
 ## 5. Study-time accounting (the core rule)
 
-- A **focus session** is one Pomodoro segment. Only the seconds the Pomodoro countdown is
-  actually running are recorded. Pause stops accrual. Breaks are never study time.
+- A **focus session** is one focus segment (a Pomodoro or a Countdown, v1.1). Only the seconds
+  its countdown is actually running are recorded. Pause stops accrual. Breaks are never study
+  time.
 - A segment that is reset or skipped early still keeps the minutes it actually ran (they were
   studied); a recorded piece under 1 minute is discarded as noise (the rule applies to each
   subject piece on its own).
@@ -254,12 +299,21 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   - **Quitting** while away or with the prompt open → discard (A1).
   - **A crash or power cut** during an unanswered away period → discard on the next launch
     (R39). Before Sam returns, the whole away stretch is removed; once the prompt is up, exactly
-    the time it asked about is removed and focus earned after his return is kept.
+    the time it asked about is removed and focus earned after Sam's return is kept.
+  - **The away prompt can be switched off (Sam, 2026-11-09):** Settings → Timer → "Ask if I've
+    been away". Off: no idle polling, no prompt, no discard — away time counts. Sleep, lock and
+    the 30 s unreported-sleep rule are unchanged. Switching it off drops an away period not yet
+    asked about (its time is kept) and clears the crash marker; a prompt already showing still
+    resolves. Switching it back on applies from that moment: an away period never reaches back
+    before the switch.
 - Because this needs power/idle events, the **timer and session writer live in the Electron main
   process**; the renderer only displays and sends commands.
 - **Changing the subject mid-session** closes the current piece and starts a new one with the
   new subject, so each minute is credited to the right subject. The whole Pomodoro stays on the
   day it **started**, even if the change comes after the rollover hour (A3).
+- **Changing the task mid-session (v1.1)** splits the same way; each piece records the task's id
+  and its name at that moment, so a task later renamed or cleared still shows by its old name.
+  Like subject pieces, a task piece under 1 minute is discarded (Sam, 2026-11-09: kept as is).
 - A session is credited to the day it **started** on (with the rollover hour from §7). A
   session crossing midnight isn't split.
 - **Streak**: the number of consecutive days, ending today or yesterday, each with ≥ threshold
@@ -284,7 +338,9 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 
 ### 6.2 Electron specifics
 - YouTube embeds fail from `file://` origins: the renderer must be served from a proper origin
-  (custom privileged protocol or a local http server) so the iframe API works.
+  (custom privileged protocol or a local http server) so the iframe API works. The built app's
+  server is reached as `http://localhost:<port>` (a hostname referrer, which YouTube accepts) but
+  binds to `127.0.0.1` only (v1.1).
 - Local video/image/audio files are loaded through a custom protocol scoped to paths the user
   has added. No blanket `file://` access. Context isolation on, node integration off, a typed
   preload bridge.
@@ -310,7 +366,9 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - Everything is stored in the app's data folder (`%APPDATA%/StudyAt`), in one database file
   plus settings.
 - **Daily automatic backup** of the database (keep the last 14) and backup before any schema
-  migration. Schema is versioned with migrations from day one (v2 added the Notes table).
+  migration. Schema is versioned with migrations from day one (v2 added the Notes table; v3 added
+  `task_id`/`task_text` on sessions and the `images` table). The `images/` folder of image-widget
+  copies is not in the backups (their database rows are).
 - The daily backup is taken at launch and again **whenever the date changes while the app keeps
   running** in the tray (checked hourly and on every resume and unlock); finished weeks' recaps
   are computed the same way.
