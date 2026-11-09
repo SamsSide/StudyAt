@@ -285,6 +285,17 @@ describe('SpaceBackground', () => {
       expect(await screen.findByText("This video can't be embedded.")).toBeInTheDocument();
     });
 
+    it('error 153 is a configuration error: a play message, not an embed block', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onError?.({ data: 153 }));
+      expect(await screen.findByText("This video can't be played.")).toBeInTheDocument();
+      expect(useSpacesStore.getState().embedErrors[3]).toBe('play');
+      expect(warn).toHaveBeenCalledWith('[spaces] YouTube player configuration error 153');
+    });
+
     it('offline shows the thumbnail and "Offline"', async () => {
       yt(space);
       vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);

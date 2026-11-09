@@ -1,5 +1,6 @@
 // Tiny static server for the built renderer (spec §3.2): gives YouTube embeds a real http origin.
-// Loopback only, random port, serves files under rootDir and nothing else.
+// Binds to 127.0.0.1 only, random port, serves files under rootDir and nothing else. The URL it
+// hands out says `localhost`: YouTube answers error 150 to a bare-IP referrer (spec §3.8).
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer, type ServerResponse } from 'node:http';
@@ -76,7 +77,7 @@ export async function startRendererServer(rootDir: string): Promise<{ url: strin
   const { port } = server.address() as AddressInfo;
 
   return {
-    url: `http://127.0.0.1:${port}`,
+    url: `http://localhost:${port}`,
     close: () =>
       new Promise<void>((ok) => {
         server.close(() => ok());

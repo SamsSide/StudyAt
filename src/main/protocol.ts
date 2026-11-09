@@ -151,7 +151,7 @@ export async function handleMediaRequest(
 
 /**
  * Wires the protocol once the app is ready. `allowedOrigins` is a getter because the renderer
- * origin (dev URL or the 127.0.0.1 renderer server) is only known after the server starts.
+ * origin (dev URL or the localhost renderer server) is only known after the server starts.
  */
 export function installMediaProtocol(resolve: MediaResolver, allowedOrigins: () => string[]): void {
   protocol.handle(MEDIA_SCHEME, (req) =>

@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { Server, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { startRendererServer } from './server';
 
 let root: string;
@@ -38,8 +39,17 @@ function rawGet(path: string): Promise<{ status: number; type: string | undefine
 }
 
 describe('startRendererServer', () => {
-  it('binds to 127.0.0.1 on a random port', () => {
-    expect(server.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+  it('serves on a localhost URL but binds to 127.0.0.1 only', async () => {
+    // A hostname referrer keeps YouTube from answering error 150 (spec §3.8).
+    expect(server.url).toMatch(/^http:\/\/localhost:\d+$/);
+    const addr = vi.spyOn(Server.prototype, 'address');
+    const second = await startRendererServer(root);
+    const bound = addr.mock.results.map((r) => r.value as AddressInfo | null).at(-1);
+    addr.mockRestore();
+    await second.close();
+    expect(bound?.address).toBe('127.0.0.1');
+    const res = await rawGet('/');
+    expect(res.body).toBe('<h1>StudyAt</h1>');
   });
 
   it('serves index.html at /', async () => {

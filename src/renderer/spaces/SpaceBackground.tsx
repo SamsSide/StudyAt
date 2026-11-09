@@ -8,6 +8,7 @@ import { mediaUrl, useSpacesStore } from './spacesStore';
 import { useWindowVisibility } from './windowVisibility';
 import {
   captionsOff,
+  CONFIG_ERRORS,
   EMBED_BLOCKED,
   loadYouTubeApi,
   PERSISTENT_ERRORS,
@@ -139,6 +140,9 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
             onError: (e) => {
               if (dead) return;
               console.warn('[spaces] YouTube error', e.data);
+              if (CONFIG_ERRORS.has(e.data)) {
+                console.warn(`[spaces] YouTube player configuration error ${e.data}`);
+              }
               if (played || !PERSISTENT_ERRORS.has(e.data)) return;
               markEmbedError(space.id, EMBED_BLOCKED.has(e.data) ? 'embed' : 'play');
             },

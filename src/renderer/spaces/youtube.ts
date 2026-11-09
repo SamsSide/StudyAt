@@ -38,11 +38,14 @@ declare global {
 export const YT_SCRIPT = 'https://www.youtube.com/iframe_api';
 /** Embedding disabled by the owner. */
 export const EMBED_BLOCKED = new Set([101, 150]);
+/** 152/153: the player rejected our set-up (the referrer), not the owner's choice (spec §3.8). */
+export const CONFIG_ERRORS = new Set([152, 153]);
 /**
- * Errors that won't pass by themselves: 2 bad id, 5 HTML5 player, 100 removed or private, and the
- * two embed blocks. Anything else the player reports is transient and only logged.
+ * Errors that won't pass by themselves: 2 bad id, 5 HTML5 player, 100 removed or private, the
+ * two embed blocks and the two configuration errors. Anything else the player reports is
+ * transient and only logged.
  */
-export const PERSISTENT_ERRORS = new Set([2, 5, 100, ...EMBED_BLOCKED]);
+export const PERSISTENT_ERRORS = new Set([2, 5, 100, ...EMBED_BLOCKED, ...CONFIG_ERRORS]);
 
 let pending: Promise<YTNamespace> | null = null;
 
