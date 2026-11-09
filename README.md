@@ -8,7 +8,7 @@ subject, and weekly recaps.
 
 ## Install
 
-Download `StudyAt-Setup-1.0.0.exe` from the [latest release](https://github.com/SamsSide/StudyAt/releases/latest)
+Download `StudyAt-Setup-1.1.0.exe` from the [latest release](https://github.com/SamsSide/StudyAt/releases/latest)
 and run it. It installs for your Windows user only, with Start-menu and desktop shortcuts.
 
 The installer isn't code-signed, so Windows SmartScreen may say "Windows protected your PC" —
