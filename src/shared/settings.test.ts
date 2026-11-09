@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, mergeSettings, sanitiseSettingsPatch } from './settings';
+import { DEFAULT_SETTINGS, mergeSettings, sanitisePlace, sanitiseSettingsPatch } from './settings';
 import { SEED_SUBJECTS } from './subjects';
 
 describe('DEFAULT_SETTINGS', () => {
@@ -29,6 +29,16 @@ describe('DEFAULT_SETTINGS', () => {
     expect([d.spotifyClientId, d.spotifyTokens]).toEqual(['', null]);
     expect([d.onboarded, d.trayNoticeShown]).toEqual([false, false]);
     expect([d.windowBounds, d.miniPos]).toEqual([null, null]);
+  });
+
+  it('adds the widgets addendum keys and closed widgets at their positions', () => {
+    const d = DEFAULT_SETTINGS;
+    expect(d.widgets.calendar).toEqual({ open: false, x: 0.18, y: 0.62, autoHide: false });
+    expect(d.widgets.weather).toEqual({ open: false, x: 0.18, y: 0.14, autoHide: false });
+    expect(d.widgets.quote).toEqual({ open: false, x: 0.5, y: 0.86, autoHide: false });
+    expect(d.widgets.notes).toEqual({ open: false, x: 0.82, y: 0.38, autoHide: false });
+    expect([d.weatherPlace, d.weatherUnits, d.weatherCache]).toEqual([null, 'celsius', null]);
+    expect([d.calendarUrls, d.calendarCache]).toEqual([null, null]);
   });
 
   it('seeds the six subjects in order', () => {
@@ -111,6 +121,64 @@ describe('sanitiseSettingsPatch', () => {
   it('drops spotifyTokens: the renderer never sets them', () => {
     expect(sanitiseSettingsPatch({ spotifyTokens: 'abc', focusMinutes: 30 })).toEqual({ focusMinutes: 30 });
     expect(sanitiseSettingsPatch({ spotifyTokens: null })).toEqual({});
+  });
+});
+
+describe('widgets addendum settings', () => {
+  it('accepts weatherUnits as celsius or fahrenheit only', () => {
+    expect(sanitiseSettingsPatch({ weatherUnits: 'fahrenheit' })).toEqual({ weatherUnits: 'fahrenheit' });
+    expect(sanitiseSettingsPatch({ weatherUnits: 'kelvin' })).toEqual({});
+  });
+
+  it('never accepts the main-only keys or weatherPlace (set through weather.setPlace)', () => {
+    const place = { name: 'Durham', latitude: 54.77, longitude: -1.57, country: 'United Kingdom', admin1: 'England' };
+    expect(
+      sanitiseSettingsPatch({
+        calendarUrls: 'blob',
+        calendarCache: { state: 'ok', fetchedAt: 1, events: [] },
+        weatherCache: { state: 'ok', place, fetchedAt: 1 },
+        weatherPlace: place,
+        focusMinutes: 30,
+      }),
+    ).toEqual({ focusMinutes: 30 });
+  });
+
+  it('sanitises the new widgets like the old ones', () => {
+    const out = sanitiseSettingsPatch({ widgets: { notes: { open: true, x: 2, y: 0.5, autoHide: false }, bogus: {} } });
+    expect(out.widgets).toEqual({ notes: { open: true, x: 1, y: 0.5, autoHide: false } });
+  });
+});
+
+describe('sanitisePlace', () => {
+  const durham = { name: 'Durham', latitude: 54.77, longitude: -1.57, country: 'United Kingdom', admin1: 'England' };
+
+  it('keeps a valid place, trimming the text and nulling blank or missing country and admin1', () => {
+    expect(sanitisePlace(durham)).toEqual(durham);
+    expect(sanitisePlace({ name: ' Durham ', latitude: 0, longitude: 0, country: '', extra: 1 })).toEqual({
+      name: 'Durham',
+      latitude: 0,
+      longitude: 0,
+      country: null,
+      admin1: null,
+    });
+  });
+
+  it('rejects bad shapes, out-of-range or non-finite coordinates and long names', () => {
+    for (const bad of [
+      null,
+      'Durham',
+      { ...durham, name: '' },
+      { ...durham, name: 'x'.repeat(201) },
+      { ...durham, latitude: 91 },
+      { ...durham, longitude: -180.5 },
+      { ...durham, latitude: Number.NaN },
+      { ...durham, longitude: '1' },
+      { ...durham, country: 7 },
+      { ...durham, admin1: 'x'.repeat(201) },
+    ]) {
+      expect(sanitisePlace(bad), JSON.stringify(bad)).toBeNull();
+    }
+    expect(sanitisePlace({ ...durham, name: 'x'.repeat(200) })?.name).toHaveLength(200);
   });
 });
 

@@ -4,7 +4,7 @@ import type { Note, TaskColour } from '../../../shared/types';
 import type { Db } from '../db';
 import { all, insert, int, one, text, transaction, type Row } from '../sql';
 
-/** Longest note text kept; longer text is cut (widgets addendum §4b). */
+/** Longest note text kept; longer text is cut, never through an emoji (widgets addendum §4b). */
 export const NOTE_MAX_CHARS = 5000;
 
 export interface NotesRepo {
@@ -18,6 +18,14 @@ export interface NotesRepo {
   remove(id: number): Note[];
   /** Sets `sort` to each id's index in `ids`; ids not listed keep their sort. */
   reorder(ids: number[]): Note[];
+}
+
+/** At most NOTE_MAX_CHARS UTF-16 units, never ending in half a surrogate pair. */
+export function clipNoteText(text: string): string {
+  let out = text.slice(0, NOTE_MAX_CHARS);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+  return out;
 }
 
 const toNote = (r: Row): Note => ({
@@ -49,7 +57,7 @@ export function notesRepo(db: Db): NotesRepo {
       if (!r) return null;
       const current = toNote(r);
       db.raw.run('UPDATE notes SET text = ?, colour = ?, updated_at = ? WHERE id = ?', [
-        (patch.text ?? current.text).slice(0, NOTE_MAX_CHARS),
+        clipNoteText(patch.text ?? current.text),
         patch.colour ?? current.colour,
         now,
         id,

@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNELS } from '../shared/ipc';
-import type { TimerState } from '../shared/types';
+import type { Note, TimerState } from '../shared/types';
+import type { CalendarAgenda, CalendarStatus, Place, WeatherReport } from '../shared/widgets';
 import type { Db } from './db/db';
 import { sessionsRepo } from './db/repos/sessions';
 import { settingsRepo } from './db/repos/settings';
@@ -43,6 +44,31 @@ afterEach(async () => {
   cleanup();
 });
 
+const DURHAM = { name: 'Durham', latitude: 54.77, longitude: -1.57, country: 'United Kingdom', admin1: 'England' };
+const ICS = 'https://calendar.google.com/calendar/ical/me%40gmail.com/private-abc/basic.ics';
+
+function widgetFakes() {
+  return {
+    weather: {
+      searchPlaces: vi.fn((_q: string) => Promise.resolve([DURHAM])),
+      report: vi.fn((place: Place | null, _cache: WeatherReport | null) =>
+        Promise.resolve<WeatherReport>({ state: 'error', place, fetchedAt: null }),
+      ),
+    },
+    calendar: {
+      calendars: vi.fn(() => [{ name: 'Lectures', colour: '#7c9cff' }]),
+      agenda: vi.fn((_sources: { url: string }[], _cache: CalendarAgenda | null) =>
+        Promise.resolve<CalendarAgenda>({ state: 'ok', fetchedAt: NOW, events: [] }),
+      ),
+    },
+    safeStorage: {
+      isEncryptionAvailable: () => true,
+      encryptString: (s: string) => Buffer.from([...s].reverse().join(''), 'utf8'),
+      decryptString: (b: Buffer) => [...b.toString('utf8')].reverse().join(''),
+    },
+  } satisfies Pick<IpcDeps, 'weather' | 'calendar' | 'safeStorage'>;
+}
+
 function spotifyFake() {
   const status = { configured: true, connected: false };
   return {
@@ -78,7 +104,9 @@ function setup(overrides: Partial<IpcDeps> = {}) {
   };
   const spotify = spotifyFake();
   const onSettingsChanged = vi.fn();
+  const widgets = widgetFakes();
   const services = registerIpc({
+    ...widgets,
     ipc: { handle: (channel, fn) => void handlers.set(channel, fn) },
     db,
     timer,
@@ -99,7 +127,7 @@ function setup(overrides: Partial<IpcDeps> = {}) {
       if (!fn) throw new Error(`no handler for ${channel}`);
       return fn(sender, ...args);
     });
-  return { handlers, invoke, dialogs, spotify, onSettingsChanged, services };
+  return { handlers, invoke, dialogs, spotify, onSettingsChanged, services, widgets };
 }
 
 describe('registerIpc', () => {
@@ -239,5 +267,96 @@ describe('createBroadcaster', () => {
     remove();
     expect(live.send).toHaveBeenCalledTimes(2);
     expect(dying.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('weather: validates the query and the place, and never returns the cache', async () => {
+    const { invoke, widgets } = setup();
+    expect(await invoke(CHANNELS.weather.searchPlaces, ' Durham ')).toEqual([DURHAM]);
+    expect(widgets.weather.searchPlaces).toHaveBeenCalledWith('Durham');
+    for (const bad of ['a', ' a ', 'x'.repeat(101), 7, null]) {
+      await expect(invoke(CHANNELS.weather.searchPlaces, bad), String(bad)).rejects.toThrow(IpcValidationError);
+    }
+    widgets.weather.searchPlaces.mockRejectedValueOnce(new Error('Place search is unavailable right now'));
+    await expect(invoke(CHANNELS.weather.searchPlaces, 'Leeds')).rejects.toThrow('Place search is unavailable right now');
+
+    await expect(invoke(CHANNELS.weather.setPlace, { ...DURHAM, latitude: 200 })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.weather.setPlace, 'Durham')).rejects.toThrow(IpcValidationError);
+    expect(await invoke(CHANNELS.weather.current)).toEqual({ state: 'unconfigured', place: null, fetchedAt: null });
+    const out = (await invoke(CHANNELS.weather.setPlace, DURHAM)) as Record<string, unknown>;
+    expect(out.weatherPlace).toEqual(DURHAM);
+    expect(out).not.toHaveProperty('weatherCache');
+    expect(await invoke(CHANNELS.weather.current)).toEqual({ state: 'error', place: DURHAM, fetchedAt: null });
+    expect(((await invoke(CHANNELS.weather.setPlace, null)) as Record<string, unknown>).weatherPlace).toBeNull();
+  });
+
+  it('settings:set takes weatherUnits but not the place, the addresses or the caches', async () => {
+    const { invoke } = setup();
+    const out = (await invoke(CHANNELS.settings.set, {
+      weatherUnits: 'fahrenheit',
+      weatherPlace: DURHAM,
+      calendarUrls: 'evil',
+      calendarCache: { state: 'ok', fetchedAt: 1, events: [] },
+    })) as Record<string, unknown>;
+    expect(out.weatherUnits).toBe('fahrenheit');
+    expect(out.weatherPlace).toBeNull();
+    for (const key of ['calendarUrls', 'calendarCache', 'weatherCache', 'spotifyTokens']) expect(out).not.toHaveProperty(key);
+    expect(settingsRepo(db).get().calendarUrls).toBeNull();
+  });
+
+  it('calendar: https-only addresses, at most 5 of at most 2000 chars, stored encrypted, never returned', async () => {
+    const { invoke, widgets } = setup();
+    expect(await invoke(CHANNELS.calendar.status)).toEqual({ configured: false, calendars: [] });
+    for (const bad of [
+      'nope',
+      [ICS.replace('https:', 'http:')],
+      ['webcal://example.org/a.ics'],
+      ['not a url'],
+      [`https://example.org/${'x'.repeat(2000)}`],
+      [ICS, ICS, ICS, ICS, ICS, ICS],
+      [7],
+    ]) {
+      await expect(invoke(CHANNELS.calendar.setUrls, bad), JSON.stringify(bad).slice(0, 60)).rejects.toThrow(IpcValidationError);
+    }
+    await expect(invoke(CHANNELS.calendar.setUrls, ['http://example.org/a.ics'])).rejects.toThrow(
+      'Calendar addresses must start with https://',
+    );
+    expect(settingsRepo(db).get().calendarUrls).toBeNull();
+
+    const status = (await invoke(CHANNELS.calendar.setUrls, [` ${ICS} `, '', '   '])) as CalendarStatus;
+    expect(status).toEqual({ configured: true, calendars: [{ name: 'Calendar', colour: '#7c9cff' }] });
+    expect(JSON.stringify(status)).not.toContain('private-abc');
+    expect(settingsRepo(db).get().calendarUrls).not.toContain('private-abc');
+    expect(await invoke(CHANNELS.calendar.agenda)).toEqual({ state: 'ok', fetchedAt: NOW, events: [] });
+    expect(widgets.calendar.agenda).toHaveBeenCalledWith([{ url: ICS }], null);
+    expect(((await invoke(CHANNELS.calendar.status)) as CalendarStatus).calendars).toEqual([{ name: 'Lectures', colour: '#7c9cff' }]);
+    expect(await invoke(CHANNELS.settings.get)).not.toHaveProperty('calendarUrls');
+
+    expect(await invoke(CHANNELS.calendar.setUrls, [])).toEqual({ configured: false, calendars: [] });
+    expect(settingsRepo(db).get().calendarUrls).toBeNull();
+  });
+
+  it('notes: create, update, remove, with ids, colours and the 5000-char limit validated', async () => {
+    const { invoke } = setup();
+    expect(await invoke(CHANNELS.notes.list)).toEqual([]);
+    const [first] = (await invoke(CHANNELS.notes.create)) as Note[];
+    expect(first).toMatchObject({ text: '', colour: 'yellow', createdAt: NOW, updatedAt: NOW });
+    const two = (await invoke(CHANNELS.notes.create, { colour: 'pink' })) as Note[];
+    expect(two.map((n) => n.colour)).toEqual(['yellow', 'pink']);
+    await expect(invoke(CHANNELS.notes.create, { colour: 'orange' })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.notes.create, 'pink')).rejects.toThrow(IpcValidationError);
+
+    clock.advance(1000);
+    const updated = (await invoke(CHANNELS.notes.update, first!.id, { text: 'Bring calculator', colour: 'blue' })) as Note[];
+    expect(updated[0]).toMatchObject({ text: 'Bring calculator', colour: 'blue', updatedAt: NOW + 1000 });
+    expect(((await invoke(CHANNELS.notes.update, first!.id, { text: 'x'.repeat(5000) })) as Note[])[0]!.text).toHaveLength(5000);
+    await expect(invoke(CHANNELS.notes.update, first!.id, { text: 'x'.repeat(5001) })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.notes.update, first!.id, { colour: 'orange' })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.notes.update, first!.id, { text: 7 })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.notes.update, 9999, { text: 'x' })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.notes.update, 1.5, { text: 'x' })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.notes.update, first!.id, null)).rejects.toThrow(IpcValidationError);
+
+    expect(((await invoke(CHANNELS.notes.remove, first!.id)) as Note[]).map((n) => n.colour)).toEqual(['pink']);
+    await expect(invoke(CHANNELS.notes.remove, '1')).rejects.toThrow(IpcValidationError);
   });
 });

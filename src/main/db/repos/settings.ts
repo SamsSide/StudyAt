@@ -1,13 +1,14 @@
 // Settings (spec §3.11): one row per key, the value as JSON. Keys not stored read as their
-// `DEFAULT_SETTINGS` value. Main-side: `get` includes `spotifyTokens`; whoever answers the
-// renderer strips them (spec §3.10, study-dev rule 9).
+// `DEFAULT_SETTINGS` value. Main-side: `get` includes the main-only keys (tokens, calendar
+// addresses, caches); whoever answers the renderer strips them (spec §3.10, study-dev rule 9).
 import { DEFAULT_SETTINGS, mergeSettings } from '../../../shared/settings';
-import type { Settings, SettingsPatch } from '../../../shared/types';
+import type { MainOnlySettingsKey, Settings, SettingsPatch } from '../../../shared/types';
 import type { Db } from '../db';
 import { all, transaction } from '../sql';
 
-/** A sanitised renderer patch, plus the main-owned tokens. */
-export type MainSettingsPatch = SettingsPatch & { spotifyTokens?: string | null; activeSpaceId?: number | null };
+/** A sanitised renderer patch, plus the keys only main sets. */
+export type MainSettingsPatch = SettingsPatch &
+  Partial<Pick<Settings, MainOnlySettingsKey | 'activeSpaceId' | 'weatherPlace'>>;
 
 export interface SettingsRepo {
   get(): Settings;
@@ -36,9 +37,7 @@ export function settingsRepo(db: Db): SettingsRepo {
   return {
     get,
     set(patch) {
-      const { spotifyTokens, ...rest } = patch;
-      const next = mergeSettings(get(), rest);
-      if (spotifyTokens !== undefined) next.spotifyTokens = spotifyTokens;
+      const next = mergeSettings(get(), patch);
       const keys = Object.keys(patch).filter((k) => KEYS.has(k)) as (keyof Settings)[];
       transaction(db.raw, () => {
         for (const key of keys) {

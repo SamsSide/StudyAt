@@ -17,6 +17,11 @@ function BoundSoundsPanel() {
   return <SoundsPanel spaceAudio={canPlayAudio ? spaceAudio : undefined} />;
 }
 
+/** TEMPORARY (W2): stands in for the Calendar, Weather, Quote and Notes widgets until W3 builds them. */
+function ComingSoon() {
+  return <p style={{ margin: 0, opacity: 0.7 }}>Coming soon</p>;
+}
+
 function Background() {
   return (
     <div data-testid="app-background" style={{ position: 'absolute', inset: 0 }}>
@@ -27,7 +32,15 @@ function Background() {
 
 export const registry: Registry = {
   panels: { spaces: SpacesPanel, sounds: BoundSoundsPanel },
-  widgets: { timer: TimerWidget, tasks: TasksWidget, spotify: SpotifyWidget },
+  widgets: {
+    timer: TimerWidget,
+    tasks: TasksWidget,
+    spotify: SpotifyWidget,
+    calendar: ComingSoon,
+    weather: ComingSoon,
+    quote: ComingSoon,
+    notes: ComingSoon,
+  },
   overlays: { stats: StatsOverlay, settings: SettingsOverlay },
   background: Background,
 };

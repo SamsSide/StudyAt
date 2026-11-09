@@ -4,21 +4,23 @@
 // injected (`ipc`, dialogs, window, app, shell) so every handler runs under a unit test.
 import type { FileFilter, IpcMainInvokeEvent } from 'electron';
 import { CHANNELS } from '../shared/ipc';
-import { sanitiseSettingsPatch } from '../shared/settings';
+import { sanitisePlace, sanitiseSettingsPatch } from '../shared/settings';
 import type { Mode, PublicSettings, Settings, SettingsPatch, SubjectRange, TaskColour } from '../shared/types';
 import { localDateKey } from './db/backup';
 import type { Db } from './db/db';
 import { mixesRepo } from './db/repos/mixes';
+import { NOTE_MAX_CHARS, notesRepo } from './db/repos/notes';
 import { type MainSettingsPatch, settingsRepo } from './db/repos/settings';
 import { subjectsRepo } from './db/repos/subjects';
 import { tasksRepo } from './db/repos/tasks';
 import type { MediaKind, MediaResolver } from './protocol';
 import { dataService } from './services/data';
+import type { CalendarService } from './services/calendar';
 import { recapsService } from './services/recaps';
 import { publicSettings } from './services/settings';
 import { AUDIO_EXTS, soundsService, type SoundsService } from './services/sounds';
 import { IMAGE_EXTS, spacesService, VIDEO_EXTS, type SpacesService } from './services/spaces';
-import { spotifyCall } from './services/spotify';
+import { spotifyCall, type SafeStorageLike } from './services/spotify';
 import { sanitiseSessionFilter, statsService } from './services/stats';
 import {
   assertBool,
@@ -33,6 +35,8 @@ import {
   IpcValidationError,
   isRecord,
 } from './services/validate';
+import { PLACE_QUERY_MAX, PLACE_QUERY_MIN, type WeatherService } from './services/weather';
+import { widgetsService } from './services/widgets';
 import type { SpotifyApi } from './spotify/api';
 import type { SpotifyAuth } from './spotify/auth';
 import type { TimerController } from './timer/controller';
@@ -45,6 +49,11 @@ const TASK_COLOURS: readonly TaskColour[] = ['yellow', 'pink', 'blue', 'green', 
 /** Bounds on list payloads, far above anything Sam will have. */
 const MAX_IDS = 10_000;
 const MAX_LEVELS = 500;
+/** Widgets addendum §2: private iCal addresses Sam pastes in Settings. */
+const MAX_CALENDARS = 5;
+const MAX_CALENDAR_URL = 2000;
+/** Blank lines from the Settings form are dropped before the five-address limit applies. */
+const MAX_CALENDAR_FIELDS = 50;
 
 export const SPACE_FILTERS: FileFilter[] = [{ name: 'Videos and images', extensions: [...VIDEO_EXTS, ...IMAGE_EXTS] }];
 export const SOUND_FILTERS: FileFilter[] = [{ name: 'Audio', extensions: [...AUDIO_EXTS] }];
@@ -82,6 +91,10 @@ export interface IpcDeps {
   db: Db;
   timer: TimerLike;
   spotify: SpotifyDeps;
+  /** Widgets addendum §2, §3: the fetch services (main-only network) and OS encryption for the iCal addresses. */
+  weather: WeatherService;
+  calendar: CalendarService;
+  safeStorage: SafeStorageLike;
   dialogs: Dialogs;
   /** The main window, if open. */
   win: () => WindowLike | null;
@@ -155,6 +168,41 @@ function taskPatch(v: unknown): { text?: string; colour?: TaskColour; done?: boo
   return out;
 }
 
+function notePatch(v: unknown): { text?: string; colour?: TaskColour } {
+  const p = assertRecord(v, 'patch');
+  const out: { text?: string; colour?: TaskColour } = {};
+  if (p.text !== undefined) out.text = assertStr(p.text, 'text', { max: NOTE_MAX_CHARS });
+  if (p.colour !== undefined) out.colour = assertEnum(p.colour, TASK_COLOURS, 'colour');
+  return out;
+}
+
+function placeQuery(v: unknown): string {
+  const q = assertStr(v, 'search', { max: PLACE_QUERY_MAX }).trim();
+  if (q.length < PLACE_QUERY_MIN) throw new IpcValidationError(`search must be at least ${PLACE_QUERY_MIN} characters`);
+  return q;
+}
+
+/**
+ * The iCal addresses, trimmed, blanks dropped: https only, at most 2000 chars each and five in
+ * all. Messages never repeat an address (they are secrets).
+ */
+function calendarUrls(v: unknown): string[] {
+  if (!Array.isArray(v) || v.length > MAX_CALENDAR_FIELDS) throw new IpcValidationError('urls must be a list');
+  const urls = v.map((u) => assertStr(u, 'Calendar address', { max: MAX_CALENDAR_URL }).trim()).filter((u) => u !== '');
+  if (urls.length > MAX_CALENDARS) throw new IpcValidationError(`Add at most ${MAX_CALENDARS} calendars`);
+  if (!urls.every(isHttpsUrl)) throw new IpcValidationError('Calendar addresses must start with https://');
+  return urls;
+}
+
+function isHttpsUrl(u: string): boolean {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' && url.hostname !== '';
+  } catch {
+    return false;
+  }
+}
+
 function idList(v: unknown): number[] {
   if (!Array.isArray(v) || v.length > MAX_IDS) throw new IpcValidationError('ids must be a list');
   return v.map((id) => assertInt(id));
@@ -176,6 +224,8 @@ export function registerIpc(deps: IpcDeps) {
   const subjects = subjectsRepo(db);
   const tasks = tasksRepo(db);
   const mixes = mixesRepo(db);
+  const notes = notesRepo(db);
+  const widgets = widgetsService({ db, weather: deps.weather, calendar: deps.calendar, safe: deps.safeStorage, now });
   const stats = statsService({ db, now, liveTodayMs: () => timer.getState().todayFocusMs });
   const recaps = recapsService({ db, stats });
   const spaces = spacesService({ db, now, assetsDir: deps.paths.assets, exists: deps.exists });
@@ -367,6 +417,32 @@ export function registerIpc(deps: IpcDeps) {
     const id = assertStr(deviceId, 'deviceId', { nonEmpty: true });
     return spotifyCall(() => spotify.transfer(id));
   });
+
+  // ── Weather and Calendar (widgets addendum §2, §3): network in main only ────
+  handle(C.weather.searchPlaces, (q) => widgets.searchPlaces(placeQuery(q)));
+  handle(C.weather.setPlace, (place) => {
+    if (place === null) return widgets.setPlace(null);
+    const clean = sanitisePlace(place);
+    if (clean === null) throw new IpcValidationError('place must be a place from the search');
+    return widgets.setPlace(clean);
+  });
+  handle(C.weather.current, () => widgets.weatherCurrent());
+  handle(C.calendar.status, () => widgets.calendarStatus());
+  handle(C.calendar.setUrls, (urls) => widgets.setCalendarUrls(calendarUrls(urls)));
+  handle(C.calendar.agenda, () => widgets.agenda());
+
+  // ── Notes (widgets addendum §4b, text max 5000) ───────────────────────────
+  handle(C.notes.list, () => notes.list());
+  handle(C.notes.create, (input) => {
+    const i = input === undefined ? {} : assertRecord(input, 'note');
+    return notes.create(i.colour === undefined ? {} : { colour: assertEnum(i.colour, TASK_COLOURS, 'colour') }, now());
+  });
+  handle(C.notes.update, (id, patch) => {
+    const list = notes.update(assertInt(id), notePatch(patch), now());
+    if (list === null) throw new IpcValidationError('No such note');
+    return list;
+  });
+  handle(C.notes.remove, (id) => notes.remove(assertInt(id)));
 
   // ── App ───────────────────────────────────────────────────────────────────
   handle(C.app.toggleFullscreen, () => {

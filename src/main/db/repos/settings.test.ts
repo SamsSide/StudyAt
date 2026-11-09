@@ -46,6 +46,21 @@ describe('settingsRepo', () => {
     expect(repo.get().spotifyTokens).toBeNull();
   });
 
+  it('stores the main-only widget keys and fills new widgets into an older stored widgets map', () => {
+    const repo = settingsRepo(db);
+    // Settings saved before the widgets addendum: three widgets only.
+    db.raw.run("INSERT OR REPLACE INTO settings (key, value) VALUES ('widgets', ?)", [
+      JSON.stringify({ timer: { open: false, x: 0.4, y: 0.1, autoHide: false }, tasks: DEFAULT_SETTINGS.widgets.tasks, spotify: DEFAULT_SETTINGS.widgets.spotify }),
+    ]);
+    const s = repo.get();
+    expect(s.widgets.timer.open).toBe(false);
+    expect(s.widgets.notes).toEqual(DEFAULT_SETTINGS.widgets.notes);
+    expect(s.weatherUnits).toBe('celsius');
+    const next = repo.set({ calendarUrls: 'ZW5j', calendarCache: { state: 'ok', fetchedAt: 1, events: [] }, weatherCache: null });
+    expect(next.calendarUrls).toBe('ZW5j');
+    expect(repo.get().calendarCache).toEqual({ state: 'ok', fetchedAt: 1, events: [] });
+  });
+
   it('ignores unknown or unreadable stored keys', () => {
     db.raw.run("INSERT INTO settings (key, value) VALUES ('oldKey', '1'), ('masterVolume', 'not json')");
     const s = settingsRepo(db).get();

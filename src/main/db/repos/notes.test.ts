@@ -45,6 +45,11 @@ describe('notesRepo', () => {
     expect(NOTE_MAX_CHARS).toBe(5000);
     const long = repo.update(id, { text: 'x'.repeat(5001) }, NOW + 30)![0]!;
     expect(long.text).toHaveLength(5000);
+    // An emoji straddling the cut is dropped whole, never left as half a surrogate pair.
+    const emoji = repo.update(id, { text: `${'x'.repeat(4999)}\u{1F600}` }, NOW + 40)![0]!;
+    expect(emoji.text).toBe('x'.repeat(4999));
+    const lone = repo.update(id, { text: `ab\uD83D` }, NOW + 50)![0]!;
+    expect(lone.text).toBe('ab');
 
     expect(repo.update(9999, { text: 'nope' }, NOW)).toBeNull();
   });

@@ -34,8 +34,10 @@ import { applyUserDataOverride } from './paths';
 import { installMediaProtocol, registerMediaScheme } from './protocol';
 import { CSP, DEV_CSP, hardenWebContents, shouldApplyCsp } from './security';
 import { startRendererServer } from './server';
+import { createCalendarService } from './services/calendar';
 import { dataService } from './services/data';
 import { safeTokenStore } from './services/spotify';
+import { createWeatherService } from './services/weather';
 import { SpotifyApi } from './spotify/api';
 import { SpotifyAuth } from './spotify/auth';
 import { listenForCallback } from './spotify/listener';
@@ -297,6 +299,11 @@ async function boot(): Promise<void> {
     db,
     timer,
     spotify: { api: spotifyApi, auth },
+    // Widgets addendum §2, §3: no timers here; the renderer polls while a widget is open and main
+    // serves its cache until the 30 min (weather) or 15 min (calendar) freshness runs out.
+    weather: createWeatherService({ fetch, now: Date.now }),
+    calendar: createCalendarService({ fetch, now: Date.now }),
+    safeStorage,
     dialogs,
     win: () => mainWindow,
     app,

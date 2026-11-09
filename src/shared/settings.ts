@@ -1,5 +1,6 @@
 // Settings defaults and the patch sanitiser (spec §3.11). Pure: used by main (validation) and tests.
-import type { ChimeId, Settings, SettingsPatch, WidgetId, WidgetPos } from './types';
+import type { ChimeId, Settings, SettingsPatch, WeatherUnits, WidgetId, WidgetPos } from './types';
+import type { Place } from './widgets';
 
 export const DEFAULT_SETTINGS: Settings = {
   focusMinutes: 25,
@@ -30,9 +31,19 @@ export const DEFAULT_SETTINGS: Settings = {
     timer: { open: true, x: 0.5, y: 0.12, autoHide: false },
     tasks: { open: false, x: 0.82, y: 0.14, autoHide: false },
     spotify: { open: false, x: 0.82, y: 0.62, autoHide: false },
+    // Widgets addendum §1, §4b: closed until picked from the Widgets popover.
+    calendar: { open: false, x: 0.18, y: 0.62, autoHide: false },
+    weather: { open: false, x: 0.18, y: 0.14, autoHide: false },
+    quote: { open: false, x: 0.5, y: 0.86, autoHide: false },
+    notes: { open: false, x: 0.82, y: 0.38, autoHide: false },
   },
   spotifyClientId: '',
   spotifyTokens: null,
+  weatherPlace: null,
+  weatherUnits: 'celsius',
+  weatherCache: null,
+  calendarUrls: null,
+  calendarCache: null,
   onboarded: false,
   trayNoticeShown: false,
   windowBounds: null,
@@ -40,7 +51,10 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const MAX_STRING = 500;
-const WIDGET_IDS: readonly WidgetId[] = ['timer', 'tasks', 'spotify'];
+const WIDGET_IDS: readonly WidgetId[] = ['timer', 'tasks', 'spotify', 'calendar', 'weather', 'quote', 'notes'];
+const WEATHER_UNITS: readonly WeatherUnits[] = ['celsius', 'fahrenheit'];
+/** Longest place name or region kept (a real one is far shorter). */
+export const PLACE_TEXT_MAX = 200;
 const BUILTIN_CHIMES: readonly string[] = ['bell', 'bowl', 'woodblock', 'marimba', 'digital'];
 
 type Sanitiser = (value: unknown) => unknown;
@@ -103,6 +117,34 @@ const widgets: Sanitiser = (v) => {
   return out;
 };
 
+const weatherUnits: Sanitiser = (v) => (typeof v === 'string' && (WEATHER_UNITS as readonly string[]).includes(v) ? v : NONE);
+
+const placeText = (v: unknown): string | null | typeof NONE => {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'string' || v.length > PLACE_TEXT_MAX) return NONE;
+  return v.trim() === '' ? null : v.trim();
+};
+
+const coord = (v: unknown, limit: number): number | typeof NONE =>
+  typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= limit ? v : NONE;
+
+/**
+ * A place for `weather:setPlace` (widgets addendum §3): a name of at most 200 chars, finite
+ * latitude (±90) and longitude (±180), optional country and region. Null if anything is off.
+ */
+export function sanitisePlace(v: unknown): Place | null {
+  if (!isRecord(v)) return null;
+  const name = placeText(v.name);
+  const country = placeText(v.country);
+  const admin1 = placeText(v.admin1);
+  const latitude = coord(v.latitude, 90);
+  const longitude = coord(v.longitude, 180);
+  if (name === null || name === NONE || country === NONE || admin1 === NONE || latitude === NONE || longitude === NONE) {
+    return null;
+  }
+  return { name, latitude, longitude, country, admin1 };
+}
+
 const rect: Sanitiser = (v) => {
   if (v === null) return null;
   if (!isRecord(v)) return NONE;
@@ -155,6 +197,7 @@ const SANITISERS: Record<Exclude<keyof SettingsPatch, SetOnlyElsewhere>, Sanitis
   masterVolume: num(0, 1, false),
   widgets,
   spotifyClientId: str(true),
+  weatherUnits,
   onboarded: bool,
   trayNoticeShown: bool,
   windowBounds: rect,
@@ -163,7 +206,8 @@ const SANITISERS: Record<Exclude<keyof SettingsPatch, SetOnlyElsewhere>, Sanitis
 
 /**
  * Keeps only known keys with valid values, clamping numbers into their §3.11 ranges.
- * `spotifyTokens` (main-owned, spec §3.10) and `activeSpaceId` are never accepted. A patch
+ * The main-only keys (`spotifyTokens`, `calendarUrls` and the caches), `activeSpaceId` and
+ * `weatherPlace` are never accepted. A patch
  * `widgets` entry may name just some widgets; apply it with `mergeSettings`.
  */
 export function sanitiseSettingsPatch(patch: unknown): SettingsPatch {

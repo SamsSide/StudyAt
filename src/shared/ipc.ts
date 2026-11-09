@@ -8,6 +8,7 @@ import type {
   HeatmapCell,
   Mix,
   Mode,
+  Note,
   NowPlaying,
   Playlist,
   PublicSettings,
@@ -29,6 +30,7 @@ import type {
   WeekBars,
   WeeklyRecap,
 } from './types';
+import type { CalendarAgenda, CalendarStatus, Place, WeatherReport } from './widgets';
 
 export type Unsubscribe = () => void;
 
@@ -49,6 +51,12 @@ export interface TaskPatch {
   text?: string;
   colour?: TaskColour;
   done?: boolean;
+}
+
+/** Widgets addendum §4b: text is at most 5000 chars (longer is rejected). */
+export interface NotePatch {
+  text?: string;
+  colour?: TaskColour;
 }
 
 export interface SpacePatch {
@@ -148,6 +156,32 @@ export interface StudyAtApi {
     devices(): Promise<Device[]>;
     transfer(deviceId: string): Promise<void>;
   };
+  /** Widgets addendum §3: Open-Meteo, fetched in main. Temperatures are Celsius. */
+  weather: {
+    /** Up to five places; `q` is 2–100 chars after trimming. Rejects with a readable message offline. */
+    searchPlaces(q: string): Promise<Place[]>;
+    /** Stores the place (null clears it); a different place drops the cached report. */
+    setPlace(place: Place | null): Promise<PublicSettings>;
+    /** The cached report if under 30 min old for this place, else a fresh fetch. Never rejects. */
+    current(): Promise<WeatherReport>;
+  };
+  /** Widgets addendum §2: read-only Google Calendar via private iCal addresses, which never come back. */
+  calendar: {
+    status(): Promise<CalendarStatus>;
+    /** At most 5 https addresses of at most 2000 chars; blanks are dropped, [] removes them all. */
+    setUrls(urls: string[]): Promise<CalendarStatus>;
+    /** The cached agenda if under 15 min old, else a fresh fetch. Never rejects. */
+    agenda(): Promise<CalendarAgenda>;
+  };
+  /** Widgets addendum §4b: sticky notes. Every call returns the whole list. */
+  notes: {
+    list(): Promise<Note[]>;
+    /** An empty note at the end, yellow unless a colour is given. */
+    create(input?: { colour?: TaskColour }): Promise<Note[]>;
+    /** Rejects for an unknown id or text over 5000 chars. */
+    update(id: number, patch: NotePatch): Promise<Note[]>;
+    remove(id: number): Promise<Note[]>;
+  };
   app: {
     toggleFullscreen(): Promise<void>;
     showMini(show: boolean): Promise<void>;
@@ -232,6 +266,9 @@ export const CHANNELS = {
     devices: 'spotify:devices',
     transfer: 'spotify:transfer',
   },
+  weather: { searchPlaces: 'weather:searchPlaces', setPlace: 'weather:setPlace', current: 'weather:current' },
+  calendar: { status: 'calendar:status', setUrls: 'calendar:setUrls', agenda: 'calendar:agenda' },
+  notes: { list: 'notes:list', create: 'notes:create', update: 'notes:update', remove: 'notes:remove' },
   app: { toggleFullscreen: 'app:toggleFullscreen', showMini: 'app:showMini' },
   events: {
     timerState: 'timer:state',

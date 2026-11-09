@@ -1,4 +1,5 @@
 // Shared data types: the contract between main, preload and renderer (spec §3.3, §3.5, §3.6, §3.10, §3.11).
+import type { CalendarAgenda, Place, WeatherReport } from './widgets';
 
 export type Mode = 'focus' | 'short' | 'long';
 export type TimerStatus = 'idle' | 'running' | 'paused';
@@ -177,7 +178,9 @@ export interface WidgetPos {
   autoHide: boolean;
 }
 
-export type WidgetId = 'timer' | 'tasks' | 'spotify';
+export type WidgetId = 'timer' | 'tasks' | 'spotify' | 'calendar' | 'weather' | 'quote' | 'notes';
+
+export type WeatherUnits = 'celsius' | 'fahrenheit';
 
 export interface WindowBounds {
   x: number;
@@ -217,20 +220,35 @@ export interface Settings {
   spotifyClientId: string;
   /** safeStorage-encrypted blob (base64); never sent to the renderer in the clear. */
   spotifyTokens: string | null;
+  /** Widgets addendum §3: set only through `weather.setPlace`. */
+  weatherPlace: Place | null;
+  weatherUnits: WeatherUnits;
+  /** The last good weather report, for an offline start (main-only). */
+  weatherCache: WeatherReport | null;
+  /** Widgets addendum §2: the iCal addresses, safeStorage-encrypted JSON (base64); main-only, never logged. */
+  calendarUrls: string | null;
+  /** The last agenda, for an offline start (main-only). */
+  calendarCache: CalendarAgenda | null;
   onboarded: boolean;
   trayNoticeShown: boolean;
   windowBounds: WindowBounds | null;
   miniPos: { x: number; y: number } | null;
 }
 
-/** What the renderer sees: tokens are main-owned (spec §3.10, study-dev rule 9) and never cross the bridge. */
-export type PublicSettings = Omit<Settings, 'spotifyTokens'>;
+/**
+ * Keys main owns and never sends to the renderer or an export: tokens and calendar addresses are
+ * secrets (spec §3.10, widgets addendum §2, study-dev rule 9); the caches are main's.
+ */
+export type MainOnlySettingsKey = 'spotifyTokens' | 'calendarUrls' | 'calendarCache' | 'weatherCache';
+
+/** What the renderer sees. */
+export type PublicSettings = Omit<Settings, MainOnlySettingsKey>;
 
 /**
  * A renderer settings patch: any public key except `activeSpaceId` (only `spaces:setActive`
- * changes it), and `widgets` may name just some widgets.
+ * changes it) and `weatherPlace` (only `weather:setPlace`), and `widgets` may name just some widgets.
  */
-export type SettingsPatch = Partial<Omit<Settings, 'widgets' | 'spotifyTokens' | 'activeSpaceId'>> & {
+export type SettingsPatch = Partial<Omit<Settings, 'widgets' | MainOnlySettingsKey | 'activeSpaceId' | 'weatherPlace'>> & {
   widgets?: Partial<Record<WidgetId, WidgetPos>>;
 };
 

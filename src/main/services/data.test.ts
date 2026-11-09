@@ -68,7 +68,13 @@ describe('dataService', () => {
   });
 
   it('exportJson includes notes and omits spotifyTokens', async () => {
-    settingsRepo(db).set({ spotifyTokens: 'c2VjcmV0', spotifyClientId: 'abc' });
+    settingsRepo(db).set({
+      spotifyTokens: 'c2VjcmV0',
+      spotifyClientId: 'abc',
+      calendarUrls: 'Y2FsZW5kYXI=',
+      calendarCache: { state: 'ok', fetchedAt: NOW, events: [] },
+      weatherCache: { state: 'error', place: null, fetchedAt: null },
+    });
     const [note] = notesRepo(db).create({ colour: 'blue' }, NOW);
     notesRepo(db).update(note!.id, { text: 'Bring calculator' }, NOW + 1);
     const out = join(dir, 'export.json');
@@ -93,7 +99,9 @@ describe('dataService', () => {
       { id: note!.id, text: 'Bring calculator', colour: 'blue', sort: 0, createdAt: NOW, updatedAt: NOW + 1 },
     ]);
     expect(json.settings).not.toHaveProperty('spotifyTokens');
-    expect(json.settings).toMatchObject({ spotifyClientId: 'abc' });
+    for (const key of ['calendarUrls', 'calendarCache', 'weatherCache']) expect(json.settings).not.toHaveProperty(key);
+    expect(json.settings).toMatchObject({ spotifyClientId: 'abc', weatherUnits: 'celsius', weatherPlace: null });
+    expect(readFileSync(out, 'utf8')).not.toContain('Y2FsZW5kYXI=');
     expect(readFileSync(out, 'utf8')).not.toContain('c2VjcmV0');
   });
 

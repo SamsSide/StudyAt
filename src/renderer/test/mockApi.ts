@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 import type { StudyAtApi, Unsubscribe } from '../../shared/ipc';
 import { DEFAULT_SETTINGS, mergeSettings } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
+import type { CalendarAgenda, CalendarStatus, WeatherReport } from '../../shared/widgets';
 import type {
   AwayPrompt,
   NowPlaying,
@@ -64,13 +65,17 @@ const emptyWeek = (): WeekBars => ({
   })),
 });
 
-/** Drops the main-owned tokens, as the real settings channel does. */
+/** Drops the main-only keys, as the real settings channel does. */
 function publicSettings(s: Settings): PublicSettings {
-  const { spotifyTokens: _tokens, ...rest } = structuredClone(s);
+  const { spotifyTokens: _tokens, calendarUrls: _urls, calendarCache: _agenda, weatherCache: _weather, ...rest } =
+    structuredClone(s);
   return rest;
 }
 
 const emptyPlaying = (): NowPlaying => ({ state: 'unconfigured' });
+const noWeather = (): WeatherReport => ({ state: 'unconfigured', place: null, fetchedAt: null });
+const noCalendar = (): CalendarStatus => ({ configured: false, calendars: [] });
+const noAgenda = (): CalendarAgenda => ({ state: 'unconfigured', fetchedAt: null, events: [] });
 
 /** Subscribe helper: returns the subscribe fn for the API and a way to fire it. */
 function channel<T>() {
@@ -190,6 +195,22 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       devices: resolves([]),
       transfer: resolves(undefined),
     },
+    weather: {
+      searchPlaces: resolves([]),
+      setPlace: vi.fn(() => Promise.resolve(publicSettings(DEFAULT_SETTINGS))),
+      current: vi.fn(() => Promise.resolve(noWeather())),
+    },
+    calendar: {
+      status: vi.fn(() => Promise.resolve(noCalendar())),
+      setUrls: vi.fn(() => Promise.resolve(noCalendar())),
+      agenda: vi.fn(() => Promise.resolve(noAgenda())),
+    },
+    notes: {
+      list: resolves([]),
+      create: resolves([]),
+      update: resolves([]),
+      remove: resolves([]),
+    },
     app: {
       toggleFullscreen: resolves(undefined),
       showMini: resolves(undefined),
@@ -211,6 +232,9 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     settings: { ...base.settings, ...overrides.settings },
     data: { ...base.data, ...overrides.data },
     spotify: { ...base.spotify, ...overrides.spotify },
+    weather: { ...base.weather, ...overrides.weather },
+    calendar: { ...base.calendar, ...overrides.calendar },
+    notes: { ...base.notes, ...overrides.notes },
     app: { ...base.app, ...overrides.app },
   };
 
