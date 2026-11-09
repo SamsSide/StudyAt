@@ -157,8 +157,10 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   colour). Changing the subject mid-session applies from that point on.
 - **Task picker (v1.1)** under the subject picker, in Pomodoro and Countdown: "No task" plus every
   not-done task in list order. Changing the task mid-session splits the session like a subject
-  change. A held task that is ticked off or deleted stays until the segment ends, then the picker
-  goes back to "No task".
+  change. A held task that is ticked off or deleted stays while its focus segment runs (no split);
+  whenever no focus segment is running — after it ends, on Skip, Reset or a mode change, or if it
+  is ticked off while idle or on a break — the timer drops it back to "No task" (cleared in main,
+  before any auto-started focus opens its row).
 - **Chimes (Sam asked for these explicitly):** a sound plays at the end of every segment, with
   **separate chimes for "focus done → break" and "break done → back to focus"**. Choose each
   from **five chimes synthesised in code** — Bell, Singing bowl, Wood block, Marimba, Soft
@@ -261,9 +263,10 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   GIF, PNG, JPEG or WebP file (checked by its bytes, not its name) or an `https` link (a Giphy
   page link is mapped to its GIF), up to 20 MB. Each is copied once into the data folder's
   `images/` and served through the media protocol. A widget is **framed** (the usual glass, title
-  "Image") or **bare** (just the image with rounded corners; a hover toolbar has "Show background"
-  and "Remove"). Drag to move, resize from the corner, remove after "Remove this image?". A file
-  deleted by hand shows "Image missing" with Remove.
+  "Image") or **bare** (just the image with rounded corners; a toolbar shown on hover or keyboard focus has "Show
+  background" and "Remove"). New images cascade slightly down and right of the last so they don't
+  stack. Drag to move, resize from the corner, remove after "Remove this image?". A file deleted
+  by hand shows "Image missing" (at least 160 × 80 px) with Remove, which also asks first.
 - **Look**: a macOS / Liquid Glass feel throughout — layered translucent glass, soft shadows,
   larger rounded corners, capsule buttons, segmented controls and toggles, system fonts. Own
   icons only, no Apple assets. Text keeps WCAG AA contrast and every control has a visible

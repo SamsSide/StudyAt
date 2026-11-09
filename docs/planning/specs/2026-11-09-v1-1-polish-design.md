@@ -96,7 +96,9 @@ After using v1.0.0 Sam asked for eight changes:
   ticked off or deleted by "Clear done" still shows by its old name in Stats.
 - If the chosen task is ticked off or deleted while the timer holds it, the timer **keeps** it
   until the segment ends or Sam picks another. *Call:* no mid-segment split Sam didn't ask for.
-  After the segment ends, a done or missing task is cleared from the picker (back to "No task").
+  Whenever no focus segment is running (it ended, Skip, Reset, a mode change, or a tick-off while
+  idle or on a break), main clears a done or missing task back to "No task", before any
+  auto-started focus opens its row. *(Sam, 2026-11-09, after the final review.)*
 - Stats: the **sessions list** shows a Task column (blank when none). A new **"By task"** card
   next to "By subject" lists minutes per task for the chosen range, largest first, top 10, grouped
   by `task_id` and labelled with the newest `task_text`. Sessions without a task are not listed.
@@ -146,6 +148,8 @@ After using v1.0.0 Sam asked for eight changes:
   CSP is **unchanged** (images load through the media protocol).
 - New media kind **`image`** on the protocol, resolving only to files in the images folder for
   ids in the `images` table.
+- New images start at (0.5, 0.3), each later one cascaded +0.03 x, +0.04 y per existing image,
+  wrapping after 6 *(Sam, 2026-11-09, after the final review)*.
 - Each image widget has: position (x, y fractions), `scale` (0.5–2, default 1), **`bare`**
   (background off, default **false**). Base size: the image fitted inside **240 × 240 px**,
   keeping its aspect ratio, then × rendered scale (§3.5).
@@ -153,7 +157,7 @@ After using v1.0.0 Sam asked for eight changes:
   **removes** it (after "Remove this image?" · Remove / Cancel). A header button toggles the
   background.
 - **Bare** (`bare = true`): just the image, rounded corners 12 px, no glass, no header. Drag the
-  image to move it. Hovering shows a small floating toolbar above its top-right corner: **"Show
+  image to move it. Hovering (or keyboard focus, not a mouse click) shows a small floating toolbar above its top-right corner: **"Show
   background"** and **"Remove"**, plus the resize corner. Toolbar and corner fade with auto-hide
   and in focus view; the image itself stays (it is not auto-hide).
 - Keyboard: the image is focusable (label "Image {n}"); arrow keys move it, the toolbar is
