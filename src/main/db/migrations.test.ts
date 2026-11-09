@@ -30,8 +30,8 @@ describe('migrations', () => {
 
     const result = await migrate(raw, file, NOW);
 
-    expect(result).toEqual({ from: 0, to: 1 });
-    expect(schemaVersion(raw)).toBe(1);
+    expect(result).toEqual({ from: 0, to: LATEST_VERSION });
+    expect(schemaVersion(raw)).toBe(LATEST_VERSION);
     const backups = readdirSync(join(dir, 'backups'));
     expect(backups).toHaveLength(1);
     expect(backups[0]).toMatch(/^pre-migration-v0-2026-11-08-120000\.sqlite$/);
@@ -42,7 +42,7 @@ describe('migrations', () => {
     writeFileSync(join(dir, DB_FILE), new Uint8Array(0));
     const db = await openTestDb(dir);
     expect(db.recovered).toBe('ok');
-    expect(schemaVersion(db.raw)).toBe(1);
+    expect(schemaVersion(db.raw)).toBe(LATEST_VERSION);
     expect(readdirSync(join(dir, 'backups')).some((f) => f.startsWith('pre-migration-v0-'))).toBe(true);
     await db.close();
   });
@@ -61,10 +61,76 @@ describe('migrations', () => {
     await db.close();
   });
 
+  it('a fresh install goes straight to v2 with the notes table and no backup', async () => {
+    const db = await openTestDb(dir);
+    expect(schemaVersion(db.raw)).toBe(2);
+    expect(db.raw.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'notes'")[0]!.values).toEqual([['notes']]);
+    expect(existsSync(join(dir, 'backups'))).toBe(false);
+    await db.close();
+  });
+
+  // Widgets addendum §4b: a v1 database (made by the shipped v1 migration) gains `notes`, keeps
+  // every v1 row, and is backed up durably first (study-dev rule 2).
+  it('migrates a v1 database file to v2 with a durable pre-migration backup and all v1 data intact', async () => {
+    const file = join(dir, DB_FILE);
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const v1 = new SQL.Database();
+    await migrate(v1, null, NOW, MIGRATIONS.filter((m) => m.version === 1));
+    expect(schemaVersion(v1)).toBe(1);
+    v1.exec(`
+      INSERT INTO subjects (name, colour, archived, sort) VALUES ('Maths', '#ff0000', 0, 0);
+      INSERT INTO sessions (pomodoro_id, subject_id, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status)
+        VALUES ('p1', 1, 1000, 1500001, 1500001, 1500000, 0, '2026-11-07', 'done');
+      INSERT INTO tasks (text, colour, done, sort, created_at, done_at) VALUES ('Read chapter 3', 'pink', 0, 0, 1000, NULL);
+      INSERT INTO settings (key, value) VALUES ('streakThresholdMin', '30');
+    `);
+    const v1Bytes = Buffer.from(v1.export());
+    v1.close();
+    writeFileSync(file, v1Bytes);
+
+    const { fs, log } = recordingFs();
+    const db = await openTestDb(dir, NOW, fs);
+    expect(db.recovered).toBe('ok');
+    expect(schemaVersion(db.raw)).toBe(2);
+
+    const backup = join(dir, 'backups', 'pre-migration-v1-2026-11-08-120000.sqlite');
+    expect(readFileSync(backup).equals(v1Bytes)).toBe(true);
+    const sync = log.indexOf(`syncFile ${backup}.tmp`);
+    const publish = log.indexOf(`rename ${backup}.tmp -> ${backup}`);
+    expect(sync).toBeGreaterThanOrEqual(0);
+    expect(publish).toBeGreaterThan(sync);
+    expect(log.indexOf(`rename ${file}.tmp -> ${file}`)).toBeGreaterThan(publish);
+
+    expect(db.raw.exec('SELECT name FROM subjects')[0]!.values).toEqual([['Maths']]);
+    expect(db.raw.exec('SELECT pomodoro_id, focus_ms, day_key, status FROM sessions')[0]!.values).toEqual([
+      ['p1', 1500000, '2026-11-07', 'done'],
+    ]);
+    expect(db.raw.exec('SELECT text, colour FROM tasks')[0]!.values).toEqual([['Read chapter 3', 'pink']]);
+    expect(db.raw.exec("SELECT value FROM settings WHERE key = 'streakThresholdMin'")[0]!.values).toEqual([['30']]);
+    expect(db.raw.exec('SELECT count(*) FROM notes')[0]!.values).toEqual([[0]]);
+    await db.close();
+
+    // The migrated file on disk is v2 too.
+    const SQL2 = await initSqlJs({ locateFile: () => WASM_PATH });
+    const reopened = new SQL2.Database(readFileSync(file));
+    expect(schemaVersion(reopened)).toBe(2);
+    reopened.close();
+  });
+
+  it('the notes table defaults to an empty yellow note and rejects an unknown colour', async () => {
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const raw = new SQL.Database();
+    await migrate(raw, null, NOW);
+    raw.run('INSERT INTO notes (sort, created_at, updated_at) VALUES (0, 1, 1)');
+    expect(raw.exec('SELECT text, colour FROM notes')[0]!.values).toEqual([['', 'yellow']]);
+    expect(() => raw.run("INSERT INTO notes (colour, sort, created_at, updated_at) VALUES ('orange', 0, 1, 1)")).toThrow();
+    raw.close();
+  });
+
   it('does nothing and takes no backup when already at the latest version', async () => {
     const db = await openTestDb(dir);
     const result = await migrate(db.raw, join(dir, DB_FILE), NOW);
-    expect(result).toEqual({ from: 1, to: 1 });
+    expect(result).toEqual({ from: LATEST_VERSION, to: LATEST_VERSION });
     expect(existsSync(join(dir, 'backups'))).toBe(false);
     await db.close();
   });

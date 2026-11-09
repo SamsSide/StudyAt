@@ -37,12 +37,12 @@ describe('openDatabase', () => {
     cleanup();
   });
 
-  it('creates schema v1 and records schema_version 1', async () => {
+  it('creates the latest schema and records schema_version 2', async () => {
     db = await openTestDb(dir);
-    expect(LATEST_VERSION).toBe(1);
-    expect(schemaVersion(db.raw)).toBe(1);
+    expect(LATEST_VERSION).toBe(2);
+    expect(schemaVersion(db.raw)).toBe(2);
     const tables = db.raw.exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")[0]!.values.flat();
-    for (const t of ['meta', 'settings', 'subjects', 'sessions', 'tasks', 'spaces', 'sounds', 'mixes', 'recaps']) {
+    for (const t of ['meta', 'settings', 'subjects', 'sessions', 'tasks', 'spaces', 'sounds', 'mixes', 'recaps', 'notes']) {
       expect(tables).toContain(t);
     }
     expect(db.recovered).toBe('ok');
@@ -133,7 +133,7 @@ describe('openDatabase', () => {
     writeFileSync(join(dir, DB_FILE), garbage);
     db = await openTestDb(dir);
     expect(db.recovered).toBe('corrupt');
-    expect(schemaVersion(db.raw)).toBe(1);
+    expect(schemaVersion(db.raw)).toBe(LATEST_VERSION);
     const corrupt = readdirSync(dir).filter((f) => /^studyat\.corrupt-.+\.sqlite$/.test(f));
     expect(corrupt).toHaveLength(1);
     // Never deleted: the original bytes are kept as they were.

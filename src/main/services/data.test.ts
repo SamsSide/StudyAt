@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db/db';
+import { notesRepo } from '../db/repos/notes';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { subjectsRepo } from '../db/repos/subjects';
@@ -66,8 +67,10 @@ describe('dataService', () => {
     expect(localStamp(new Date(2026, 0, 2, 3, 4).getTime())).toBe('2026-01-02 03:04');
   });
 
-  it('exportJson omits spotifyTokens', async () => {
+  it('exportJson includes notes and omits spotifyTokens', async () => {
     settingsRepo(db).set({ spotifyTokens: 'c2VjcmV0', spotifyClientId: 'abc' });
+    const [note] = notesRepo(db).create({ colour: 'blue' }, NOW);
+    notesRepo(db).update(note!.id, { text: 'Bring calculator' }, NOW + 1);
     const out = join(dir, 'export.json');
     await service().svc.exportJson(out);
     const json = JSON.parse(readFileSync(out, 'utf8')) as Record<string, unknown>;
@@ -81,10 +84,14 @@ describe('dataService', () => {
       'sounds',
       'mixes',
       'recaps',
+      'notes',
       'settings',
     ]);
     expect(json.exportedAt).toBe(NOW);
-    expect(json.schemaVersion).toBe(1);
+    expect(json.schemaVersion).toBe(2);
+    expect(json.notes).toEqual([
+      { id: note!.id, text: 'Bring calculator', colour: 'blue', sort: 0, createdAt: NOW, updatedAt: NOW + 1 },
+    ]);
     expect(json.settings).not.toHaveProperty('spotifyTokens');
     expect(json.settings).toMatchObject({ spotifyClientId: 'abc' });
     expect(readFileSync(out, 'utf8')).not.toContain('c2VjcmV0');

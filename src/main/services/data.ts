@@ -10,6 +10,7 @@ import type { Db } from '../db/db';
 import { copyAtomic, nodeFs, type DbFs } from '../db/db-fs';
 import { schemaVersion } from '../db/migrations';
 import { mixesRepo } from '../db/repos/mixes';
+import { notesRepo } from '../db/repos/notes';
 import { recapsRepo } from '../db/repos/recaps';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
@@ -66,6 +67,7 @@ export function dataService(deps: DataServiceDeps) {
         sounds: soundsRepo(db).list().map(({ missing: _missing, ...s }) => s),
         mixes: mixesRepo(db).list(),
         recaps: recapsRepo(db).list(),
+        notes: notesRepo(db).list(),
         settings: publicSettings(settingsRepo(db).get()),
       };
       await writeFile(path, `${JSON.stringify(data, null, 2)}\n`, 'utf8');

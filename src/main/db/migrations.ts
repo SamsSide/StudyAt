@@ -87,6 +87,24 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v2: sticky notes for the Notes widget (widgets addendum §4b). The colours are the six task
+    // colours (`TaskColour`); text is capped at 5000 chars by notesRepo.
+    version: 2,
+    up(db) {
+      db.exec(`
+        CREATE TABLE notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL DEFAULT '',
+          colour TEXT NOT NULL DEFAULT 'yellow'
+            CHECK (colour IN ('yellow', 'pink', 'blue', 'green', 'purple', 'grey')),
+          sort INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

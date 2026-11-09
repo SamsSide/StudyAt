@@ -48,6 +48,16 @@ export interface Session {
 
 export type TaskColour = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'grey';
 
+/** A sticky note in the Notes widget (widgets addendum §4b). */
+export interface Note {
+  id: number;
+  text: string;
+  colour: TaskColour;
+  sort: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Task {
   id: number;
   text: string;
