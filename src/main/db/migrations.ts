@@ -105,6 +105,30 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v3 (v1.1 spec §5): the task a session row was studied for, kept as id and text so the text
+    // survives the task's deletion; existing rows get a NULL task, so history is unchanged. And the
+    // image widgets: x, y are fractions 0..1, scale 0.5..2, both clamped by imagesRepo.
+    version: 3,
+    up(db) {
+      db.exec(`
+        ALTER TABLE sessions ADD COLUMN task_id INTEGER NULL;
+        ALTER TABLE sessions ADD COLUMN task_text TEXT NULL;
+        CREATE TABLE images (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ext TEXT NOT NULL CHECK (ext IN ('gif', 'png', 'jpg', 'webp')),
+          width INTEGER NOT NULL,
+          height INTEGER NOT NULL,
+          source_url TEXT NULL,
+          x REAL NOT NULL,
+          y REAL NOT NULL,
+          scale REAL NOT NULL DEFAULT 1,
+          bare INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

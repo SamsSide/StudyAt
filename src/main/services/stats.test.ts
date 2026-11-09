@@ -33,6 +33,8 @@ function addSession(start: number, minutes: number, subjectId: number | null = n
   const row = repo.insertRunning({
     pomodoroId: `p${start}`,
     subjectId,
+    taskId: null,
+    taskText: null,
     startedAt: start,
     dayKey: dayKeyOf(start, 4),
   });
@@ -46,6 +48,8 @@ describe('statsService', () => {
     const running = sessionsRepo(db).insertRunning({
       pomodoroId: 'live',
       subjectId: null,
+      taskId: null,
+      taskText: null,
       startedAt: WED - 10 * MIN,
       dayKey: dayKeyOf(WED, 4),
     });
@@ -76,6 +80,8 @@ describe('statsService', () => {
     const running = sessionsRepo(db).insertRunning({
       pomodoroId: 'r',
       subjectId: null,
+      taskId: null,
+      taskText: null,
       startedAt: WED,
       dayKey: '2026-11-11',
     });
@@ -145,6 +151,8 @@ describe('recapsService', () => {
     const running = repo.insertRunning({
       pomodoroId: 'r',
       subjectId: null,
+      taskId: null,
+      taskText: null,
       startedAt: sunday,
       dayKey: dayKeyOf(sunday, 4),
     });

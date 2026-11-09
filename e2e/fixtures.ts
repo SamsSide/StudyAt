@@ -249,6 +249,8 @@ export async function seedHistory(dir: string, now = Date.now()): Promise<number
         subjectId: subjects[(daysAgo + k) % subjects.length] ?? null,
         startedAt,
         dayKey: dayKeyOf(startedAt, 4),
+        taskId: null,
+        taskText: null,
       });
       repo.close(row.id, startedAt + focusMs, focusMs, 0);
       count++;

@@ -18,15 +18,33 @@ describe('sessionsRepo', () => {
   });
 
   const start = (
-    over: Partial<{ pomodoroId: string; subjectId: number | null; startedAt: number; dayKey: string }> = {},
+    over: Partial<{
+      pomodoroId: string;
+      subjectId: number | null;
+      taskId: number | null;
+      taskText: string | null;
+      startedAt: number;
+      dayKey: string;
+    }> = {},
   ) =>
     sessionsRepo(db).insertRunning({
       pomodoroId: 'p-1',
       subjectId: 1,
+      taskId: null,
+      taskText: null,
       startedAt: NOW,
       dayKey: '2026-11-08',
       ...over,
     });
+
+  // v1.1 spec §3.3: a row keeps the task it was studied for, id and text.
+  it('stores and reads taskId and taskText', () => {
+    const s = start({ taskId: 7, taskText: 'Lab 3' });
+    expect(s).toMatchObject({ taskId: 7, taskText: 'Lab 3' });
+    expect(sessionsRepo(db).list({})).toEqual([
+      expect.objectContaining({ id: s.id, taskId: 7, taskText: 'Lab 3' }),
+    ]);
+  });
 
   it('inserts a running row, checkpoints and closes it', () => {
     const repo = sessionsRepo(db);

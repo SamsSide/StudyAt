@@ -37,10 +37,10 @@ describe('openDatabase', () => {
     cleanup();
   });
 
-  it('creates the latest schema and records schema_version 2', async () => {
+  it('creates the latest schema and records schema_version 3', async () => {
     db = await openTestDb(dir);
-    expect(LATEST_VERSION).toBe(2);
-    expect(schemaVersion(db.raw)).toBe(2);
+    expect(LATEST_VERSION).toBe(3);
+    expect(schemaVersion(db.raw)).toBe(3);
     const tables = db.raw
       .exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")[0]!
       .values.flat();
@@ -55,6 +55,7 @@ describe('openDatabase', () => {
       'mixes',
       'recaps',
       'notes',
+      'images',
     ]) {
       expect(tables).toContain(t);
     }

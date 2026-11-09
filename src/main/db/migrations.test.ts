@@ -61,19 +61,21 @@ describe('migrations', () => {
     await db.close();
   });
 
-  it('a fresh install goes straight to v2 with the notes table and no backup', async () => {
+  it('a fresh install goes straight to v3 with the notes and images tables and no backup', async () => {
     const db = await openTestDb(dir);
-    expect(schemaVersion(db.raw)).toBe(2);
+    expect(schemaVersion(db.raw)).toBe(3);
     expect(
-      db.raw.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'notes'")[0]!.values,
-    ).toEqual([['notes']]);
+      db.raw.exec(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('notes', 'images') ORDER BY name",
+      )[0]!.values,
+    ).toEqual([['images'], ['notes']]);
     expect(existsSync(join(dir, 'backups'))).toBe(false);
     await db.close();
   });
 
   // Widgets addendum §4b: a v1 database (made by the shipped v1 migration) gains `notes`, keeps
   // every v1 row, and is backed up durably first (study-dev rule 2).
-  it('migrates a v1 database file to v2 with a durable pre-migration backup and all v1 data intact', async () => {
+  it('migrates a v1 database file to the latest with a durable pre-migration backup and all v1 data intact', async () => {
     const file = join(dir, DB_FILE);
     const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
     const v1 = new SQL.Database();
@@ -98,7 +100,7 @@ describe('migrations', () => {
     const { fs, log } = recordingFs();
     const db = await openTestDb(dir, NOW, fs);
     expect(db.recovered).toBe('ok');
-    expect(schemaVersion(db.raw)).toBe(2);
+    expect(schemaVersion(db.raw)).toBe(LATEST_VERSION);
 
     const backup = join(dir, 'backups', 'pre-migration-v1-2026-11-08-120000.sqlite');
     expect(readFileSync(backup).equals(v1Bytes)).toBe(true);
@@ -119,11 +121,67 @@ describe('migrations', () => {
     expect(db.raw.exec('SELECT count(*) FROM notes')[0]!.values).toEqual([[0]]);
     await db.close();
 
-    // The migrated file on disk is v2 too.
+    // The migrated file on disk is at the latest version too.
     const SQL2 = await initSqlJs({ locateFile: () => WASM_PATH });
     const reopened = new SQL2.Database(readFileSync(file));
-    expect(schemaVersion(reopened)).toBe(2);
+    expect(schemaVersion(reopened)).toBe(LATEST_VERSION);
     reopened.close();
+  });
+
+  // v1.1 spec §5: a v2 database gains the session task columns and `images`, keeps its session row
+  // unchanged with a NULL task, and is backed up durably first (study-dev rule 2).
+  it('v3 adds task_id and task_text to sessions and the images table, keeps v2 rows', async () => {
+    expect(LATEST_VERSION).toBe(3);
+    const file = join(dir, DB_FILE);
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const v2 = new SQL.Database();
+    await migrate(
+      v2,
+      null,
+      NOW,
+      MIGRATIONS.filter((m) => m.version <= 2),
+    );
+    expect(schemaVersion(v2)).toBe(2);
+    v2.exec(`
+      INSERT INTO sessions (pomodoro_id, subject_id, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status)
+        VALUES ('p1', NULL, 1000, 1500001, 1500001, 1500000, 2000, '2026-11-07', 'done');
+    `);
+    const v2Bytes = Buffer.from(v2.export());
+    v2.close();
+    writeFileSync(file, v2Bytes);
+
+    const { fs, log } = recordingFs();
+    const db = await openTestDb(dir, NOW, fs);
+    expect(db.recovered).toBe('ok');
+    expect(schemaVersion(db.raw)).toBe(3);
+
+    const backup = join(dir, 'backups', 'pre-migration-v2-2026-11-08-120000.sqlite');
+    expect(readFileSync(backup).equals(v2Bytes)).toBe(true);
+    const sync = log.indexOf(`syncFile ${backup}.tmp`);
+    const publish = log.indexOf(`rename ${backup}.tmp -> ${backup}`);
+    expect(sync).toBeGreaterThanOrEqual(0);
+    expect(publish).toBeGreaterThan(sync);
+    expect(log.indexOf(`rename ${file}.tmp -> ${file}`)).toBeGreaterThan(publish);
+
+    expect(
+      db.raw.exec(
+        'SELECT id, pomodoro_id, subject_id, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status, task_id IS NULL, task_text IS NULL FROM sessions',
+      )[0]!.values,
+    ).toEqual([[1, 'p1', null, 1000, 1500001, 1500001, 1500000, 2000, '2026-11-07', 'done', 1, 1]]);
+    expect(db.raw.exec('SELECT count(*) FROM images')[0]!.values).toEqual([[0]]);
+    await db.close();
+  });
+
+  it('the images table defaults scale 1 and bare 0, and rejects an unknown ext', async () => {
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const raw = new SQL.Database();
+    await migrate(raw, null, NOW);
+    raw.run("INSERT INTO images (ext, width, height, x, y, created_at) VALUES ('gif', 10, 20, 0.5, 0.5, 1)");
+    expect(raw.exec('SELECT scale, bare, source_url FROM images')[0]!.values).toEqual([[1, 0, null]]);
+    expect(() =>
+      raw.run("INSERT INTO images (ext, width, height, x, y, created_at) VALUES ('bmp', 1, 1, 0, 0, 1)"),
+    ).toThrow();
+    raw.close();
   });
 
   it('the notes table defaults to an empty yellow note and rejects an unknown colour', async () => {

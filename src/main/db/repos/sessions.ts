@@ -7,7 +7,7 @@
 import type { SessionFilter } from '../../../shared/ipc';
 import type { Session } from '../../../shared/types';
 import type { Db } from '../db';
-import { all, insert, int, intOrNull, one, run, text, type Row } from '../sql';
+import { all, insert, int, intOrNull, one, run, text, textOrNull, type Row } from '../sql';
 import type { SqlValue } from 'sql.js';
 
 /** Rows shorter than this are noise and are deleted when they end (spec §3.4 rule 6). */
@@ -18,6 +18,9 @@ export interface SessionsRepo {
   insertRunning(input: {
     pomodoroId: string;
     subjectId: number | null;
+    /** The task studied for, id and text as they were at the start (v1.1 spec §3.3). */
+    taskId: number | null;
+    taskText: string | null;
     startedAt: number;
     dayKey: string;
   }): Session;
@@ -51,21 +54,20 @@ const toSession = (r: Row): Session => ({
   discardedMs: int(r.discarded_ms),
   dayKey: text(r.day_key),
   status: r.status === 'running' ? 'running' : 'done',
-  // Filled from the row once the task columns exist (v1.1 task 2).
-  taskId: null,
-  taskText: null,
+  taskId: intOrNull(r.task_id),
+  taskText: textOrNull(r.task_text),
 });
 
 const ORDER = 'ORDER BY started_at, id';
 
 export function sessionsRepo(db: Db): SessionsRepo {
   return {
-    insertRunning({ pomodoroId, subjectId, startedAt, dayKey }) {
+    insertRunning({ pomodoroId, subjectId, taskId, taskText, startedAt, dayKey }) {
       const id = insert(
         db.raw,
-        `INSERT INTO sessions (pomodoro_id, subject_id, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status)
-         VALUES (?, ?, ?, NULL, ?, 0, 0, ?, 'running')`,
-        [pomodoroId, subjectId, startedAt, startedAt, dayKey],
+        `INSERT INTO sessions (pomodoro_id, subject_id, task_id, task_text, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status)
+         VALUES (?, ?, ?, ?, ?, NULL, ?, 0, 0, ?, 'running')`,
+        [pomodoroId, subjectId, taskId, taskText, startedAt, startedAt, dayKey],
       );
       db.markDirty();
       return toSession(one(db.raw, 'SELECT * FROM sessions WHERE id = ?', [id])!);

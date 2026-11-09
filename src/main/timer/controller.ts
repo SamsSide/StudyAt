@@ -473,7 +473,14 @@ export class TimerController {
 
   /** `dayKey` is given for a subject split, which stays on its pomodoro's start day (A3). */
   private openRow(pomodoroId: string, now: number, dayKey = dayKeyOf(now, this.rolloverHour)): void {
-    const s = this.sessions.insertRunning({ pomodoroId, subjectId: this.subjectId, startedAt: now, dayKey });
+    const s = this.sessions.insertRunning({
+      pomodoroId,
+      subjectId: this.subjectId,
+      taskId: null,
+      taskText: null,
+      startedAt: now,
+      dayKey,
+    });
     const row: Row = {
       id: s.id,
       pomodoroId,

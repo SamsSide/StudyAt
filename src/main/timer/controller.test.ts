@@ -354,6 +354,8 @@ describe('TimerController', () => {
     const a = repo.insertRunning({
       pomodoroId: 'x',
       subjectId: 3,
+      taskId: null,
+      taskText: null,
       startedAt: NOW - 30 * MIN,
       dayKey: '2026-11-08',
     });
@@ -361,6 +363,8 @@ describe('TimerController', () => {
     const b = repo.insertRunning({
       pomodoroId: 'y',
       subjectId: null,
+      taskId: null,
+      taskText: null,
       startedAt: NOW - 5 * MIN,
       dayKey: '2026-11-08',
     });

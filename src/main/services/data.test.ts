@@ -49,6 +49,8 @@ describe('dataService', () => {
     const row = sessions.insertRunning({
       pomodoroId: 'a',
       subjectId: subject.id,
+      taskId: null,
+      taskText: null,
       startedAt: start,
       dayKey: '2026-11-08',
     });
@@ -56,6 +58,8 @@ describe('dataService', () => {
     const untagged = sessions.insertRunning({
       pomodoroId: 'b',
       subjectId: null,
+      taskId: null,
+      taskText: null,
       startedAt: new Date(2026, 10, 9, 9, 5).getTime(),
       dayKey: '2026-11-09',
     });
@@ -104,7 +108,7 @@ describe('dataService', () => {
       'settings',
     ]);
     expect(json.exportedAt).toBe(NOW);
-    expect(json.schemaVersion).toBe(2);
+    expect(json.schemaVersion).toBe(3);
     expect(json.notes).toEqual([
       { id: note!.id, text: 'Bring calculator', colour: 'blue', sort: 0, createdAt: NOW, updatedAt: NOW + 1 },
     ]);
