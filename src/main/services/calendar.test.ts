@@ -117,6 +117,7 @@ const HOME = ics(
 );
 
 const at = (d: number, h: number, m = 0): number => Date.UTC(2026, 10, d, h, m);
+const DAY = 86_400_000;
 
 const fetchFrom =
   (bodies: Record<string, string | Error>): typeof fetch =>
@@ -319,6 +320,171 @@ describe('agenda', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('stays an error when a failure follows a failure (an error result is not a cache)', async () => {
+    const svc = service(fetchFrom({}));
+    const first = await svc.agenda([{ url: UNI_URL }], null);
+    expect(first).toEqual({ state: 'error', fetchedAt: null, events: [] });
+    const second = await service(fetchFrom({}), NOW + 60_000).agenda([{ url: UNI_URL }], first);
+    expect(second).toEqual({ state: 'error', fetchedAt: null, events: [] });
+  });
+
+  it('skips an event whose recurrence rule cannot be expanded and keeps the rest', async () => {
+    const broken = ics(
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      // Parses, but ical.js refuses to iterate it (BYYEARDAY is only allowed with YEARLY).
+      'BEGIN:VEVENT',
+      'UID:impossible@example.invalid',
+      'DTSTART:20261109T080000Z',
+      'DTEND:20261109T083000Z',
+      'RRULE:FREQ=MONTHLY;BYYEARDAY=10',
+      'SUMMARY:Impossible',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:good@example.invalid',
+      'DTSTART:20261110T120000Z',
+      'DTEND:20261110T130000Z',
+      'SUMMARY:Good',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    const result = await service(fetchFrom({ [UNI_URL]: broken })).agenda([{ url: UNI_URL }], null);
+    expect(result.state).toBe('ok');
+    expect(result.events.map((e) => [e.title, e.start, e.end])).toEqual([['Good', at(10, 12), at(10, 13)]]);
+  });
+
+  it('ends an all-day event without DTEND at the next local midnight, even on a 23-hour day', async () => {
+    // Clocks go forward on Sunday 29 March 2026: London's day runs 00:00 GMT to 00:00 BST.
+    const springForward = ics(
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:clocks@example.invalid',
+      'DTSTART;VALUE=DATE:20260329',
+      'SUMMARY:Clocks go forward',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    const result = await service(fetchFrom({ [UNI_URL]: springForward }), Date.UTC(2026, 2, 28, 12)).agenda(
+      [{ url: UNI_URL }],
+      null,
+    );
+    expect(result.events.map((e) => [e.start, e.end, e.allDay])).toEqual([
+      [Date.UTC(2026, 2, 29, 0), Date.UTC(2026, 2, 29, 23), true],
+    ]);
+  });
+
+  it('reads a summer (BST) event in its own zone', async () => {
+    const summer = ics(
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      ...LONDON_VTIMEZONE,
+      'BEGIN:VEVENT',
+      'UID:exam@example.invalid',
+      'DTSTART;TZID=Europe/London:20260701T093000',
+      'DTEND;TZID=Europe/London:20260701T113000',
+      'SUMMARY:Exam',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    // Monday 29 June 2026, 12:00 BST.
+    const result = await service(fetchFrom({ [UNI_URL]: summer }), Date.UTC(2026, 5, 29, 11)).agenda(
+      [{ url: UNI_URL }],
+      null,
+    );
+    expect(result.events.map((e) => [e.title, e.start, e.end])).toEqual([
+      ['Exam', Date.UTC(2026, 6, 1, 8, 30), Date.UTC(2026, 6, 1, 10, 30)],
+    ]);
+  });
+
+  it('times the end of each recurring occurrence in the zone of its start', async () => {
+    // DTEND in a different zone from DTSTART. 09:00 New York to 15:00 London (neither has a
+    // VTIMEZONE) is one hour, so 14:00-15:00 UTC. 08:00 London (VTIMEZONE) to 04:00 New York (none)
+    // is also one hour, 08:00-09:00 UTC.
+    const mixed = ics(
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      ...LONDON_VTIMEZONE,
+      'BEGIN:VEVENT',
+      'UID:early@example.invalid',
+      'DTSTART;TZID=Europe/London:20261110T080000',
+      'DTEND;TZID=America/New_York:20261110T040000',
+      'RRULE:FREQ=DAILY;COUNT=2',
+      'SUMMARY:Early',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:standup@example.invalid',
+      'DTSTART;TZID=America/New_York:20261110T090000',
+      'DTEND;TZID=Europe/London:20261110T150000',
+      'RRULE:FREQ=DAILY;COUNT=2',
+      'SUMMARY:Stand-up',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    const result = await service(fetchFrom({ [UNI_URL]: mixed })).agenda([{ url: UNI_URL }], null);
+    expect(result.events.map((e) => [e.title, e.start, e.end])).toEqual([
+      ['Early', at(10, 8), at(10, 9)],
+      ['Stand-up', at(10, 14), at(10, 15)],
+      ['Early', at(11, 8), at(11, 9)],
+      ['Stand-up', at(11, 14), at(11, 15)],
+    ]);
+  });
+
+  it('refuses a calendar that redirects to a non-https address', async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: 'http://example.invalid/basic.ics' } }),
+      )
+      .mockResolvedValue(new Response(UNI, { status: 200 }));
+    const result = await service(fetchFn).agenda([{ url: UNI_URL }], null);
+    expect(result.state).toBe('error');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('parses a ~3 MB calendar quickly (benchmark, R26)', async () => {
+    // A decade of one-off events (most long past, some far ahead) plus a handful of series: the
+    // shape of a big, old Google calendar.
+    const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', ...LONDON_VTIMEZONE];
+    let n = 0;
+    while (lines.join('\r\n').length < 3 * 1024 * 1024 - 400 && n < 40_000) {
+      for (let k = 0; k < 500; k++, n++) {
+        const day = new Date(Date.UTC(2018, 0, 1) + (n % 4_000) * DAY);
+        const ymd = day.toISOString().slice(0, 10).replaceAll('-', '');
+        lines.push(
+          'BEGIN:VEVENT',
+          `UID:bulk-${n}@example.invalid`,
+          `DTSTAMP:20260101T000000Z`,
+          `DTSTART;TZID=Europe/London:${ymd}T1${n % 10}0000`,
+          `DTEND;TZID=Europe/London:${ymd}T1${n % 10}3000`,
+          `SUMMARY:Bulk event number ${n} with a reasonably long title`,
+          'DESCRIPTION:Some notes that Google keeps with every event\\, as most real events have.',
+          'LOCATION:Somewhere on campus',
+          'END:VEVENT',
+        );
+      }
+    }
+    lines.push(
+      'BEGIN:VEVENT',
+      'UID:weekly@example.invalid',
+      'DTSTART;TZID=Europe/London:20190107T090000',
+      'DTEND;TZID=Europe/London:20190107T100000',
+      'RRULE:FREQ=WEEKLY;BYDAY=MO',
+      'SUMMARY:Weekly',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    const body = lines.join('\r\n');
+    expect(body.length).toBeGreaterThan(2.5 * 1024 * 1024);
+    const started = performance.now();
+    const result = await service(fetchFrom({ [UNI_URL]: body })).agenda([{ url: UNI_URL }], null);
+    const ms = performance.now() - started;
+    console.info(`[bench] ${(body.length / 1024 / 1024).toFixed(2)} MB, ${n} events: ${ms.toFixed(0)} ms`);
+    expect(result.state).toBe('ok');
+    expect(result.events.some((e) => e.title === 'Weekly' && e.start === at(9, 9))).toBe(true);
+    expect(ms).toBeLessThan(5_000);
   });
 
   it('never puts the secret address in the result', async () => {

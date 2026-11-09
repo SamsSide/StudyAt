@@ -67,3 +67,7 @@ paraphrase-free standard renderings (for example Long's Marcus Aurelius and Epic
 Seneca, Legge's Confucius and Lao Tzu, Jowett's Plato).
 
 Weather data by Open-Meteo.com (CC BY 4.0) — fetched at runtime, not bundled.
+
+## Third-party software
+
+- ical.js 2.2.1 — MPL-2.0 — https://github.com/kewisch/ical.js

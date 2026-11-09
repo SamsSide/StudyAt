@@ -149,6 +149,15 @@ const textOf = (comp: ICAL.Component, prop: string): string | null => {
 
 const isCancelled = (comp: ICAL.Component): boolean => textOf(comp, 'status')?.toUpperCase() === 'CANCELLED';
 
+/** A property's value as ical.js parsed it, before it becomes a Time: '2026-11-09T09:00:00'. */
+const rawValue = (comp: ICAL.Component, prop: string): string | null => {
+  const props = (comp.jCal as unknown[][])[1] as unknown[][];
+  const value = props.find((p) => p[0] === prop)?.[3];
+  return typeof value === 'string' ? value : null;
+};
+
+const isoDay = (ts: number): string => new Date(ts).toISOString().slice(0, 10);
+
 /**
  * Where to start expanding a long-running series. A daily or weekly RRULE without COUNT repeats
  * whole periods, so starting a whole number of periods later (same weekday, same wall time) gives
@@ -224,47 +233,61 @@ export function parseCalendar(
     overridden.set(uid, set);
   }
 
-  for (const comp of vevents) {
-    if (isCancelled(comp)) continue;
-    let event: ICAL.Event;
-    try {
-      event = new ICAL.Event(comp);
-    } catch {
-      continue;
-    }
-    if (!(comp.getFirstPropertyValue('dtstart') instanceof ICAL.Time)) continue;
-    const startTzid = tzidOf(comp, 'dtstart');
+  const expand = (comp: ICAL.Component, startTzid: string | null): void => {
+    // Overrides are paired with their master above; without `exceptions` ical.js would scan every
+    // VEVENT in the file for each event, which made a 3 MB calendar take seconds (R26).
+    const event = new ICAL.Event(comp, { exceptions: [] });
     const allDay = event.startDate.isDate;
+    const start = toMs(event.startDate, startTzid, tz);
+    // ical.js ends an event with no DTEND or DURATION at its start, or the next day if it's a date,
+    // which toMs turns into the next local midnight (a 23- or 25-hour day on a DST change).
+    const end = toMs(event.endDate, tzidOf(comp, 'dtend') ?? startTzid, tz);
 
     if (event.isRecurrenceException() || !event.isRecurring()) {
-      const start = toMs(event.startDate, startTzid, tz);
-      const end =
-        comp.hasProperty('dtend') || comp.hasProperty('duration')
-          ? toMs(event.endDate, tzidOf(comp, 'dtend') ?? startTzid, tz)
-          : start + (allDay ? DAY_MS : 0);
       const idTime = event.isRecurrenceException()
         ? event.recurrenceId.toString()
         : event.startDate.toString();
       push(comp, start, end, allDay, idTime);
-      continue;
+      return;
     }
 
+    // Every occurrence lasts as long as the first, timed from its own start (in the start's zone).
+    const length = Math.max(0, end - start);
     const skip = overridden.get(event.uid) ?? new Set<number>();
-    const iterator = event.iterator(seriesStart(comp, event, toMs(event.startDate, startTzid, tz), window));
+    const iterator = event.iterator(seriesStart(comp, event, start, window));
     for (let i = 0; i < MAX_OCCURRENCES; i++) {
       const next = iterator.next();
       if (!next) break;
-      const start = toMs(next, startTzid, tz);
-      if (start >= window.end) break;
-      if (skip.has(start)) continue;
-      const details = event.getOccurrenceDetails(next);
-      push(
-        comp,
-        start,
-        toMs(details.endDate, tzidOf(comp, 'dtend') ?? startTzid, tz),
-        allDay,
-        next.toString(),
-      );
+      const occurrence = toMs(next, startTzid, tz);
+      if (occurrence >= window.end) break;
+      if (skip.has(occurrence)) continue;
+      const occurrenceEnd = allDay
+        ? toMs(event.getOccurrenceDetails(next).endDate, null, tz)
+        : occurrence + length;
+      push(comp, occurrence, occurrenceEnd, allDay, next.toString());
+    }
+  };
+
+  // Most of a years-old calendar is one-offs far from the window. Their raw dates ('2019-03-04' or
+  // '2019-03-04T09:00:00') sort as strings, so they can be skipped before ical.js builds a single
+  // Time or Event (R26). Two days either side covers any zone; `push` makes the exact cut.
+  const firstDay = isoDay(window.start - 2 * DAY_MS);
+  const lastDay = isoDay(window.end + 2 * DAY_MS);
+  for (const comp of vevents) {
+    if (!comp.hasProperty('rrule') && !comp.hasProperty('rdate')) {
+      const start = rawValue(comp, 'dtstart');
+      const end = rawValue(comp, 'dtend');
+      if (start !== null && start.slice(0, 10) > lastDay) continue;
+      if (end !== null && end.slice(0, 10) < firstDay) continue;
+    }
+    if (isCancelled(comp)) continue;
+    if (!(comp.getFirstPropertyValue('dtstart') instanceof ICAL.Time)) continue;
+    const startTzid = tzidOf(comp, 'dtstart');
+    try {
+      expand(comp, startTzid);
+    } catch {
+      // A rule ical.js can't expand (or any other broken event) loses that event, not the calendar.
+      continue;
     }
   }
   return { name, events };
@@ -298,12 +321,17 @@ export function createCalendarService(deps: CalendarDeps): CalendarService {
       }
       const now = deps.now();
       const window = agendaWindow(now, tz);
+      // Only an earlier success is a cache; an `error` (or anything without a fetch time) isn't.
+      const good =
+        cache !== null && cache.fetchedAt !== null && (cache.state === 'ok' || cache.state === 'stale')
+          ? cache
+          : null;
 
       const results = await Promise.all(
         sources.map(async (source, index): Promise<Parsed | null> => {
           if (!isHttps(source.url)) return null;
           try {
-            const body = await getText(deps.fetch, source.url, timeoutMs, MAX_BODY);
+            const body = await getText(deps.fetch, source.url, timeoutMs, MAX_BODY, { httpsOnly: true });
             return parseCalendar(body, window, tz, String(index));
           } catch {
             return null;
@@ -323,7 +351,7 @@ export function createCalendarService(deps: CalendarDeps): CalendarService {
         } else {
           failed++;
           // Keep this calendar's last good events that still fall in today's window.
-          for (const e of cache?.events ?? []) {
+          for (const e of good?.events ?? []) {
             if (e.id.startsWith(`${index}:`) && e.end > window.start && e.start < window.end) events.push(e);
           }
         }
@@ -333,10 +361,8 @@ export function createCalendarService(deps: CalendarDeps): CalendarService {
       events.sort(byStart);
       const capped = events.slice(0, AGENDA_MAX_EVENTS);
       if (failed === 0) return { state: 'ok', fetchedAt: now, events: capped };
-      if (failed === sources.length && capped.length === 0 && !cache) {
-        return { state: 'error', fetchedAt: null, events: [] };
-      }
-      return { state: 'stale', fetchedAt: cache?.fetchedAt ?? null, events: capped };
+      if (failed === sources.length && !good) return { state: 'error', fetchedAt: null, events: [] };
+      return { state: 'stale', fetchedAt: good?.fetchedAt ?? null, events: capped };
     },
   };
 }
