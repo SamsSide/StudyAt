@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, mergeSettings, sanitisePlace, sanitiseSettingsPatch } from './settings';
 import { SEED_SUBJECTS } from './subjects';
-import type { WidgetId } from './types';
+import { isFocusMode } from './modes';
+import type { Mode, WidgetId } from './types';
 
 describe('DEFAULT_SETTINGS', () => {
   it('defaults match spec values', () => {
@@ -24,7 +25,7 @@ describe('DEFAULT_SETTINGS', () => {
     expect(d.activeSpaceId).toBeNull();
     expect(d.soundLevels).toEqual({});
     expect(d.masterVolume).toBe(0.8);
-    expect(d.widgets.timer).toEqual({ open: true, x: 0.5, y: 0.12, autoHide: false });
+    expect(d.widgets.timer).toEqual({ open: true, x: 0.5, y: 0.12, autoHide: false, scale: 1 });
     expect(d.widgets.tasks.open).toBe(false);
     expect(d.widgets.spotify.open).toBe(false);
     expect([d.spotifyClientId, d.spotifyTokens]).toEqual(['', null]);
@@ -34,10 +35,10 @@ describe('DEFAULT_SETTINGS', () => {
 
   it('adds the widgets addendum keys and closed widgets at their positions', () => {
     const d = DEFAULT_SETTINGS;
-    expect(d.widgets.calendar).toEqual({ open: false, x: 0.22, y: 0.46, autoHide: false });
-    expect(d.widgets.weather).toEqual({ open: false, x: 0.22, y: 0.1, autoHide: false });
-    expect(d.widgets.quote).toEqual({ open: false, x: 0.82, y: 0.76, autoHide: false });
-    expect(d.widgets.notes).toEqual({ open: false, x: 0.5, y: 0.56, autoHide: false });
+    expect(d.widgets.calendar).toEqual({ open: false, x: 0.22, y: 0.46, autoHide: false, scale: 1 });
+    expect(d.widgets.weather).toEqual({ open: false, x: 0.22, y: 0.1, autoHide: false, scale: 1 });
+    expect(d.widgets.quote).toEqual({ open: false, x: 0.82, y: 0.76, autoHide: false, scale: 1 });
+    expect(d.widgets.notes).toEqual({ open: false, x: 0.5, y: 0.56, autoHide: false, scale: 1 });
     expect([d.weatherPlace, d.weatherUnits, d.weatherCache]).toEqual([null, 'celsius', null]);
     expect([d.calendarUrls, d.calendarCache]).toEqual([null, null]);
   });
@@ -139,7 +140,7 @@ describe('sanitiseSettingsPatch', () => {
       widgets: { timer: { open: false, x: 3, y: -1, autoHide: true } },
       soundLevels: { '1': 2, '2': 0.4, bad: 'x' },
     });
-    expect(out.widgets?.timer).toEqual({ open: false, x: 1, y: 0, autoHide: true });
+    expect(out.widgets?.timer).toEqual({ open: false, x: 1, y: 0, autoHide: true, scale: 1 });
     expect(out.soundLevels).toEqual({ '1': 1, '2': 0.4 });
   });
 
@@ -191,7 +192,7 @@ describe('widgets addendum settings', () => {
     const out = sanitiseSettingsPatch({
       widgets: { notes: { open: true, x: 2, y: 0.5, autoHide: false }, bogus: {} },
     });
-    expect(out.widgets).toEqual({ notes: { open: true, x: 1, y: 0.5, autoHide: false } });
+    expect(out.widgets).toEqual({ notes: { open: true, x: 1, y: 0.5, autoHide: false, scale: 1 } });
   });
 });
 
@@ -238,10 +239,10 @@ describe('mergeSettings', () => {
   it('merges a partial widgets patch', () => {
     const merged = mergeSettings(DEFAULT_SETTINGS, {
       focusMinutes: 40,
-      widgets: { tasks: { open: true, x: 0.1, y: 0.2, autoHide: true } },
+      widgets: { tasks: { open: true, x: 0.1, y: 0.2, autoHide: true, scale: 1 } },
     });
     expect(merged.focusMinutes).toBe(40);
-    expect(merged.widgets.tasks).toEqual({ open: true, x: 0.1, y: 0.2, autoHide: true });
+    expect(merged.widgets.tasks).toEqual({ open: true, x: 0.1, y: 0.2, autoHide: true, scale: 1 });
     expect(merged.widgets.timer).toEqual(DEFAULT_SETTINGS.widgets.timer);
     expect(merged.widgets.spotify).toEqual(DEFAULT_SETTINGS.widgets.spotify);
   });
@@ -249,9 +250,40 @@ describe('mergeSettings', () => {
   it('does not mutate the stored settings and keeps spotifyTokens', () => {
     const stored = { ...structuredClone(DEFAULT_SETTINGS), spotifyTokens: 'enc' };
     const merged = mergeSettings(stored, {
-      widgets: { timer: { open: false, x: 0, y: 0, autoHide: false } },
+      widgets: { timer: { open: false, x: 0, y: 0, autoHide: false, scale: 1 } },
     });
     expect(stored.widgets.timer.open).toBe(true);
     expect(merged.spotifyTokens).toBe('enc');
+  });
+});
+
+describe('v1.1 settings and modes', () => {
+  it('defaults awayPrompt on and countdown to 60', () => {
+    expect(DEFAULT_SETTINGS.awayPrompt).toBe(true);
+    expect(DEFAULT_SETTINGS.countdownMinutes).toBe(60);
+    for (const pos of Object.values(DEFAULT_SETTINGS.widgets)) expect(pos.scale).toBe(1);
+  });
+  it('clamps countdownMinutes to 1..240', () => {
+    expect(sanitiseSettingsPatch({ countdownMinutes: 0 }).countdownMinutes).toBe(1);
+    expect(sanitiseSettingsPatch({ countdownMinutes: 999 }).countdownMinutes).toBe(240);
+  });
+  it('accepts awayPrompt booleans only', () => {
+    expect(sanitiseSettingsPatch({ awayPrompt: false }).awayPrompt).toBe(false);
+    expect(sanitiseSettingsPatch({ awayPrompt: 'no' })).toEqual({});
+  });
+  it('clamps widget scale to 0.5..2 and treats a missing scale as 1', () => {
+    const p = sanitiseSettingsPatch({
+      widgets: {
+        timer: { open: true, x: 0.5, y: 0.1, autoHide: false, scale: 9 },
+        tasks: { open: true, x: 0.5, y: 0.1, autoHide: false },
+      },
+    });
+    expect(p.widgets?.timer?.scale).toBe(2);
+    expect(p.widgets?.tasks?.scale).toBe(1);
+  });
+  it('isFocusMode is true for focus and countdown only', () => {
+    expect(
+      ['focus', 'short', 'long', 'countdown'].map((m) => isFocusMode(m as Mode)),
+    ).toEqual([true, false, false, true]);
   });
 });

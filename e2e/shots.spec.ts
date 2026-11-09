@@ -107,13 +107,13 @@ test('final screenshots: a profile with old saved widget spots is clamped on scr
   await first.win.evaluate(() =>
     window.studyat.settings.set({
       widgets: {
-        timer: { open: true, x: 0.5, y: 0.12, autoHide: false },
-        tasks: { open: true, x: 0.82, y: 0.14, autoHide: false },
-        spotify: { open: true, x: 0.82, y: 0.62, autoHide: false },
-        calendar: { open: true, x: 0.18, y: 0.62, autoHide: false },
-        weather: { open: true, x: 0.18, y: 0.14, autoHide: false },
-        quote: { open: true, x: 0.5, y: 0.86, autoHide: false },
-        notes: { open: true, x: 0.82, y: 0.38, autoHide: false },
+        timer: { open: true, x: 0.5, y: 0.12, autoHide: false, scale: 1 },
+        tasks: { open: true, x: 0.82, y: 0.14, autoHide: false, scale: 1 },
+        spotify: { open: true, x: 0.82, y: 0.62, autoHide: false, scale: 1 },
+        calendar: { open: true, x: 0.18, y: 0.62, autoHide: false, scale: 1 },
+        weather: { open: true, x: 0.18, y: 0.14, autoHide: false, scale: 1 },
+        quote: { open: true, x: 0.5, y: 0.86, autoHide: false, scale: 1 },
+        notes: { open: true, x: 0.82, y: 0.38, autoHide: false, scale: 1 },
       },
     }),
   );

@@ -8,6 +8,7 @@ export const MODE_LABEL: Record<Mode, string> = {
   focus: 'Pomodoro',
   short: 'Short break',
   long: 'Long break',
+  countdown: 'Countdown',
 };
 
 /** Spec §3.4 rule 3: why the timer is paused, when the system did it. */

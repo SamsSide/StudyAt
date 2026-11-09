@@ -9,7 +9,7 @@ import { WidgetFrame } from './WidgetFrame';
 
 const settingsWith = (x: number, y: number): PublicSettings => {
   const { spotifyTokens: _t, ...rest } = structuredClone(DEFAULT_SETTINGS);
-  return { ...rest, widgets: { ...rest.widgets, tasks: { open: true, x, y, autoHide: false } } };
+  return { ...rest, widgets: { ...rest.widgets, tasks: { open: true, x, y, autoHide: false, scale: 1 } } };
 };
 
 function setWindow(width: number, height: number) {
@@ -79,7 +79,7 @@ describe('WidgetFrame', () => {
     expect(frame().style.left).toBe('788px');
     expect(frame().style.top).toBe('76px');
     expect(api.settings.set).toHaveBeenCalledWith({
-      widgets: { tasks: { open: true, x: 0.888, y: 0.095, autoHide: false } },
+      widgets: { tasks: { open: true, x: 0.888, y: 0.095, autoHide: false, scale: 1 } },
     });
     await waitFor(() => expect(useStudyStore.getState().settings?.widgets.tasks.x).toBe(0.888));
   });
@@ -154,7 +154,7 @@ describe('WidgetFrame', () => {
     screen.getByRole('button', { name: 'Move Tasks' }).focus();
     await user.keyboard('{ArrowRight}');
     expect(api.settings.set).toHaveBeenLastCalledWith({
-      widgets: { tasks: { open: true, x: 0.52, y: 0.5, autoHide: false } },
+      widgets: { tasks: { open: true, x: 0.52, y: 0.5, autoHide: false, scale: 1 } },
     });
   });
 
@@ -170,7 +170,7 @@ describe('WidgetFrame', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Close Tasks' }));
     expect(api.settings.set).toHaveBeenCalledWith({
-      widgets: { tasks: { open: false, x: 0.5, y: 0.5, autoHide: false } },
+      widgets: { tasks: { open: false, x: 0.5, y: 0.5, autoHide: false, scale: 1 } },
     });
   });
 });

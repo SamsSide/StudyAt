@@ -71,6 +71,8 @@ const initialTimer = (): TimerState => ({
   subjectId: null,
   pauseReason: null,
   todayFocusMs: 0,
+  taskId: null,
+  taskText: null,
 });
 
 const initialData = () => ({

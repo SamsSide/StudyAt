@@ -41,6 +41,8 @@ export const idleTimerState = (): TimerState => ({
   subjectId: null,
   pauseReason: null,
   todayFocusMs: 0,
+  taskId: null,
+  taskText: null,
 });
 
 export const seedSubjects = (): Subject[] =>

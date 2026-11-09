@@ -193,6 +193,8 @@ export class TimerController {
       subjectId: this.subjectId,
       pauseReason: m.pauseReason,
       todayFocusMs,
+      taskId: null,
+      taskText: null,
     };
   }
 

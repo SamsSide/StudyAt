@@ -2,7 +2,7 @@
 // `DEFAULT_SETTINGS` value. Main-side: `get` includes the main-only keys (tokens, calendar
 // addresses, caches); whoever answers the renderer strips them (spec §3.10, study-dev rule 9).
 import { DEFAULT_SETTINGS, mergeSettings } from '../../../shared/settings';
-import type { MainOnlySettingsKey, Settings, SettingsPatch } from '../../../shared/types';
+import type { MainOnlySettingsKey, Settings, SettingsPatch, WidgetId } from '../../../shared/types';
 import type { Db } from '../db';
 import { all, transaction } from '../sql';
 
@@ -31,11 +31,12 @@ export function settingsRepo(db: Db): SettingsRepo {
       }
     }
     const widgets = (stored.widgets ?? {}) as Partial<Settings['widgets']>;
-    return {
-      ...DEFAULT_SETTINGS,
-      ...stored,
-      widgets: { ...DEFAULT_SETTINGS.widgets, ...widgets },
-    } as Settings;
+    // Merge per widget and per field, so a widget stored before `scale` existed reads scale 1.
+    const merged = { ...DEFAULT_SETTINGS.widgets };
+    for (const id of Object.keys(merged) as WidgetId[]) {
+      merged[id] = { ...DEFAULT_SETTINGS.widgets[id], ...widgets[id] };
+    }
+    return { ...DEFAULT_SETTINGS, ...stored, widgets: merged } as Settings;
   };
 
   return {

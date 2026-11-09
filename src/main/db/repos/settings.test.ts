@@ -27,7 +27,7 @@ describe('settingsRepo', () => {
   it('merges a patch, deep-merging widgets, and persists across reopen', async () => {
     const repo = settingsRepo(db);
     const markDirty = vi.spyOn(db, 'markDirty');
-    const tasks = { open: true, x: 0.3, y: 0.4, autoHide: true };
+    const tasks = { open: true, x: 0.3, y: 0.4, autoHide: true, scale: 1 };
     const next = repo.set({ focusMinutes: 50, widgets: { tasks } });
     expect(markDirty).toHaveBeenCalled();
     expect(next.focusMinutes).toBe(50);
@@ -74,5 +74,19 @@ describe('settingsRepo', () => {
     const s = settingsRepo(db).get();
     expect(s.masterVolume).toBe(DEFAULT_SETTINGS.masterVolume);
     expect('oldKey' in s).toBe(false);
+  });
+
+  it('merges a stored widget without scale per field', () => {
+    db.raw.run('INSERT INTO settings (key, value) VALUES (?, ?)', [
+      'widgets',
+      JSON.stringify({ timer: { open: false, x: 0.3, y: 0.2, autoHide: true } }),
+    ]);
+    expect(settingsRepo(db).get().widgets.timer).toEqual({
+      open: false,
+      x: 0.3,
+      y: 0.2,
+      autoHide: true,
+      scale: 1,
+    });
   });
 });

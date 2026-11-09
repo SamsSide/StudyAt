@@ -1,7 +1,7 @@
 // Shared data types: the contract between main, preload and renderer (spec §3.3, §3.5, §3.6, §3.10, §3.11).
 import type { CalendarAgenda, Place, WeatherReport } from './widgets';
 
-export type Mode = 'focus' | 'short' | 'long';
+export type Mode = 'focus' | 'short' | 'long' | 'countdown';
 export type TimerStatus = 'idle' | 'running' | 'paused';
 export type PauseReason = 'user' | 'suspend' | 'lock' | null;
 
@@ -14,6 +14,8 @@ export interface TimerState {
   subjectId: number | null;
   pauseReason: PauseReason;
   todayFocusMs: number;
+  taskId: number | null;
+  taskText: string | null;
 }
 
 export interface AwayPrompt {
@@ -45,6 +47,8 @@ export interface Session {
   discardedMs: number;
   dayKey: string;
   status: 'running' | 'done';
+  taskId: number | null;
+  taskText: string | null;
 }
 
 export type TaskColour = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'grey';
@@ -176,6 +180,8 @@ export interface WidgetPos {
   x: number;
   y: number;
   autoHide: boolean;
+  /** 0.5..2, default 1 (spec §3.5). */
+  scale: number;
 }
 
 export type WidgetId = 'timer' | 'tasks' | 'spotify' | 'calendar' | 'weather' | 'quote' | 'notes';
@@ -208,6 +214,9 @@ export interface Settings {
   goalMinutes: number;
   rolloverHour: number;
   idleMinutes: number;
+  /** Off disables idle polling, prompts and discards only (spec §3.1). */
+  awayPrompt: boolean;
+  countdownMinutes: number;
   autoHideSeconds: number;
   miniWhenHidden: boolean;
   globalHotkey: string;
@@ -284,3 +293,31 @@ export interface BackupInfo {
   size: number;
   createdAt: number;
 }
+
+/** Focus time on one task, for the stats view. */
+export interface TaskTotal {
+  taskId: number;
+  text: string;
+  ms: number;
+}
+
+/** A dropped image on the space (spec §3.6). */
+export interface ImageWidget {
+  id: number;
+  url: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  scale: number;
+  bare: boolean;
+}
+
+export interface ImagePatch {
+  x?: number;
+  y?: number;
+  scale?: number;
+  bare?: boolean;
+}
+
+export type ImageAddResult = ImageWidget | { error: string };

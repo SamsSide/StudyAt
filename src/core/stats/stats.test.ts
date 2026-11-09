@@ -54,6 +54,8 @@ function sessionAt(
     discardedMs: 0,
     dayKey: dayKeyOf(startedAt, 4, TZ),
     status: 'done',
+    taskId: null,
+    taskText: null,
   };
 }
 

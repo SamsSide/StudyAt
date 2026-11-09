@@ -43,6 +43,8 @@ describe('sessionsRepo', () => {
       discardedMs: 0,
       dayKey: '2026-11-08',
       status: 'running',
+      taskId: null,
+      taskText: null,
     });
     expect(markDirty).toHaveBeenCalled();
     repo.checkpoint(s.id, 15_000, NOW + 15_000);

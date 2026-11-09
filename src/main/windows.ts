@@ -4,7 +4,8 @@
 // dialog. Electron is injected so all of it runs under a unit test.
 import type { BrowserWindow, BrowserWindowConstructorOptions, MessageBoxOptions, Rectangle } from 'electron';
 import { formatClock } from '../shared/clock';
-import type { BackupInfo, Mode, Settings, TimerState } from '../shared/types';
+import { MODE_LABELS } from '../shared/modes';
+import type { BackupInfo, Settings, TimerState } from '../shared/types';
 import type { MainSettingsPatch } from './db/repos/settings';
 import { localStamp } from './services/data';
 
@@ -12,12 +13,10 @@ export const MAIN_SIZE = { width: 1280, height: 800, minWidth: 960, minHeight: 6
 /** Bounds are written this long after the last move or resize. */
 export const SAVE_DEBOUNCE_MS = 500;
 
-const MODE_LABEL: Record<Mode, string> = { focus: 'Focus', short: 'Short break', long: 'Long break' };
-
 /** `"12:34 · Focus"` (paused: `"12:34 · Focus · Paused"`), or null while idle. */
 function timerLine(s: TimerState): string | null {
   if (s.status === 'idle') return null;
-  const line = `${formatClock(s.remainingMs)} · ${MODE_LABEL[s.mode]}`;
+  const line = `${formatClock(s.remainingMs)} · ${MODE_LABELS[s.mode]}`;
   return s.status === 'paused' ? `${line} · Paused` : line;
 }
 

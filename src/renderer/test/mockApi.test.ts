@@ -110,7 +110,7 @@ describe('mockApi', () => {
   it('settings.set merges widgets and never exposes spotifyTokens', async () => {
     const api = mockApi();
     const out = await api.settings.set({
-      widgets: { tasks: { open: true, x: 0.3, y: 0.3, autoHide: false } },
+      widgets: { tasks: { open: true, x: 0.3, y: 0.3, autoHide: false, scale: 1 } },
     });
     expect(out.widgets.timer).toBeDefined();
     expect(out.widgets.tasks.open).toBe(true);

@@ -51,6 +51,9 @@ const toSession = (r: Row): Session => ({
   discardedMs: int(r.discarded_ms),
   dayKey: text(r.day_key),
   status: r.status === 'running' ? 'running' : 'done',
+  // Filled from the row once the task columns exist (v1.1 task 2).
+  taskId: null,
+  taskText: null,
 });
 
 const ORDER = 'ORDER BY started_at, id';

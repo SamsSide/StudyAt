@@ -86,6 +86,8 @@ const session = (s: Partial<Session> = {}): Session => ({
   discardedMs: 0,
   dayKey: '2026-11-02',
   status: 'done',
+  taskId: null,
+  taskText: null,
   ...s,
 });
 

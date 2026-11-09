@@ -16,6 +16,8 @@ const state = (over: Partial<TimerState> = {}): TimerState => ({
   subjectId: null,
   pauseReason: null,
   todayFocusMs: 0,
+  taskId: null,
+  taskText: null,
   ...over,
 });
 

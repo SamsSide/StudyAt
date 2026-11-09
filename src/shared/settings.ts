@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS: Settings = {
   goalMinutes: 180,
   rolloverHour: 4,
   idleMinutes: 10,
+  awayPrompt: true,
+  countdownMinutes: 60,
   autoHideSeconds: 5,
   miniWhenHidden: true,
   globalHotkey: 'Ctrl+Alt+P',
@@ -31,14 +33,14 @@ export const DEFAULT_SETTINGS: Settings = {
     // Three columns that never overlap at the default 1280 x 800 window and stay clear of the dock
     // and the top bar: Weather and Calendar on the left, Timer and Notes in the middle, Tasks,
     // Spotify and Quote on the right (settings.test.ts checks it with the measured sizes).
-    timer: { open: true, x: 0.5, y: 0.12, autoHide: false },
-    tasks: { open: false, x: 0.82, y: 0.1, autoHide: false },
-    spotify: { open: false, x: 0.82, y: 0.42, autoHide: false },
+    timer: { open: true, x: 0.5, y: 0.12, autoHide: false, scale: 1 },
+    tasks: { open: false, x: 0.82, y: 0.1, autoHide: false, scale: 1 },
+    spotify: { open: false, x: 0.82, y: 0.42, autoHide: false, scale: 1 },
     // Widgets addendum §1, §4b: closed until picked from the Widgets popover.
-    calendar: { open: false, x: 0.22, y: 0.46, autoHide: false },
-    weather: { open: false, x: 0.22, y: 0.1, autoHide: false },
-    quote: { open: false, x: 0.82, y: 0.76, autoHide: false },
-    notes: { open: false, x: 0.5, y: 0.56, autoHide: false },
+    calendar: { open: false, x: 0.22, y: 0.46, autoHide: false, scale: 1 },
+    weather: { open: false, x: 0.22, y: 0.1, autoHide: false, scale: 1 },
+    quote: { open: false, x: 0.82, y: 0.76, autoHide: false, scale: 1 },
+    notes: { open: false, x: 0.5, y: 0.56, autoHide: false, scale: 1 },
   },
   spotifyClientId: '',
   spotifyTokens: null,
@@ -114,7 +116,15 @@ const widgetPos = (v: unknown): WidgetPos | typeof NONE => {
   const open = bool(v.open);
   const autoHide = bool(v.autoHide);
   if (x === NONE || y === NONE || open === NONE || autoHide === NONE) return NONE;
-  return { open: open as boolean, x: x as number, y: y as number, autoHide: autoHide as boolean };
+  // A missing or invalid scale reads as 1 (spec §3.5).
+  const scale = num(0.5, 2, false)(v.scale);
+  return {
+    open: open as boolean,
+    x: x as number,
+    y: y as number,
+    autoHide: autoHide as boolean,
+    scale: scale === NONE ? 1 : (scale as number),
+  };
 };
 
 /** A partial widgets map: valid entries are kept, the rest dropped. */
@@ -209,6 +219,8 @@ const SANITISERS: Record<Exclude<keyof SettingsPatch, SetOnlyElsewhere>, Sanitis
   goalMinutes: num(1, 1440, true),
   rolloverHour: num(0, 23, true),
   idleMinutes: num(2, 60, true),
+  awayPrompt: bool,
+  countdownMinutes: num(1, 240, true),
   autoHideSeconds: num(0, 60, true),
   miniWhenHidden: bool,
   globalHotkey: str(true),
