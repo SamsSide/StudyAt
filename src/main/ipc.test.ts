@@ -9,7 +9,14 @@ import type { Db } from './db/db';
 import { sessionsRepo } from './db/repos/sessions';
 import { settingsRepo } from './db/repos/settings';
 import { NOW, openTestDb, tempDir } from './db/test-helpers';
-import { createBroadcaster, IpcValidationError, registerIpc, type Dialogs, type IpcDeps, type SpotifyDeps } from './ipc';
+import {
+  createBroadcaster,
+  IpcValidationError,
+  registerIpc,
+  type Dialogs,
+  type IpcDeps,
+  type SpotifyDeps,
+} from './ipc';
 import { SpotifyApiError } from './spotify/api';
 import { PortInUseError } from './spotify/auth';
 import { TimerController } from './timer/controller';
@@ -44,7 +51,13 @@ afterEach(async () => {
   cleanup();
 });
 
-const DURHAM = { name: 'Durham', latitude: 54.77, longitude: -1.57, country: 'United Kingdom', admin1: 'England' };
+const DURHAM = {
+  name: 'Durham',
+  latitude: 54.77,
+  longitude: -1.57,
+  country: 'United Kingdom',
+  admin1: 'England',
+};
 const ICS = 'https://calendar.google.com/calendar/ical/me%40gmail.com/private-abc/basic.ics';
 
 function widgetFakes() {
@@ -160,14 +173,23 @@ describe('registerIpc', () => {
     await expect(invoke(CHANNELS.subjects.archive, '1')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.timer.setSubject, 2.5)).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.timer.setSubject, 9999)).rejects.toThrow(IpcValidationError);
-    await expect(invoke(CHANNELS.stats.updateSession, Number.NaN, { subjectId: null })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.stats.updateSession, Number.NaN, { subjectId: null })).rejects.toThrow(
+      IpcValidationError,
+    );
   });
 
   it('rejects 501-char task text', async () => {
     const { invoke } = setup();
-    await expect(invoke(CHANNELS.tasks.create, { text: 'x'.repeat(501), colour: 'yellow' })).rejects.toThrow(IpcValidationError);
-    await expect(invoke(CHANNELS.tasks.create, { text: 'ok', colour: 'orange' })).rejects.toThrow(IpcValidationError);
-    const list = (await invoke(CHANNELS.tasks.create, { text: 'x'.repeat(500), colour: 'yellow' })) as unknown[];
+    await expect(invoke(CHANNELS.tasks.create, { text: 'x'.repeat(501), colour: 'yellow' })).rejects.toThrow(
+      IpcValidationError,
+    );
+    await expect(invoke(CHANNELS.tasks.create, { text: 'ok', colour: 'orange' })).rejects.toThrow(
+      IpcValidationError,
+    );
+    const list = (await invoke(CHANNELS.tasks.create, {
+      text: 'x'.repeat(500),
+      colour: 'yellow',
+    })) as unknown[];
     expect(list).toHaveLength(1);
   });
 
@@ -193,18 +215,28 @@ describe('registerIpc', () => {
     await invoke(CHANNELS.timer.start);
     const [running] = sessionsRepo(db).listRunning();
     await expect(invoke(CHANNELS.stats.deleteSession, running!.id)).rejects.toThrow('still running');
-    await expect(invoke(CHANNELS.stats.updateSession, running!.id, { subjectId: null })).rejects.toThrow('still running');
+    await expect(invoke(CHANNELS.stats.updateSession, running!.id, { subjectId: null })).rejects.toThrow(
+      'still running',
+    );
   });
 
   it('settings:set sanitises, never accepts or returns tokens, and applies the change', async () => {
     settingsRepo(db).set({ spotifyTokens: 'secret' });
     const { invoke, spotify, onSettingsChanged } = setup();
-    const out = (await invoke(CHANNELS.settings.set, { focusMinutes: 50, spotifyTokens: 'evil', spotifyClientId: 'cid', bogus: 1 })) as Record<string, unknown>;
+    const out = (await invoke(CHANNELS.settings.set, {
+      focusMinutes: 50,
+      spotifyTokens: 'evil',
+      spotifyClientId: 'cid',
+      bogus: 1,
+    })) as Record<string, unknown>;
     expect(out).not.toHaveProperty('spotifyTokens');
     expect(out.focusMinutes).toBe(50);
     expect(settingsRepo(db).get().spotifyTokens).toBe('secret');
     expect(spotify.auth.setClientId).toHaveBeenCalledWith('cid');
-    expect(onSettingsChanged).toHaveBeenCalledWith(expect.objectContaining({ focusMinutes: 50 }), { focusMinutes: 50, spotifyClientId: 'cid' });
+    expect(onSettingsChanged).toHaveBeenCalledWith(expect.objectContaining({ focusMinutes: 50 }), {
+      focusMinutes: 50,
+      spotifyClientId: 'cid',
+    });
     // The idle timer takes the new length at once.
     expect(((await invoke(CHANNELS.timer.get)) as TimerState).segmentMs).toBe(50 * 60_000);
     expect(await invoke(CHANNELS.settings.get)).not.toHaveProperty('spotifyTokens');
@@ -219,10 +251,16 @@ describe('registerIpc', () => {
 
     settingsRepo(db).set({ spotifyClientId: 'cid' });
     expect(await invoke(CHANNELS.spotify.nowPlaying)).toEqual({ state: 'idle' });
-    await expect(invoke(CHANNELS.spotify.play)).rejects.toThrow('Open Spotify on any device, then press play');
+    await expect(invoke(CHANNELS.spotify.play)).rejects.toThrow(
+      'Open Spotify on any device, then press play',
+    );
     await expect(invoke(CHANNELS.spotify.pause)).rejects.toThrow('Reconnect Spotify');
-    await expect(invoke(CHANNELS.spotify.connect)).rejects.toThrow('Port 43821 is in use — close the other app and retry');
-    await expect(invoke(CHANNELS.spotify.playContext, 'https://open.spotify.com/x')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.spotify.connect)).rejects.toThrow(
+      'Port 43821 is in use — close the other app and retry',
+    );
+    await expect(invoke(CHANNELS.spotify.playContext, 'https://open.spotify.com/x')).rejects.toThrow(
+      IpcValidationError,
+    );
   });
 
   it('spaces and sounds go through the file dialog; a cancelled relocate changes nothing', async () => {
@@ -274,19 +312,35 @@ describe('createBroadcaster', () => {
     expect(await invoke(CHANNELS.weather.searchPlaces, ' Durham ')).toEqual([DURHAM]);
     expect(widgets.weather.searchPlaces).toHaveBeenCalledWith('Durham');
     for (const bad of ['a', ' a ', 'x'.repeat(101), 7, null]) {
-      await expect(invoke(CHANNELS.weather.searchPlaces, bad), String(bad)).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.weather.searchPlaces, bad), String(bad)).rejects.toThrow(
+        IpcValidationError,
+      );
     }
     widgets.weather.searchPlaces.mockRejectedValueOnce(new Error('Place search is unavailable right now'));
-    await expect(invoke(CHANNELS.weather.searchPlaces, 'Leeds')).rejects.toThrow('Place search is unavailable right now');
+    await expect(invoke(CHANNELS.weather.searchPlaces, 'Leeds')).rejects.toThrow(
+      'Place search is unavailable right now',
+    );
 
-    await expect(invoke(CHANNELS.weather.setPlace, { ...DURHAM, latitude: 200 })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.weather.setPlace, { ...DURHAM, latitude: 200 })).rejects.toThrow(
+      IpcValidationError,
+    );
     await expect(invoke(CHANNELS.weather.setPlace, 'Durham')).rejects.toThrow(IpcValidationError);
-    expect(await invoke(CHANNELS.weather.current)).toEqual({ state: 'unconfigured', place: null, fetchedAt: null });
+    expect(await invoke(CHANNELS.weather.current)).toEqual({
+      state: 'unconfigured',
+      place: null,
+      fetchedAt: null,
+    });
     const out = (await invoke(CHANNELS.weather.setPlace, DURHAM)) as Record<string, unknown>;
     expect(out.weatherPlace).toEqual(DURHAM);
     expect(out).not.toHaveProperty('weatherCache');
-    expect(await invoke(CHANNELS.weather.current)).toEqual({ state: 'error', place: DURHAM, fetchedAt: null });
-    expect(((await invoke(CHANNELS.weather.setPlace, null)) as Record<string, unknown>).weatherPlace).toBeNull();
+    expect(await invoke(CHANNELS.weather.current)).toEqual({
+      state: 'error',
+      place: DURHAM,
+      fetchedAt: null,
+    });
+    expect(
+      ((await invoke(CHANNELS.weather.setPlace, null)) as Record<string, unknown>).weatherPlace,
+    ).toBeNull();
   });
 
   it('settings:set takes weatherUnits but not the place, the addresses or the caches', async () => {
@@ -299,7 +353,8 @@ describe('createBroadcaster', () => {
     })) as Record<string, unknown>;
     expect(out.weatherUnits).toBe('fahrenheit');
     expect(out.weatherPlace).toBeNull();
-    for (const key of ['calendarUrls', 'calendarCache', 'weatherCache', 'spotifyTokens']) expect(out).not.toHaveProperty(key);
+    for (const key of ['calendarUrls', 'calendarCache', 'weatherCache', 'spotifyTokens'])
+      expect(out).not.toHaveProperty(key);
     expect(settingsRepo(db).get().calendarUrls).toBeNull();
   });
 
@@ -315,12 +370,20 @@ describe('createBroadcaster', () => {
       [ICS, ICS, ICS, ICS, ICS, ICS],
       [7],
     ]) {
-      await expect(invoke(CHANNELS.calendar.setUrls, bad), JSON.stringify(bad).slice(0, 60)).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.calendar.setUrls, bad), JSON.stringify(bad).slice(0, 60)).rejects.toThrow(
+        IpcValidationError,
+      );
     }
     await expect(invoke(CHANNELS.calendar.setUrls, ['http://example.org/a.ics'])).rejects.toThrow(
       'Calendar addresses must start with https://',
     );
     expect(settingsRepo(db).get().calendarUrls).toBeNull();
+    // Padding doesn't count towards the 2000-char limit: the address is trimmed first.
+    const padded = `https://example.org/${'x'.repeat(1900)}`;
+    await expect(
+      invoke(CHANNELS.calendar.setUrls, [`${' '.repeat(300)}${padded}${' '.repeat(300)}`]),
+    ).resolves.toMatchObject({ configured: true });
+    await invoke(CHANNELS.calendar.setUrls, []);
 
     const status = (await invoke(CHANNELS.calendar.setUrls, [` ${ICS} `, '', '   '])) as CalendarStatus;
     expect(status).toEqual({ configured: true, calendars: [{ name: 'Calendar', colour: '#7c9cff' }] });
@@ -328,7 +391,9 @@ describe('createBroadcaster', () => {
     expect(settingsRepo(db).get().calendarUrls).not.toContain('private-abc');
     expect(await invoke(CHANNELS.calendar.agenda)).toEqual({ state: 'ok', fetchedAt: NOW, events: [] });
     expect(widgets.calendar.agenda).toHaveBeenCalledWith([{ url: ICS }], null);
-    expect(((await invoke(CHANNELS.calendar.status)) as CalendarStatus).calendars).toEqual([{ name: 'Lectures', colour: '#7c9cff' }]);
+    expect(((await invoke(CHANNELS.calendar.status)) as CalendarStatus).calendars).toEqual([
+      { name: 'Lectures', colour: '#7c9cff' },
+    ]);
     expect(await invoke(CHANNELS.settings.get)).not.toHaveProperty('calendarUrls');
 
     expect(await invoke(CHANNELS.calendar.setUrls, [])).toEqual({ configured: false, calendars: [] });
@@ -346,17 +411,28 @@ describe('createBroadcaster', () => {
     await expect(invoke(CHANNELS.notes.create, 'pink')).rejects.toThrow(IpcValidationError);
 
     clock.advance(1000);
-    const updated = (await invoke(CHANNELS.notes.update, first!.id, { text: 'Bring calculator', colour: 'blue' })) as Note[];
+    const updated = (await invoke(CHANNELS.notes.update, first!.id, {
+      text: 'Bring calculator',
+      colour: 'blue',
+    })) as Note[];
     expect(updated[0]).toMatchObject({ text: 'Bring calculator', colour: 'blue', updatedAt: NOW + 1000 });
-    expect(((await invoke(CHANNELS.notes.update, first!.id, { text: 'x'.repeat(5000) })) as Note[])[0]!.text).toHaveLength(5000);
-    await expect(invoke(CHANNELS.notes.update, first!.id, { text: 'x'.repeat(5001) })).rejects.toThrow(IpcValidationError);
-    await expect(invoke(CHANNELS.notes.update, first!.id, { colour: 'orange' })).rejects.toThrow(IpcValidationError);
+    expect(
+      ((await invoke(CHANNELS.notes.update, first!.id, { text: 'x'.repeat(5000) })) as Note[])[0]!.text,
+    ).toHaveLength(5000);
+    await expect(invoke(CHANNELS.notes.update, first!.id, { text: 'x'.repeat(5001) })).rejects.toThrow(
+      IpcValidationError,
+    );
+    await expect(invoke(CHANNELS.notes.update, first!.id, { colour: 'orange' })).rejects.toThrow(
+      IpcValidationError,
+    );
     await expect(invoke(CHANNELS.notes.update, first!.id, { text: 7 })).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.notes.update, 9999, { text: 'x' })).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.notes.update, 1.5, { text: 'x' })).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.notes.update, first!.id, null)).rejects.toThrow(IpcValidationError);
 
-    expect(((await invoke(CHANNELS.notes.remove, first!.id)) as Note[]).map((n) => n.colour)).toEqual(['pink']);
+    expect(((await invoke(CHANNELS.notes.remove, first!.id)) as Note[]).map((n) => n.colour)).toEqual([
+      'pink',
+    ]);
     await expect(invoke(CHANNELS.notes.remove, '1')).rejects.toThrow(IpcValidationError);
   });
 });

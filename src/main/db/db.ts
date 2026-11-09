@@ -40,7 +40,7 @@ export interface Db {
   recovered: 'ok' | 'corrupt';
   /**
    * When `recovered` is `corrupt`, the time whose stamp names the corrupt file; null otherwise.
-   * `latestBackupBefore(dir, corruptAt)` is the corrupt dialog's "Restore latest backup" (R16).
+   * `latestBackupBefore(dir, corruptAt, isReadable)` (readability checked with `isReadableDatabase`) is the corrupt dialog's "Restore latest backup" (R16).
    */
   corruptAt: number | null;
 }
@@ -77,13 +77,19 @@ function assertReadable(raw: SqlJsDatabase): void {
 
 /**
  * Whether the file at `path` opens as SQLite and passes `PRAGMA quick_check`, the same test
- * `openDatabase` applies; false for a missing or damaged file. Passed to `latestBackupBefore` so
- * the corrupt dialog never offers a backup that would itself open corrupt (spec §3.3, R16).
+ * `openDatabase` applies; false for a missing or damaged file, or when sql.js can't load. Passed to
+ * `latestBackupBefore` as its readability check (`isReadable`) so the
+ * corrupt dialog never offers a backup that would itself open corrupt (spec §3.3, R16).
  */
-export async function isReadableDatabase(path: string, wasmPath?: string, fs: DbFs = nodeFs): Promise<boolean> {
-  const SQL = await loadSqlJs(wasmPath);
+export async function isReadableDatabase(
+  path: string,
+  wasmPath?: string,
+  fs: DbFs = nodeFs,
+): Promise<boolean> {
   let bytes: Uint8Array | null;
+  let SQL: SqlJsStatic;
   try {
+    SQL = await loadSqlJs(wasmPath);
     bytes = await fs.readFile(path);
   } catch {
     return false;

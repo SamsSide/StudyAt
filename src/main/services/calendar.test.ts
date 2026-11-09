@@ -484,7 +484,30 @@ describe('agenda', () => {
     console.info(`[bench] ${(body.length / 1024 / 1024).toFixed(2)} MB, ${n} events: ${ms.toFixed(0)} ms`);
     expect(result.state).toBe('ok');
     expect(result.events.some((e) => e.title === 'Weekly' && e.start === at(9, 9))).toBe(true);
-    expect(ms).toBeLessThan(5_000);
+    expect(ms).toBeLessThan(1_500);
+  });
+
+  it('loses one event with an unreadable RECURRENCE-ID, not the calendar', async () => {
+    const body = ics(
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      'UID:good@example.invalid',
+      'DTSTART:20261110T100000Z',
+      'DTEND:20261110T110000Z',
+      'SUMMARY:Good',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:broken@example.invalid',
+      'RECURRENCE-ID:garbage',
+      'DTSTART:20261110T120000Z',
+      'SUMMARY:Broken',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    const result = await service(fetchFrom({ [UNI_URL]: body })).agenda([{ url: UNI_URL }], null);
+    expect(result.state).toBe('ok');
+    expect(result.events.map((e) => e.title)).toEqual(['Good']);
   });
 
   it('never puts the secret address in the result', async () => {

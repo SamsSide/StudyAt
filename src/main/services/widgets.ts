@@ -18,6 +18,8 @@ import type { WeatherService } from './weather';
 
 export const WEATHER_FRESH_MS = 30 * 60_000;
 export const AGENDA_FRESH_MS = 15 * 60_000;
+/** After a failed refresh, no new request for this long: the cache (or the failure) is served meanwhile. */
+export const RETRY_AFTER_FAILURE_MS = 120_000;
 
 export interface CalendarUrlStore {
   load(): string[];
@@ -90,6 +92,10 @@ const samePlace = (a: Place | null, b: Place | null): boolean =>
 const isFresh = (r: { state: string; fetchedAt: number | null }, now: number, maxAge: number): boolean =>
   r.state === 'ok' && r.fetchedAt !== null && now >= r.fetchedAt && now - r.fetchedAt < maxAge;
 
+/** Still inside the back-off after a failed refresh (a clock that went backwards is not). */
+const isBackedOff = (failedAt: number, now: number): boolean =>
+  now >= failedAt && now - failedAt < RETRY_AFTER_FAILURE_MS;
+
 export function widgetsService(deps: WidgetsDeps) {
   const settings = settingsRepo(deps.db);
   const urls = calendarUrlStore(deps.db, deps.safe, deps.log);
@@ -99,9 +105,14 @@ export function widgetsService(deps: WidgetsDeps) {
   let generation = 0;
   let namedGeneration = -1;
   let agendaInFlight: { generation: number; promise: Promise<CalendarAgenda> } | null = null;
+  /** The last failed refresh and when it failed; served until RETRY_AFTER_FAILURE_MS has passed. */
+  let weatherFailure: { place: Place; at: number; report: WeatherReport } | null = null;
+  let agendaFailure: { generation: number; at: number; agenda: CalendarAgenda } | null = null;
 
   const fetchWeather = async (place: Place, cache: WeatherReport | null): Promise<WeatherReport> => {
     const report = await deps.weather.report(place, cache);
+    if (samePlace(settings.get().weatherPlace, place))
+      weatherFailure = report.state === 'ok' ? null : { place, at: deps.now(), report };
     if (report.state === 'ok' && samePlace(settings.get().weatherPlace, place))
       settings.set({ weatherCache: report });
     return report;
@@ -118,6 +129,7 @@ export function widgetsService(deps: WidgetsDeps) {
     );
     if (gen === generation) {
       namedGeneration = gen;
+      agendaFailure = agenda.state === 'ok' ? null : { generation: gen, at: deps.now(), agenda };
       if (agenda.state === 'ok' || agenda.state === 'stale') settings.set({ calendarCache: agenda });
     }
     return agenda;
@@ -148,6 +160,7 @@ export function widgetsService(deps: WidgetsDeps) {
 
     /** Picking a different place drops the old place's cache; the same place keeps it. */
     setPlace(place: Place | null): PublicSettings {
+      weatherFailure = null;
       const current = settings.get().weatherPlace;
       const changed = place === null ? current !== null : !samePlace(current, place);
       return publicSettings(
@@ -163,6 +176,12 @@ export function widgetsService(deps: WidgetsDeps) {
       const usable =
         cache !== null && cache.fetchedAt !== null && samePlace(cache.place, place) ? cache : null;
       if (usable && isFresh(usable, deps.now(), WEATHER_FRESH_MS)) return Promise.resolve(usable);
+      if (
+        weatherFailure &&
+        samePlace(weatherFailure.place, place) &&
+        isBackedOff(weatherFailure.at, deps.now())
+      )
+        return Promise.resolve(weatherFailure.report);
       if (weatherInFlight && samePlace(weatherInFlight.place, place)) return weatherInFlight.promise;
       const flight = { place, promise: fetchWeather(place, usable) };
       weatherInFlight = flight;
@@ -174,9 +193,13 @@ export function widgetsService(deps: WidgetsDeps) {
     calendarStatus,
 
     /** Stores already-validated addresses and clears the old agenda. */
-    setCalendarUrls(list: string[]): CalendarStatus {
+    setCalendarUrls(input: string[]): CalendarStatus {
+      const list = input.map((u) => u.trim()).filter((u) => u !== '');
+      const stored = urls.load();
+      if (list.length === stored.length && list.every((u, i) => u === stored[i])) return calendarStatus();
       generation++;
       agendaInFlight = null;
+      agendaFailure = null;
       urls.save(list);
       settings.set({ calendarCache: null });
       return calendarStatus();
@@ -188,6 +211,12 @@ export function widgetsService(deps: WidgetsDeps) {
       const cache = settings.get().calendarCache;
       const usable = cache !== null && cache.fetchedAt !== null ? cache : null;
       if (usable && isFresh(usable, deps.now(), AGENDA_FRESH_MS)) return Promise.resolve(usable);
+      if (
+        agendaFailure &&
+        agendaFailure.generation === generation &&
+        isBackedOff(agendaFailure.at, deps.now())
+      )
+        return Promise.resolve(agendaFailure.agenda);
       if (agendaInFlight && agendaInFlight.generation === generation) return agendaInFlight.promise;
       const flight = { generation, promise: fetchAgenda(list, usable, generation) };
       agendaInFlight = flight;

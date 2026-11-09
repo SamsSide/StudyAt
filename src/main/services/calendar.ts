@@ -225,12 +225,17 @@ export function parseCalendar(
   // Overrides (RECURRENCE-ID) stand alone; their master skips the occurrence they replace.
   const overridden = new Map<string, Set<number>>();
   for (const comp of vevents) {
-    const rid = comp.getFirstPropertyValue('recurrence-id');
-    const uid = textOf(comp, 'uid');
-    if (!(rid instanceof ICAL.Time) || uid === null) continue;
-    const set = overridden.get(uid) ?? new Set<number>();
-    set.add(toMs(rid, tzidOf(comp, 'recurrence-id'), tz));
-    overridden.set(uid, set);
+    try {
+      const rid = comp.getFirstPropertyValue('recurrence-id');
+      const uid = textOf(comp, 'uid');
+      if (!(rid instanceof ICAL.Time) || uid === null) continue;
+      const set = overridden.get(uid) ?? new Set<number>();
+      set.add(toMs(rid, tzidOf(comp, 'recurrence-id'), tz));
+      overridden.set(uid, set);
+    } catch {
+      // An override ical.js can't read loses that event (it is skipped again below), not the calendar.
+      continue;
+    }
   }
 
   const expand = (comp: ICAL.Component, startTzid: string | null): void => {
@@ -280,11 +285,10 @@ export function parseCalendar(
       if (start !== null && start.slice(0, 10) > lastDay) continue;
       if (end !== null && end.slice(0, 10) < firstDay) continue;
     }
-    if (isCancelled(comp)) continue;
-    if (!(comp.getFirstPropertyValue('dtstart') instanceof ICAL.Time)) continue;
-    const startTzid = tzidOf(comp, 'dtstart');
     try {
-      expand(comp, startTzid);
+      if (isCancelled(comp)) continue;
+      if (!(comp.getFirstPropertyValue('dtstart') instanceof ICAL.Time)) continue;
+      expand(comp, tzidOf(comp, 'dtstart'));
     } catch {
       // A rule ical.js can't expand (or any other broken event) loses that event, not the calendar.
       continue;

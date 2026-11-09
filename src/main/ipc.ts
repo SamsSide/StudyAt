@@ -5,7 +5,14 @@
 import type { FileFilter, IpcMainInvokeEvent } from 'electron';
 import { CHANNELS } from '../shared/ipc';
 import { sanitisePlace, sanitiseSettingsPatch } from '../shared/settings';
-import type { Mode, PublicSettings, Settings, SettingsPatch, SubjectRange, TaskColour } from '../shared/types';
+import type {
+  Mode,
+  PublicSettings,
+  Settings,
+  SettingsPatch,
+  SubjectRange,
+  TaskColour,
+} from '../shared/types';
 import { localDateKey } from './db/backup';
 import type { Db } from './db/db';
 import { mixesRepo } from './db/repos/mixes';
@@ -52,10 +59,14 @@ const MAX_LEVELS = 500;
 /** Widgets addendum §2: private iCal addresses Sam pastes in Settings. */
 const MAX_CALENDARS = 5;
 const MAX_CALENDAR_URL = 2000;
+/** The most untrimmed text read per address; the 2000-char limit applies after trimming. */
+const RAW_CALENDAR_URL = 10_000;
 /** Blank lines from the Settings form are dropped before the five-address limit applies. */
 const MAX_CALENDAR_FIELDS = 50;
 
-export const SPACE_FILTERS: FileFilter[] = [{ name: 'Videos and images', extensions: [...VIDEO_EXTS, ...IMAGE_EXTS] }];
+export const SPACE_FILTERS: FileFilter[] = [
+  { name: 'Videos and images', extensions: [...VIDEO_EXTS, ...IMAGE_EXTS] },
+];
 export const SOUND_FILTERS: FileFilter[] = [{ name: 'Audio', extensions: [...AUDIO_EXTS] }];
 
 /** Native dialogs, injected (spec §3.6: `addFiles`, exports and restore open one). */
@@ -73,11 +84,31 @@ export interface IpcMainLike {
 
 export type TimerLike = Pick<
   TimerController,
-  'getState' | 'start' | 'pause' | 'resume' | 'reset' | 'skip' | 'setMode' | 'setSubject' | 'answerAway' | 'applySettings'
+  | 'getState'
+  | 'start'
+  | 'pause'
+  | 'resume'
+  | 'reset'
+  | 'skip'
+  | 'setMode'
+  | 'setSubject'
+  | 'answerAway'
+  | 'applySettings'
 >;
 
 export interface SpotifyDeps {
-  api: Pick<SpotifyApi, 'nowPlaying' | 'play' | 'pause' | 'next' | 'previous' | 'playlists' | 'playContext' | 'devices' | 'transfer'>;
+  api: Pick<
+    SpotifyApi,
+    | 'nowPlaying'
+    | 'play'
+    | 'pause'
+    | 'next'
+    | 'previous'
+    | 'playlists'
+    | 'playContext'
+    | 'devices'
+    | 'transfer'
+  >;
   auth: Pick<SpotifyAuth, 'setClientId' | 'connect' | 'disconnect' | 'status'>;
 }
 
@@ -117,7 +148,10 @@ export interface IpcDeps {
 }
 
 /** Media ids → files registered in the DB (spec §3.2); `chime` ids are sound row ids. */
-export function createMediaResolver(spaces: Pick<SpacesService, 'pathOf'>, sounds: Pick<SoundsService, 'pathOf'>): MediaResolver {
+export function createMediaResolver(
+  spaces: Pick<SpacesService, 'pathOf'>,
+  sounds: Pick<SoundsService, 'pathOf'>,
+): MediaResolver {
   return (kind: MediaKind, id: number) => (kind === 'space' ? spaces.pathOf(id) : sounds.pathOf(id));
 }
 
@@ -178,7 +212,8 @@ function notePatch(v: unknown): { text?: string; colour?: TaskColour } {
 
 function placeQuery(v: unknown): string {
   const q = assertStr(v, 'search', { max: PLACE_QUERY_MAX }).trim();
-  if (q.length < PLACE_QUERY_MIN) throw new IpcValidationError(`search must be at least ${PLACE_QUERY_MIN} characters`);
+  if (q.length < PLACE_QUERY_MIN)
+    throw new IpcValidationError(`search must be at least ${PLACE_QUERY_MIN} characters`);
   return q;
 }
 
@@ -187,8 +222,16 @@ function placeQuery(v: unknown): string {
  * all. Messages never repeat an address (they are secrets).
  */
 function calendarUrls(v: unknown): string[] {
-  if (!Array.isArray(v) || v.length > MAX_CALENDAR_FIELDS) throw new IpcValidationError('urls must be a list');
-  const urls = v.map((u) => assertStr(u, 'Calendar address', { max: MAX_CALENDAR_URL }).trim()).filter((u) => u !== '');
+  if (!Array.isArray(v) || v.length > MAX_CALENDAR_FIELDS)
+    throw new IpcValidationError('urls must be a list');
+  const urls = v
+    .map((u) => assertStr(u, 'Calendar address', { max: RAW_CALENDAR_URL }).trim())
+    .filter((u) => u !== '')
+    .map((u) => {
+      if (u.length > MAX_CALENDAR_URL)
+        throw new IpcValidationError(`Calendar address is longer than ${MAX_CALENDAR_URL} characters`);
+      return u;
+    });
   if (urls.length > MAX_CALENDARS) throw new IpcValidationError(`Add at most ${MAX_CALENDARS} calendars`);
   if (!urls.every(isHttpsUrl)) throw new IpcValidationError('Calendar addresses must start with https://');
   return urls;
@@ -213,7 +256,8 @@ function mixLevels(v: unknown): Record<string, number> {
   const entries = Object.entries(levels);
   if (entries.length > MAX_LEVELS) throw new IpcValidationError('Too many levels');
   const out: Record<string, number> = {};
-  for (const [key, level] of entries) out[assertStr(key, 'sound', { max: 64 })] = clampNum(level, 0, 1, 'level');
+  for (const [key, level] of entries)
+    out[assertStr(key, 'sound', { max: 64 })] = clampNum(level, 0, 1, 'level');
   return out;
 }
 
@@ -225,12 +269,25 @@ export function registerIpc(deps: IpcDeps) {
   const tasks = tasksRepo(db);
   const mixes = mixesRepo(db);
   const notes = notesRepo(db);
-  const widgets = widgetsService({ db, weather: deps.weather, calendar: deps.calendar, safe: deps.safeStorage, now });
+  const widgets = widgetsService({
+    db,
+    weather: deps.weather,
+    calendar: deps.calendar,
+    safe: deps.safeStorage,
+    now,
+  });
   const stats = statsService({ db, now, liveTodayMs: () => timer.getState().todayFocusMs });
   const recaps = recapsService({ db, stats });
   const spaces = spacesService({ db, now, assetsDir: deps.paths.assets, exists: deps.exists });
   const sounds = soundsService({ db, assetsDir: deps.paths.assets, exists: deps.exists });
-  const data = dataService({ db, dir: deps.paths.userData, now, confirm: dialogs.confirm, beforeRestore: deps.beforeRestore, app: deps.app });
+  const data = dataService({
+    db,
+    dir: deps.paths.userData,
+    now,
+    confirm: dialogs.confirm,
+    beforeRestore: deps.beforeRestore,
+    app: deps.app,
+  });
   const { api: spotify, auth } = deps.spotify;
 
   const handle = (channel: string, fn: (...args: unknown[]) => unknown): void => {
@@ -266,19 +323,26 @@ export function registerIpc(deps: IpcDeps) {
     }
     return timer.setSubject(subjectId);
   });
-  handle(C.timer.answerAway, (answer) => timer.answerAway(assertEnum(answer, ['keep', 'discard'] as const, 'answer')));
+  handle(C.timer.answerAway, (answer) =>
+    timer.answerAway(assertEnum(answer, ['keep', 'discard'] as const, 'answer')),
+  );
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   handle(C.stats.overview, () => stats.overview());
   handle(C.stats.heatmap, () => stats.heatmap());
-  handle(C.stats.week, (weekStart) => stats.week(weekStart === undefined ? undefined : assertDayKey(weekStart, 'weekStart')));
+  handle(C.stats.week, (weekStart) =>
+    stats.week(weekStart === undefined ? undefined : assertDayKey(weekStart, 'weekStart')),
+  );
   handle(C.stats.trend, () => stats.trend());
   handle(C.stats.bySubject, (range) => stats.bySubject(assertEnum(range, RANGES, 'range')));
   handle(C.stats.sessions, (filter) => stats.sessions(sanitiseSessionFilter(filter)));
   handle(C.stats.updateSession, (id, patch) => {
     const p = assertRecord(patch, 'patch');
     // R25: a stored recap of that week is refreshed so it never goes stale.
-    recaps.refreshWeekOf(stats.updateSession(assertInt(id), assertIntOrNull(p.subjectId, 'subjectId')), now());
+    recaps.refreshWeekOf(
+      stats.updateSession(assertInt(id), assertIntOrNull(p.subjectId, 'subjectId')),
+      now(),
+    );
   });
   handle(C.stats.deleteSession, (id) => {
     recaps.refreshWeekOf(stats.deleteSession(assertInt(id)), now());
@@ -293,7 +357,10 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.subjects.list, () => subjects.list());
   handle(C.subjects.create, (input) => {
     const i = assertRecord(input, 'subject');
-    subjects.create({ name: assertStr(i.name, 'name', { nonEmpty: true }).trim(), colour: assertColour(i.colour) });
+    subjects.create({
+      name: assertStr(i.name, 'name', { nonEmpty: true }).trim(),
+      colour: assertColour(i.colour),
+    });
     return subjects.list();
   });
   handle(C.subjects.update, (id, patch) => {
@@ -309,7 +376,13 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.tasks.list, () => tasks.list());
   handle(C.tasks.create, (input) => {
     const i = assertRecord(input, 'task');
-    tasks.create({ text: assertStr(i.text, 'text', { nonEmpty: true }), colour: assertEnum(i.colour, TASK_COLOURS, 'colour') }, now());
+    tasks.create(
+      {
+        text: assertStr(i.text, 'text', { nonEmpty: true }),
+        colour: assertEnum(i.colour, TASK_COLOURS, 'colour'),
+      },
+      now(),
+    );
     return tasks.list();
   });
   handle(C.tasks.update, (id, patch) => {
@@ -371,13 +444,17 @@ export function registerIpc(deps: IpcDeps) {
 
   // ── Data (spec §3.11) ─────────────────────────────────────────────────────
   handle(C.data.exportJson, async () => {
-    const path = await dialogs.saveFile(`studyat-export-${stamp()}.json`, [{ name: 'JSON', extensions: ['json'] }]);
+    const path = await dialogs.saveFile(`studyat-export-${stamp()}.json`, [
+      { name: 'JSON', extensions: ['json'] },
+    ]);
     if (path === null) return false;
     await data.exportJson(path);
     return true;
   });
   handle(C.data.exportCsv, async () => {
-    const path = await dialogs.saveFile(`studyat-sessions-${stamp()}.csv`, [{ name: 'CSV', extensions: ['csv'] }]);
+    const path = await dialogs.saveFile(`studyat-sessions-${stamp()}.csv`, [
+      { name: 'CSV', extensions: ['csv'] },
+    ]);
     if (path === null) return false;
     await data.exportCsv(path);
     return true;
@@ -401,7 +478,9 @@ export function registerIpc(deps: IpcDeps) {
     auth.disconnect();
     return auth.status(clientId());
   });
-  handle(C.spotify.nowPlaying, () => (clientId().trim() === '' ? { state: 'unconfigured' } : spotify.nowPlaying()));
+  handle(C.spotify.nowPlaying, () =>
+    clientId().trim() === '' ? { state: 'unconfigured' } : spotify.nowPlaying(),
+  );
   handle(C.spotify.play, () => spotifyCall(() => spotify.play()));
   handle(C.spotify.pause, () => spotifyCall(() => spotify.pause()));
   handle(C.spotify.next, () => spotifyCall(() => spotify.next()));
@@ -435,7 +514,10 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.notes.list, () => notes.list());
   handle(C.notes.create, (input) => {
     const i = input === undefined ? {} : assertRecord(input, 'note');
-    return notes.create(i.colour === undefined ? {} : { colour: assertEnum(i.colour, TASK_COLOURS, 'colour') }, now());
+    return notes.create(
+      i.colour === undefined ? {} : { colour: assertEnum(i.colour, TASK_COLOURS, 'colour') },
+      now(),
+    );
   });
   handle(C.notes.update, (id, patch) => {
     const list = notes.update(assertInt(id), notePatch(patch), now());

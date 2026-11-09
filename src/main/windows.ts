@@ -277,7 +277,10 @@ export function installQuit(
  * Sam's A1: quitting while away discards the away time, and only `timer.quit()` does that.
  * `stop`'s own failure is passed on.
  */
-export async function runShutdown(steps: ReadonlyArray<() => unknown>, stop: () => Promise<void>): Promise<void> {
+export async function runShutdown(
+  steps: ReadonlyArray<() => unknown>,
+  stop: () => Promise<void>,
+): Promise<void> {
   const log = (err: unknown): void => console.error('StudyAt: a quit step failed; saving anyway', err);
   for (const step of steps) {
     try {
@@ -325,7 +328,10 @@ export function applyLoginItem(
  * must be the renderer origin (dev server or local renderer server). Anything else, an embed or a
  * page that navigated away, is refused.
  */
-export function senderIsFrom(event: { senderFrame?: { url: string } | null }, origin: string | null): boolean {
+export function senderIsFrom(
+  event: { senderFrame?: { url: string } | null },
+  origin: string | null,
+): boolean {
   const url = event.senderFrame?.url;
   if (!url || !origin) return false;
   try {
@@ -344,7 +350,7 @@ export interface CorruptDeps {
   showMessageBox(opts: MessageBoxOptions): Promise<{ response: number }>;
   /** The name the damaged file was kept under, e.g. `studyat.corrupt-2026-11-08_120000.sqlite`. */
   keptAs: string;
-  /** `latestBackupBefore(userData, db.corruptAt)`. */
+  /** `latestBackupBefore(userData, db.corruptAt, isReadable)`, with `isReadableDatabase` as the readability check. */
   latestBackup(): Promise<BackupInfo | null>;
   /** The data service's restore (stops, copies atomically, relaunches); never deletes. */
   restore(name: string): Promise<boolean>;

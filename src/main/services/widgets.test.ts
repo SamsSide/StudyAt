@@ -6,7 +6,13 @@ import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import type { CalendarService } from './calendar';
 import type { SafeStorageLike } from './spotify';
 import type { WeatherService } from './weather';
-import { AGENDA_FRESH_MS, calendarUrlStore, WEATHER_FRESH_MS, widgetsService } from './widgets';
+import {
+  AGENDA_FRESH_MS,
+  calendarUrlStore,
+  RETRY_AFTER_FAILURE_MS,
+  WEATHER_FRESH_MS,
+  widgetsService,
+} from './widgets';
 
 let cleanup: () => void;
 let db: Db;
@@ -151,6 +157,7 @@ describe('weather', () => {
     expect(weather.report).toHaveBeenLastCalledWith(DURHAM, null);
     expect(settingsRepo(db).get().weatherCache?.current?.tempC).toBe(9);
 
+    now += RETRY_AFTER_FAILURE_MS;
     settingsRepo(db).set({ weatherCache: okReport(LEEDS, NOW - WEATHER_FRESH_MS * 2) });
     await svc.weatherCurrent();
     expect(weather.report).toHaveBeenLastCalledWith(DURHAM, null);
@@ -160,6 +167,32 @@ describe('weather', () => {
     weather.report.mockResolvedValueOnce({ ...old, state: 'stale' });
     await svc.weatherCurrent();
     expect(weather.report).toHaveBeenLastCalledWith(DURHAM, old);
+  });
+
+  it('does not refetch for 2 minutes after a failed fetch, serving the failure or stale cache', async () => {
+    expect(RETRY_AFTER_FAILURE_MS).toBe(120_000);
+    const old = okReport(DURHAM, NOW - WEATHER_FRESH_MS * 2);
+    settingsRepo(db).set({ weatherPlace: DURHAM, weatherCache: old });
+    const { svc, weather } = setup();
+    const stale: WeatherReport = { ...old, state: 'stale' };
+    weather.report.mockResolvedValueOnce(stale);
+    expect(await svc.weatherCurrent()).toEqual(stale);
+    now = NOW + RETRY_AFTER_FAILURE_MS - 1;
+    expect(await svc.weatherCurrent()).toEqual(stale);
+    expect(weather.report).toHaveBeenCalledTimes(1);
+    now = NOW + RETRY_AFTER_FAILURE_MS;
+    expect((await svc.weatherCurrent()).state).toBe('ok');
+    expect(weather.report).toHaveBeenCalledTimes(2);
+  });
+
+  it('setPlace resets the failure back-off', async () => {
+    const { svc, weather } = setup();
+    svc.setPlace(DURHAM);
+    weather.report.mockResolvedValueOnce({ state: 'error', place: DURHAM, fetchedAt: null });
+    expect((await svc.weatherCurrent()).state).toBe('error');
+    svc.setPlace(DURHAM);
+    expect((await svc.weatherCurrent()).state).toBe('ok');
+    expect(weather.report).toHaveBeenCalledTimes(2);
   });
 
   it('shares one request between overlapping calls', async () => {
@@ -282,7 +315,8 @@ describe('calendar', () => {
     expect(calendar.agenda).toHaveBeenLastCalledWith([{ url: URL_A }], null);
     expect(settingsRepo(db).get().calendarCache).toEqual({ state: 'stale', fetchedAt: null, events: [] });
 
-    const old: CalendarAgenda = { state: 'ok', fetchedAt: NOW - AGENDA_FRESH_MS, events: [] };
+    now += RETRY_AFTER_FAILURE_MS;
+    const old: CalendarAgenda = { state: 'ok', fetchedAt: now - AGENDA_FRESH_MS, events: [] };
     settingsRepo(db).set({ calendarCache: old });
     await svc.agenda();
     expect(calendar.agenda).toHaveBeenLastCalledWith([{ url: URL_A }], old);
@@ -298,6 +332,46 @@ describe('calendar', () => {
     finish({ state: 'ok', fetchedAt: now, events: [event(0, 'Old', '#111111')] });
     await pending;
     expect(settingsRepo(db).get().calendarCache).toBeNull();
+  });
+
+  it('does not refetch for 2 minutes after a failed fetch, and setCalendarUrls resets that', async () => {
+    const { svc, calendar } = setup();
+    svc.setCalendarUrls([URL_A]);
+    const failed: CalendarAgenda = { state: 'error', fetchedAt: null, events: [] };
+    calendar.agenda.mockResolvedValueOnce(failed);
+    expect(await svc.agenda()).toEqual(failed);
+    now = NOW + RETRY_AFTER_FAILURE_MS - 1;
+    expect(await svc.agenda()).toEqual(failed);
+    expect(calendar.agenda).toHaveBeenCalledTimes(1);
+    now = NOW + RETRY_AFTER_FAILURE_MS;
+    expect((await svc.agenda()).state).toBe('ok');
+    expect(calendar.agenda).toHaveBeenCalledTimes(2);
+
+    now = NOW + 10 * RETRY_AFTER_FAILURE_MS;
+    calendar.agenda.mockResolvedValueOnce(failed);
+    await svc.agenda();
+    svc.setCalendarUrls([URL_B]);
+    expect((await svc.agenda()).state).toBe('ok');
+    expect(calendar.agenda).toHaveBeenCalledTimes(4);
+  });
+
+  it('setCalendarUrls with the same trimmed list keeps the cache and the in-flight fetch', async () => {
+    const { svc, calendar } = setup();
+    svc.setCalendarUrls([URL_A, URL_B]);
+    await svc.agenda();
+    const cached = settingsRepo(db).get().calendarCache;
+    expect(cached).not.toBeNull();
+    svc.setCalendarUrls([` ${URL_A} `, '', URL_B]);
+    expect(settingsRepo(db).get().calendarCache).toEqual(cached);
+
+    now = NOW + AGENDA_FRESH_MS;
+    let finish: (a: CalendarAgenda) => void = () => undefined;
+    calendar.agenda.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const pending = svc.agenda();
+    svc.setCalendarUrls([URL_A, URL_B]);
+    finish({ state: 'ok', fetchedAt: now, events: [event(0, 'New', '#111111')] });
+    await pending;
+    expect(settingsRepo(db).get().calendarCache?.fetchedAt).toBe(now);
   });
 
   it('shares one request between overlapping calls', async () => {
