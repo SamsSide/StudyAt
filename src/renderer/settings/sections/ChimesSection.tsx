@@ -1,9 +1,10 @@
 // Settings → Chimes (spec §3.9): focus-end and break-end chimes from the five built-ins or a custom
 // file, volume, repeat 1–3, a preview beside each, the last-minute tick and a chime on start.
-import { useEffect, useId, useRef, useState } from 'react';
+import { type CSSProperties, useEffect, useId, useRef, useState } from 'react';
 import { BUILTIN_CHIME_IDS, CHIME_NAMES } from '../../audio/chimes';
 import { audioEngine } from '../../audio/engine';
 import { chimeUrl } from '../../audio/useChimes';
+import { useStudyStore } from '../../shell/store';
 import type { ChimeId, Sound } from '../../../shared/types';
 import { clamp, NumberField, Row, Toggle } from '../controls';
 import styles from '../settings.module.css';
@@ -27,10 +28,12 @@ interface ChimePickerProps {
 function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPick }: ChimePickerProps) {
   const id = useId();
   const [message, setMessage] = useState('');
+  const [note, setNote] = useState('');
 
   /** Registers a file as a sound (main shows the file dialog), then points the chime at it. */
   const chooseFile = async (): Promise<void> => {
     setMessage('');
+    setNote('');
     try {
       const before = new Set((await window.studyat.sounds.list()).map((s) => s.id));
       const after = await window.studyat.sounds.addFiles();
@@ -38,10 +41,9 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
       const added = after.find((s) => !before.has(s.id) && s.kind === 'file');
       if (added) onPick(`file:${added.id}`);
       else if (before.size > 0)
-        // Cancelled, or a file that is already registered (main doesn't say which file was chosen).
-        setMessage(
-          'Nothing new was added. A file that is already in your sounds can be picked from the list.',
-        );
+        // Cancelled, or a file that is already registered (main doesn't say which), so a quiet
+        // note rather than an alert.
+        setNote('No new sound was added. If the file is already in your sounds, pick it from the list.');
     } catch (err) {
       console.error('Choosing a custom chime failed', err);
       setMessage("That file couldn't be added.");
@@ -99,6 +101,11 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
           {message}
         </p>
       )}
+      {note && (
+        <p role="status" className={styles.note}>
+          {note}
+        </p>
+      )}
     </>
   );
 }
@@ -106,27 +113,37 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
 export function ChimesSection({ settings, update }: SectionProps) {
   const volumeId = useId();
   const [files, setFiles] = useState<Sound[]>([]);
-  // The slider follows the finger; the save waits until it settles.
+  // The slider follows the finger; the save waits until it settles. While a value is waiting or
+  // saving, an older answer from main never pulls the slider back; once the last save lands the
+  // slider takes main's value, so a failed save shows what is really stored.
   const [volume, setVolume] = useState(settings.chimeVolume);
+  const [dirty, setDirty] = useState(false);
   const [seenVolume, setSeenVolume] = useState(settings.chimeVolume);
   if (seenVolume !== settings.chimeVolume) {
     setSeenVolume(settings.chimeVolume);
-    setVolume(settings.chimeVolume);
+    if (!dirty) setVolume(settings.chimeVolume);
   }
   const pending = useRef<{ timer: ReturnType<typeof setTimeout>; value: number } | null>(null);
-  const saveVolume = useRef((_value: number): void => undefined);
+  const latest = useRef(0);
+  const saveVolume = useRef((_value: number): Promise<unknown> => Promise.resolve());
   useEffect(() => {
-    saveVolume.current = (value: number) => void update({ chimeVolume: value });
+    saveVolume.current = (value: number) => update({ chimeVolume: value });
   });
 
   const changeVolume = (next: number): void => {
     setVolume(next);
+    setDirty(true);
+    const ticket = ++latest.current;
     if (pending.current) clearTimeout(pending.current.timer);
     pending.current = {
       value: next,
       timer: setTimeout(() => {
         pending.current = null;
-        saveVolume.current(next);
+        void saveVolume.current(next).finally(() => {
+          if (ticket !== latest.current) return;
+          setDirty(false);
+          setVolume(useStudyStore.getState().settings?.chimeVolume ?? next);
+        });
       }, VOLUME_SAVE_DELAY_MS),
     };
   };
@@ -136,7 +153,7 @@ export function ChimesSection({ settings, update }: SectionProps) {
     () => () => {
       if (!pending.current) return;
       clearTimeout(pending.current.timer);
-      saveVolume.current(pending.current.value);
+      void saveVolume.current(pending.current.value);
     },
     [],
   );
@@ -180,6 +197,7 @@ export function ChimesSection({ settings, update }: SectionProps) {
           id={volumeId}
           type="range"
           className={styles.range}
+          style={{ '--fill': `${volume * 100}%` } as CSSProperties}
           min={0}
           max={1}
           step={0.05}

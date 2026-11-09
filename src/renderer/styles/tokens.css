@@ -1,51 +1,106 @@
-/* Design tokens: the one place the look is set (spec §4 visual direction). Calm and dark: frosted
-   panels over the space, 12 px radii, soft type, the accent used sparingly, gentle 150 ms motion. */
+/* Design tokens: the one place the look is set (spec §4 layout, R27 visual direction, which
+   supersedes spec §4's 12 px radii and blur(16px)). Calm, dark "liquid glass": layered translucent
+   panels that blur, saturate and dim the space behind them, a bright 1 px top edge, soft layered
+   shadows, rounded shapes, system type and gentle spring-like motion. Other modules read these
+   names, so a name is never removed; only values change.
+
+   Contrast (WCAG AA, checked numerically): the glass dims what is behind it to 72 % and lays a
+   68 % dark tint on top, so over a pure white space the panel is at least rgb(72 74 78). On that
+   worst case --text is 8.1:1, --text-muted 6.0:1 and --text-faint 4.7:1; over a black space all
+   three are above 9:1. --panel-strong (overlays, menus) is darker still. */
 :root {
-  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
+  /* Type: the platform's own UI face. No bundled Apple fonts: on Windows this is Segoe UI Variable. */
+  --font:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI', system-ui,
+    sans-serif;
+  --font-display:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI Variable Display', 'Segoe UI', system-ui,
+    sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
 
-  /* Surfaces */
-  --bg: #0f1115;
-  --panel: rgba(20, 22, 28, 0.72);
-  --panel-strong: rgba(20, 22, 28, 0.88);
-  --scrim: rgba(8, 9, 12, 0.55);
-  --blur: blur(16px);
-  --hover: rgba(255, 255, 255, 0.08);
-  --active: rgba(124, 156, 255, 0.18);
-  --border: rgba(255, 255, 255, 0.08);
-  --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  /* Glass */
+  --glass-fill: rgba(20, 22, 29, 0.68);
+  --glass-fill-strong: rgba(18, 20, 27, 0.86);
+  /* Controls and cards that sit on a glass panel */
+  --glass-fill-thin: rgba(255, 255, 255, 0.07);
+  --glass-fill-raised: rgba(255, 255, 255, 0.16);
+  --glass-filter: blur(32px) saturate(180%) brightness(0.72);
+  --glass-filter-strong: blur(40px) saturate(170%) brightness(0.6);
+  --glass-edge: rgba(255, 255, 255, 0.1);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  /* A faint specular sheen across the top of a panel; layer it over a fill colour. */
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 38%);
 
-  /* Text: every pair clears WCAG AA on --panel over a dark space */
-  --text: #e8eaf0;
-  --text-muted: #a9afbd;
-  --text-faint: #8a91a1;
+  /* Surfaces (the original names, now glass) */
+  --bg: #0b0d12;
+  --panel: var(--glass-fill);
+  --panel-strong: var(--glass-fill-strong);
+  --scrim: rgba(6, 7, 10, 0.42);
+  --blur: var(--glass-filter);
+  --hover: rgba(255, 255, 255, 0.09);
+  --active: rgba(124, 156, 255, 0.22);
+  --border: var(--glass-edge);
+  --separator: rgba(255, 255, 255, 0.08);
 
-  /* Accent */
+  /* Elevation: the top-edge highlight plus two soft drop shadows */
+  --shadow-sm:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.18);
+  --shadow: var(--glass-highlight), 0 10px 30px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-lg: var(--glass-highlight), 0 24px 64px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.3);
+
+  /* Text */
+  --text: #f2f4f8;
+  --text-muted: #d0d4dd;
+  --text-faint: #b8bdca;
+
+  /* Accent: fills use --accent; accent-coloured text on glass uses --accent-bright (4.7:1 worst case). */
   --accent: #7c9cff;
-  --accent-text: #0f1115;
-  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+  --accent-bright: #a8b9ff;
+  --accent-text: #0b0d12;
+  --accent-soft: rgba(124, 156, 255, 0.28);
+  --danger: #ff9b9b;
+  /* A macOS-style soft ring: a thin dark gap so it reads on accent fills, then the accent halo. */
+  --focus-ring: 0 0 0 1.5px rgba(10, 12, 18, 0.85), 0 0 0 4.5px rgba(140, 166, 255, 0.8);
 
-  /* Shape and rhythm */
-  --radius: 12px;
-  --radius-sm: 8px;
+  /* Shape */
+  --radius-panel: 22px;
+  --radius-widget: 18px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-xs: 6px;
+  --radius-pill: 999px;
+
+  /* Rhythm */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
+  --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 14px;
   --text-lg: 18px;
+  --text-xl: 22px;
+  --tracking-tight: -0.015em;
+  --tracking-display: -0.03em;
+
+  /* Controls */
+  --control-h: 32px;
+  --control-h-lg: 40px;
 
   /* Layout */
   --topbar-h: 52px;
   --dock-w: 76px;
   --panel-w: 360px;
 
-  /* Motion */
-  --duration: 150ms;
-  --duration-fade: 400ms;
-  --ease: cubic-bezier(0.2, 0, 0, 1);
+  /* Motion: spring-like, 180–260 ms (R27). Reduced motion zeroes all of it below. */
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease: var(--ease-spring);
+  --duration-fast: 120ms;
+  --duration: 180ms;
+  --duration-slow: 260ms;
+  --duration-fade: 220ms;
 
   /* Stacking */
   --z-background: 0;
@@ -58,10 +113,21 @@
   color-scheme: dark;
 }
 
+/* Reduced motion: no animation at all, and every transition is instant. */
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --duration-fast: 0ms;
     --duration: 0ms;
+    --duration-slow: 0ms;
     --duration-fade: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -78,7 +144,10 @@ body {
   font-family: var(--font);
   font-size: var(--text-md);
   line-height: 1.45;
+  letter-spacing: -0.003em;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'kern';
   overflow: hidden;
 }
 
@@ -88,12 +157,57 @@ body {
   box-sizing: border-box;
 }
 
-button {
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+}
+
+button,
+input,
+select,
+textarea {
   font: inherit;
   color: inherit;
+}
+
+::selection {
+  background: var(--accent-soft);
 }
 
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+/* Thin, dark, overlay-style scrollbars everywhere (F9): a rounded thumb inset from the edge, no
+   track and no arrow buttons. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.34);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }

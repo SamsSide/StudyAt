@@ -2,7 +2,14 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HeatmapCell, Session, StatsOverview, SubjectTotal, WeekBars, WeeklyRecap } from '../../shared/types';
+import type {
+  HeatmapCell,
+  Session,
+  StatsOverview,
+  SubjectTotal,
+  WeekBars,
+  WeeklyRecap,
+} from '../../shared/types';
 import { NO_SUBJECT_KEY } from '../../core/stats/totals';
 import { addDays } from '../../core/time';
 import { resetStudyStore, useStudyStore } from '../shell/store';
@@ -160,7 +167,9 @@ describe('Heatmap', () => {
     expect(container.querySelector('[data-day="2026-11-03"]')).toHaveAttribute('data-shade', '4');
     expect(container.querySelector('[data-day="2026-11-04"]')).toHaveAttribute('data-shade', '0');
     for (const shade of [0, 3, 4]) {
-      expect(container.querySelector(`[data-shade="${shade}"]`)?.getAttribute('class')).toMatch(new RegExp(`shade${shade}`));
+      expect(container.querySelector(`[data-shade="${shade}"]`)?.getAttribute('class')).toMatch(
+        new RegExp(`shade${shade}`),
+      );
     }
     const dots = container.querySelectorAll('[data-goal-dot]');
     expect(dots).toHaveLength(1);
@@ -226,6 +235,28 @@ describe('WeekChart', () => {
     expect(next).toBeDisabled();
   });
 
+  it('› still reaches the new current week after a week rollover while the overlay is open', async () => {
+    let current = '2026-11-02';
+    const weekFn = vi.fn((weekStart?: string) => Promise.resolve(week(weekStart ?? current)));
+    api = mockApi({ stats: { week: weekFn } });
+    installMockApi(api);
+    const { rerender } = render(<WeekChart revision={0} />);
+    await screen.findByText('2 Nov–8 Nov');
+    await userEvent.click(screen.getByRole('button', { name: 'Previous week' }));
+    await screen.findByRole('img', { name: /^Focus time, 26 Oct–1 Nov/ });
+
+    // Monday 04:00 passes; a session edit bumps the revision.
+    current = '2026-11-09';
+    rerender(<WeekChart revision={1} />);
+    const next = screen.getByRole('button', { name: 'Next week' });
+    await userEvent.click(next);
+    await screen.findByRole('img', { name: /^Focus time, 2 Nov–8 Nov/ });
+    await waitFor(() => expect(next).toBeEnabled());
+    await userEvent.click(next);
+    await screen.findByRole('img', { name: /^Focus time, 9 Nov–15 Nov/ });
+    await waitFor(() => expect(next).toBeDisabled());
+  });
+
   it('stacks one series per subject, untagged in grey and last', async () => {
     const bars = week('2026-11-02', [{ [NO_SUBJECT_KEY]: HOUR, '1': 2 * HOUR }, { '2': HOUR }]);
     api = mockApi({ stats: { week: vi.fn(() => Promise.resolve(bars)) } });
@@ -238,7 +269,9 @@ describe('WeekChart', () => {
   });
 
   it('steps from the week asked for, so two quick ‹ clicks go back two weeks, and never shows the old week meanwhile', async () => {
-    const weekFn = vi.fn((weekStart?: string) => (weekStart === undefined ? Promise.resolve(week('2026-11-02')) : new Promise<WeekBars>(() => {})));
+    const weekFn = vi.fn((weekStart?: string) =>
+      weekStart === undefined ? Promise.resolve(week('2026-11-02')) : new Promise<WeekBars>(() => {}),
+    );
     api = mockApi({ stats: { week: weekFn } });
     installMockApi(api);
     const { container } = render(<WeekChart revision={0} />);
@@ -285,17 +318,22 @@ describe('WeekChart', () => {
 
 describe('TrendChart', () => {
   it('summarises the last 12 weeks for screen readers', async () => {
-    const points = Array.from({ length: 12 }, (_, i) => ({ weekStart: addDays('2026-08-17', 7 * i), ms: i * HOUR }));
+    const points = Array.from({ length: 12 }, (_, i) => ({
+      weekStart: addDays('2026-08-17', 7 * i),
+      ms: i * HOUR,
+    }));
     api = mockApi({ stats: { trend: vi.fn(() => Promise.resolve(points)) } });
     installMockApi(api);
     render(<TrendChart revision={0} />);
     const chart = await screen.findByRole('img', { name: /^Last 12 weeks/ });
-    expect(chart.getAttribute('aria-label')).toMatch(/^Last 12 weeks, week by week: 17 Aug 0h 00m, 24 Aug 1h 00m, .*, 2 Nov 11h 00m$/);
+    expect(chart.getAttribute('aria-label')).toMatch(
+      /^Last 12 weeks, week by week: 17 Aug 0h 00m, 24 Aug 1h 00m, .*, 2 Nov 11h 00m$/,
+    );
   });
 });
 
 describe('SubjectBreakdown', () => {
-  it('subject range toggle calls bySubject(\'month\')', async () => {
+  it("subject range toggle calls bySubject('month')", async () => {
     const totals: SubjectTotal[] = [
       { subjectId: 1, name: 'Maths', colour: '#7c9cff', ms: 3 * HOUR },
       { subjectId: null, name: 'No subject', colour: '#8a8f98', ms: 30 * MINUTE },
@@ -371,14 +409,18 @@ describe('SessionsTable', () => {
     await screen.findByText('In progress');
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('In progress');
-    expect(within(rows[0] as HTMLElement).queryByRole('button', { name: 'Delete session' })).not.toBeInTheDocument();
+    expect(
+      within(rows[0] as HTMLElement).queryByRole('button', { name: 'Delete session' }),
+    ).not.toBeInTheDocument();
     expect(within(rows[0] as HTMLElement).getByRole('combobox', { name: 'Subject' })).toBeDisabled();
     expect(rows[1]).toHaveTextContent('Sun 1 Nov');
   });
 
   it('says so when there are no sessions yet', async () => {
     setupSessions([]);
-    expect(await screen.findByText('No sessions yet. Start a Pomodoro and they’ll appear here.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No sessions yet. Start a Pomodoro and they’ll appear here.'),
+    ).toBeInTheDocument();
   });
 
   it('names a subject it cannot find rather than showing "No subject"', async () => {
@@ -388,7 +430,7 @@ describe('SessionsTable', () => {
     expect(select).toHaveDisplayValue('Unknown subject');
   });
 
-  it('lets main\'s answer win once it lands, so a later change elsewhere shows', async () => {
+  it("lets main's answer win once it lands, so a later change elsewhere shows", async () => {
     let subjectId = 1;
     const sessions = vi.fn(() => Promise.resolve([session({ id: 7, subjectId })]));
     api = mockApi({ stats: { sessions } });
@@ -406,7 +448,9 @@ describe('SessionsTable', () => {
     // The timer (or another window) moves it back; the table follows main.
     subjectId = 1;
     rerender(<SessionsTable revision={2} onChanged={vi.fn()} />);
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Subject' })).toHaveDisplayValue(SUBJECT_1));
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: 'Subject' })).toHaveDisplayValue(SUBJECT_1),
+    );
   });
 });
 
@@ -423,13 +467,19 @@ describe('RecapCard', () => {
     expect(term('Streak')).toHaveTextContent('9 days');
     expect(term('Goal hit')).toHaveTextContent('2 days');
     const top = screen.getByRole('list', { name: 'Top subjects' });
-    expect(within(top).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Maths5h 00m', 'No subject1h 00m']);
+    expect(
+      within(top)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Maths5h 00m', 'No subject1h 00m']);
   });
 
   it('empty-week copy from spec §3.14', () => {
     render(<RecapCard recap={emptyRecap()} />);
     expect(screen.getByRole('heading', { name: 'Your week: 2 Nov–8 Nov' })).toBeInTheDocument();
-    expect(screen.getByText("No focus time last week — that's okay. A fresh week starts now.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No focus time last week — that's okay. A fresh week starts now."),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Days studied')).not.toBeInTheDocument();
   });
 
@@ -446,7 +496,11 @@ describe('RecapCard', () => {
 describe('RecapList', () => {
   it('lists stored recaps newest first', async () => {
     api = mockApi({
-      recaps: { list: vi.fn(() => Promise.resolve([recap({ weekStart: '2026-10-26' }), recap({ weekStart: '2026-11-02' })])) },
+      recaps: {
+        list: vi.fn(() =>
+          Promise.resolve([recap({ weekStart: '2026-10-26' }), recap({ weekStart: '2026-11-02' })]),
+        ),
+      },
     });
     installMockApi(api);
     render(<RecapList revision={0} />);
@@ -456,7 +510,9 @@ describe('RecapList', () => {
 
   it('explains when there are none yet', async () => {
     render(<RecapList revision={0} />);
-    expect(await screen.findByText('Your first recap arrives after your first full week.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Your first recap arrives after your first full week.'),
+    ).toBeInTheDocument();
   });
 });
 
@@ -509,7 +565,7 @@ describe('useRecapPopup', () => {
 });
 
 describe('StatsOverlay', () => {
-  it('holds each section\'s place with a quiet skeleton while it loads', async () => {
+  it("holds each section's place with a quiet skeleton while it loads", async () => {
     const never = <T,>() => vi.fn(() => new Promise<T>(() => {}));
     api = mockApi({
       stats: {
@@ -546,7 +602,11 @@ describe('StatsOverlay', () => {
     });
     installMockApi(api);
     render(<StatsOverlay />);
-    await waitFor(() => expect(screen.getByText('This week', { selector: 'dt' }).parentElement).toHaveTextContent('+25% vs last week'));
+    await waitFor(() =>
+      expect(screen.getByText('This week', { selector: 'dt' }).parentElement).toHaveTextContent(
+        '+25% vs last week',
+      ),
+    );
     for (const name of ['This week', 'Last 12 weeks', 'By subject', 'Sessions', 'Weekly recaps']) {
       expect(screen.getByRole('heading', { name })).toBeInTheDocument();
     }

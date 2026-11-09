@@ -17,6 +17,21 @@ const formatWhen = (ms: number): string =>
     minute: '2-digit',
   });
 
+const DAILY = /^daily-(\d{4})-(\d{2})-(\d{2})\.sqlite$/;
+
+/** A daily backup is one per day, so it shows its date only ("8 Nov 2026", F11), taken from its
+ *  name; a pre-migration or pre-restore backup keeps its time too. */
+const formatBackupWhen = (b: BackupInfo): string => {
+  const daily = DAILY.exec(b.name);
+  if (!daily) return formatWhen(b.createdAt);
+  const [, y, m, d] = daily;
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 export function DataSection() {
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [notice, setNotice] = useState('');
@@ -108,7 +123,7 @@ export function DataSection() {
                 <span className={styles.label}>{b.name}</span>
                 <br />
                 <span className={styles.hint}>
-                  {formatWhen(b.createdAt)} · {formatSize(b.size)}
+                  {formatBackupWhen(b)} · {formatSize(b.size)}
                 </span>
               </span>
               <button

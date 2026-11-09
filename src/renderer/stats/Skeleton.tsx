@@ -15,5 +15,7 @@ const KIND_CLASS: Record<SkeletonKind, string | undefined> = {
 };
 
 export function Skeleton({ kind }: { kind: SkeletonKind }) {
-  return <div className={`${styles.skeleton} ${KIND_CLASS[kind] ?? ''}`} data-skeleton={kind} aria-hidden="true" />;
+  return (
+    <div className={`${styles.skeleton} ${KIND_CLASS[kind] ?? ''}`} data-skeleton={kind} aria-hidden="true" />
+  );
 }

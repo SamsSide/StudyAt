@@ -2,9 +2,17 @@
 // is the widget's horizontal centre, `y` its top edge (so the timer's 0.5 / 0.12 is top centre).
 // Dragged by its header, clamped inside the window and re-clamped on resize; the clamp is only
 // for display, so a window that grows back puts the widget where it was. The position is saved
-// on drag end; arrow keys on the header move it too. A widget with `autoHide` fades with the
+// on drag end (a click without a move saves nothing); arrow keys on the header move it too. A widget with `autoHide` fades with the
 // chrome (spec §3.7); the others stay.
-import { type KeyboardEvent, type PointerEvent, type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { WidgetId } from '../../shared/types';
 import { Icon } from './icons';
 import styles from './shell.module.css';
@@ -36,15 +44,7 @@ const fractions = (left: number, top: number, frame: Box, win: Box) => ({
 
 const windowBox = (): Box => ({ w: window.innerWidth, h: window.innerHeight });
 
-export function WidgetFrame({
-  id,
-  title,
-  children,
-}: {
-  id: WidgetId;
-  title: string;
-  children: ReactNode;
-}) {
+export function WidgetFrame({ id, title, children }: { id: WidgetId; title: string; children: ReactNode }) {
   const pos = useStudyStore((s) => s.settings?.widgets[id]);
   const patchWidget = useStudyStore((s) => s.patchWidget);
   const ref = useRef<HTMLDivElement>(null);
@@ -81,7 +81,10 @@ export function WidgetFrame({
     e.preventDefault();
     const start = { cx: e.clientX, cy: e.clientY, left, top };
     let last = fractions(left, top, frame, win);
+    let moved = false;
     const move = (ev: globalThis.PointerEvent): void => {
+      if (ev.clientX === start.cx && ev.clientY === start.cy) return;
+      moved = true;
       const w = windowBox();
       const nextLeft = clamp(start.left + ev.clientX - start.cx, 0, w.w - frame.w);
       const nextTop = clamp(start.top + ev.clientY - start.cy, 0, w.h - frame.h);
@@ -93,7 +96,8 @@ export function WidgetFrame({
       window.removeEventListener('pointerup', end);
       window.removeEventListener('pointercancel', end);
       setDrag(null);
-      save(last.x, last.y);
+      // A click on the header without a move is not a drag: nothing to save.
+      if (moved) save(last.x, last.y);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', end);
@@ -111,18 +115,17 @@ export function WidgetFrame({
     save(f.x, f.y);
   };
 
-  const classes = [styles.widget, styles.frosted, drag ? styles.dragging : '', pos.autoHide ? styles.fades : '']
+  const classes = [
+    styles.widget,
+    styles.frosted,
+    drag ? styles.dragging : '',
+    pos.autoHide ? styles.fades : '',
+  ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <div
-      ref={ref}
-      className={classes}
-      style={{ left, top }}
-      role="group"
-      aria-label={title}
-    >
+    <div ref={ref} className={classes} style={{ left, top }} role="group" aria-label={title}>
       <div className={styles.widgetHeader}>
         <button
           type="button"

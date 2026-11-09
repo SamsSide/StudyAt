@@ -36,10 +36,12 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M14 20v-5h5M9 9h6M9 13h3" />
     </>
   ),
+  // A plain pair of quavers: the music widget, not any brand's logo (S7).
   spotify: (
     <>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M7.5 9.5c3-1 6.5-.7 9 .8M8 12.8c2.5-.7 5.2-.4 7.2.8M8.7 15.8c1.9-.5 3.8-.2 5.3.6" />
+      <path d="M9 18V6l11-2v12" />
+      <circle cx="6.5" cy="18" r="2.5" />
+      <circle cx="17.5" cy="16" r="2.5" />
     </>
   ),
   stats: <path d="M4 20h16M7 16v-5M12 16V6M17 16v-8" />,

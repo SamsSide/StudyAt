@@ -1,7 +1,9 @@
 // "This week" (spec §3.5, §4): Monday-to-Sunday bars of focus time, stacked by subject in the
 // subjects' colours with untagged time grey and on top. ‹ › step a week at a time through
 // `stats.week(weekStart)`; › stops at the current week, which is whatever `stats.week()` with no
-// argument answers. Day totals and per-subject splits are main's; this only draws them.
+// argument answers. While an older week is on screen the current week is asked again on every
+// step and every revision, so a week that rolls over while the overlay is open still lets ›
+// reach the new one. Day totals and per-subject splits are main's; this only draws them.
 import { useId, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { addDays } from '../../core/time';
@@ -25,6 +27,9 @@ import styles from './stats.module.css';
 import { useStatsQuery } from './useStatsQuery';
 
 const loadWeek = (weekStart: string | undefined): Promise<WeekBars> => window.studyat.stats.week(weekStart);
+/** The current week's Monday, asked only while another week is shown (the shown query has it otherwise). */
+const loadCurrentWeek = (requested: string | undefined): Promise<string | null> =>
+  requested === undefined ? Promise.resolve(null) : window.studyat.stats.week().then((b) => b.weekStart);
 
 type Row = { label: string; day: DayTotal } & Record<string, number | string | DayTotal>;
 
@@ -62,10 +67,14 @@ export function WeekChart({ revision, className }: { revision: number; className
   // undefined asks main for the current week.
   const [requested, setRequested] = useState<string | undefined>(undefined);
   const [currentWeek, setCurrentWeek] = useState<string | null>(null);
+  // Declared first, so its call goes out before the shown week's.
+  const current = useStatsQuery(loadCurrentWeek, requested, revision);
   const query = useStatsQuery(loadWeek, requested, revision);
 
   const bars = query.status === 'ready' ? query.data : null;
   if (bars && requested === undefined && currentWeek !== bars.weekStart) setCurrentWeek(bars.weekStart);
+  if (current.status === 'ready' && current.data !== null && currentWeek !== current.data)
+    setCurrentWeek(current.data);
 
   // The week on screen is the one asked for, loaded or not, so ‹ › step from it: two quick clicks
   // go back two weeks, and a week that failed to load can still be left either way.
@@ -93,11 +102,23 @@ export function WeekChart({ revision, className }: { revision: number; className
           This week
         </h3>
         <div className={styles.weekNav}>
-          <button type="button" className={styles.iconButton} aria-label="Previous week" disabled={!shown} onClick={() => step(-7)}>
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label="Previous week"
+            disabled={!shown}
+            onClick={() => step(-7)}
+          >
             ‹
           </button>
           <span aria-live="polite">{shown ? formatWeekRange(shown) : ''}</span>
-          <button type="button" className={styles.iconButton} aria-label="Next week" disabled={atCurrent} onClick={() => step(7)}>
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label="Next week"
+            disabled={atCurrent}
+            onClick={() => step(7)}
+          >
             ›
           </button>
         </div>
@@ -111,7 +132,13 @@ export function WeekChart({ revision, className }: { revision: number; className
               <BarChart data={rows} margin={{ top: 8, right: 4, bottom: 0, left: -18 }}>
                 <CartesianGrid vertical={false} stroke={GRID_STROKE} />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} tick={AXIS_TICK} />
-                <YAxis tickLine={false} axisLine={false} tick={AXIS_TICK} allowDecimals={false} tickFormatter={(h: number) => `${h}h`} />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={AXIS_TICK}
+                  allowDecimals={false}
+                  tickFormatter={(h: number) => `${h}h`}
+                />
                 <Tooltip
                   cursor={{ fill: CURSOR_FILL }}
                   isAnimationActive={false}
@@ -121,7 +148,14 @@ export function WeekChart({ revision, className }: { revision: number; className
                   }}
                 />
                 {series.map((s) => (
-                  <Bar key={s.key} dataKey={s.key} name={s.name} stackId="week" fill={s.colour} isAnimationActive={animate} />
+                  <Bar
+                    key={s.key}
+                    dataKey={s.key}
+                    name={s.name}
+                    stackId="week"
+                    fill={s.colour}
+                    isAnimationActive={animate}
+                  />
                 ))}
               </BarChart>
             </ResponsiveContainer>
@@ -130,13 +164,20 @@ export function WeekChart({ revision, className }: { revision: number; className
             <ul className={styles.chartLegend} aria-label="Subjects this week">
               {series.map((s) => (
                 <li key={s.key}>
-                  <span className={styles.dot} style={{ background: s.colour }} data-colour={s.colour} aria-hidden="true" />
+                  <span
+                    className={styles.dot}
+                    style={{ background: s.colour }}
+                    data-colour={s.colour}
+                    aria-hidden="true"
+                  />
                   {s.name}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className={styles.muted}>{atCurrent ? 'No focus time this week yet.' : 'No focus time that week.'}</p>
+            <p className={styles.muted}>
+              {atCurrent ? 'No focus time this week yet.' : 'No focus time that week.'}
+            </p>
           )}
         </>
       )}

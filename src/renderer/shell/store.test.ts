@@ -49,6 +49,38 @@ describe('useStudyStore', () => {
     stop();
   });
 
+  it('refreshes the overview when the window regains focus or becomes visible', async () => {
+    const api = mockApi();
+    installMockApi(api);
+    const stop = initStudyStore();
+    await flush();
+    const calls = vi.mocked(api.stats.overview).mock.calls.length;
+    window.dispatchEvent(new Event('focus'));
+    expect(api.stats.overview).toHaveBeenCalledTimes(calls + 1);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(api.stats.overview).toHaveBeenCalledTimes(calls + 1);
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(api.stats.overview).toHaveBeenCalledTimes(calls + 2);
+    stop();
+    window.dispatchEvent(new Event('focus'));
+    expect(api.stats.overview).toHaveBeenCalledTimes(calls + 2);
+  });
+
+  it('a widget change that fails to save goes back to what main has', async () => {
+    const api = mockApi();
+    installMockApi(api);
+    const stop = initStudyStore();
+    await flush();
+    const before = useStudyStore.getState().settings!.widgets.tasks;
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(api.settings.set).mockRejectedValueOnce(new Error('disk full'));
+    await act(() => useStudyStore.getState().patchWidget('tasks', { x: 0.1, y: 0.2 }));
+    expect(useStudyStore.getState().settings!.widgets.tasks).toEqual(before);
+    stop();
+  });
+
   it('setPanel and setOverlay', () => {
     useStudyStore.getState().setPanel('spaces');
     useStudyStore.getState().setOverlay('help');

@@ -11,14 +11,19 @@ type Choice = { id: number | null; name: string; colour: string | null };
 
 const NO_SUBJECT: Choice = { id: null, name: 'No subject', colour: null };
 /** Room the list needs below the box before it opens upwards instead. */
-const LIST_ROOM = 260;
+const LIST_ROOM = 300;
 /** Type-ahead forgets what was typed after this pause. */
 const TYPE_AHEAD_MS = 600;
 const PAGE = 5;
 
 function Dot({ colour }: { colour: string | null }) {
   return (
-    <span className={styles.dot} style={colour ? { background: colour } : undefined} aria-hidden="true" data-dot />
+    <span
+      className={styles.dot}
+      style={colour ? { background: colour } : undefined}
+      aria-hidden="true"
+      data-dot
+    />
   );
 }
 
@@ -26,7 +31,10 @@ export function SubjectSelect() {
   const subjects = useStudyStore((s) => s.subjects);
   const subjectId = useStudyStore((s) => s.timer.subjectId);
   const choices: Choice[] = [NO_SUBJECT, ...subjects.filter((s) => !s.archived || s.id === subjectId)];
-  const selected = Math.max(0, choices.findIndex((c) => c.id === subjectId));
+  const selected = Math.max(
+    0,
+    choices.findIndex((c) => c.id === subjectId),
+  );
 
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(selected);
@@ -136,7 +144,13 @@ export function SubjectSelect() {
         <Dot colour={current.colour} />
         <span className={styles.comboText}>{current.name}</span>
         <svg className={styles.chevron} viewBox="0 0 12 12" aria-hidden="true">
-          <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path
+            d="M3 4.5 6 7.5 9 4.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
         </svg>
       </div>
       {open && (

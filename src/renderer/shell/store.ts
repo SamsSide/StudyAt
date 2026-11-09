@@ -39,7 +39,7 @@ export interface StudyState {
   refreshSubjects(): Promise<void>;
   /** Sends a patch to main and keeps what main returns (main sanitises and merges). */
   updateSettings(patch: SettingsPatch): Promise<void>;
-  /** Changes one widget's open/position, optimistically, then persists it. */
+  /** Changes one widget's open/position, optimistically, then persists it; a failed save is undone. */
   patchWidget(id: WidgetId, patch: Partial<WidgetPos>): Promise<void>;
   toggleWidget(id: WidgetId): Promise<void>;
   toggleMini(): Promise<void>;
@@ -89,9 +89,21 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
   patchWidget: async (id, patch) => {
     const settings = get().settings;
     if (!settings) return;
-    const next: WidgetPos = { ...settings.widgets[id], ...patch };
+    const previous = settings.widgets[id];
+    const next: WidgetPos = { ...previous, ...patch };
     set({ settings: { ...settings, widgets: { ...settings.widgets, [id]: next } } });
-    await get().updateSettings({ widgets: { [id]: next } });
+    try {
+      await get().updateSettings({ widgets: { [id]: next } });
+    } catch (err) {
+      // The change didn't stick: show what main has, or failing that put the widget back.
+      console.error('Saving the widget failed', err);
+      try {
+        await get().refreshSettings();
+      } catch {
+        const now = get().settings;
+        if (now) set({ settings: { ...now, widgets: { ...now.widgets, [id]: previous } } });
+      }
+    }
   },
 
   toggleWidget: async (id) => {
@@ -109,7 +121,8 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
 /**
  * Loads everything the shell shows and subscribes to main's pushes. The overview is re-fetched
  * when today's focus time crosses a whole minute and at every segment end, so the goal ring
- * follows a running focus without an IPC call per tick. Returns the unsubscribe.
+ * follows a running focus without an IPC call per tick, and again whenever the window comes back
+ * (focus or visible), so a day that rolled over while it was hidden shows. Returns the unsubscribe.
  */
 export function initStudyStore(): Unsubscribe {
   const studyat = api();
@@ -132,6 +145,17 @@ export function initStudyStore(): Unsubscribe {
     studyat.timer.onSegmentEnd(() => void store.refreshOverview()),
     studyat.app.onFullscreen((fullscreen) => useStudyStore.setState({ fullscreen })),
   ];
+
+  const refresh = (): void => void store.refreshOverview().catch(() => undefined);
+  const onVisibility = (): void => {
+    if (document.visibilityState === 'visible') refresh();
+  };
+  window.addEventListener('focus', refresh);
+  document.addEventListener('visibilitychange', onVisibility);
+  stops.push(
+    () => window.removeEventListener('focus', refresh),
+    () => document.removeEventListener('visibilitychange', onVisibility),
+  );
 
   // A push that lands first is newer than the answer to get().
   void studyat.timer.get().then((timer) => {

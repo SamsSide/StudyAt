@@ -29,11 +29,14 @@ export function TopBar() {
           <span aria-hidden="true">🔥</span>
           {streak}
         </button>
+        <span className={styles.topDivider} aria-hidden="true" />
         <span className={styles.today}>
           <span className={styles.todayLabel}>Today</span>
           {formatHm(todayMs)}
         </span>
-        {overview && <GoalRing progress={overview.goalProgress} title={goalTooltip(todayMs, overview.goalMs)} />}
+        {overview && (
+          <GoalRing progress={overview.goalProgress} title={goalTooltip(todayMs, overview.goalMs)} />
+        )}
       </div>
       <div className={`${styles.topGroup} ${styles.frosted}`}>
         <button

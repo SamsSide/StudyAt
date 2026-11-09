@@ -422,7 +422,10 @@ describe('MiniTimer', () => {
     render(<MiniTimer />);
     push({ ...idleTimerState(), subjectId: 1 });
     expect(api.subjects.list).not.toHaveBeenCalled();
-    const fresh = [...seedSubjects(), { id: 7, name: 'Revision', colour: '#ffffff', archived: false, sort: 6 }];
+    const fresh = [
+      ...seedSubjects(),
+      { id: 7, name: 'Revision', colour: '#ffffff', archived: false, sort: 6 },
+    ];
     vi.mocked(api.subjects.list).mockResolvedValue(fresh);
     push({ ...idleTimerState(), subjectId: 7 });
     expect(api.subjects.list).toHaveBeenCalledTimes(1);

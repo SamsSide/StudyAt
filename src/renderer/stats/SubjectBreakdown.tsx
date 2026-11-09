@@ -34,14 +34,22 @@ export function SubjectBreakdown({ revision, className }: { revision: number; cl
         <div className={styles.segmented} role="radiogroup" aria-label="Range">
           {RANGES.map((r) => (
             <label key={r.value} className={styles.segment}>
-              <input type="radio" name={name} value={r.value} checked={range === r.value} onChange={() => setRange(r.value)} />
+              <input
+                type="radio"
+                name={name}
+                value={r.value}
+                checked={range === r.value}
+                onChange={() => setRange(r.value)}
+              />
               <span>{r.label}</span>
             </label>
           ))}
         </div>
       </div>
       {query.status === 'loading' && <Skeleton kind="list" />}
-      {query.status === 'error' && <LoadError message="Couldn’t load your subjects." onRetry={query.reload} />}
+      {query.status === 'error' && (
+        <LoadError message="Couldn’t load your subjects." onRetry={query.reload} />
+      )}
       {totals && totals.length === 0 && <p className={styles.empty}>No focus time in this range yet.</p>}
       {totals && totals.length > 0 && (
         <ul className={styles.subjects}>
@@ -53,7 +61,10 @@ export function SubjectBreakdown({ revision, className }: { revision: number; cl
               </span>
               <span className={styles.subjectMs}>{formatHm(t.ms)}</span>
               <span className={styles.bar} aria-hidden="true">
-                <span className={styles.barFill} style={{ display: 'block', width: `${(t.ms / largest) * 100}%`, background: t.colour }} />
+                <span
+                  className={styles.barFill}
+                  style={{ display: 'block', width: `${(t.ms / largest) * 100}%`, background: t.colour }}
+                />
               </span>
             </li>
           ))}

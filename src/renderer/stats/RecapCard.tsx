@@ -22,7 +22,15 @@ function Fact({ term, children }: { term: string; children: string }) {
   );
 }
 
-export function RecapCard({ recap, onClose, titleId }: { recap: WeeklyRecap; onClose?: () => void; titleId?: string }) {
+export function RecapCard({
+  recap,
+  onClose,
+  titleId,
+}: {
+  recap: WeeklyRecap;
+  onClose?: () => void;
+  titleId?: string;
+}) {
   const subjects = useStudyStore((s) => s.subjects);
   const topId = useId();
   const empty = recap.totalMs === 0;
@@ -40,7 +48,11 @@ export function RecapCard({ recap, onClose, titleId }: { recap: WeeklyRecap; onC
           <dl className={styles.facts}>
             <Fact term="Week before">{formatHm(recap.prevTotalMs)}</Fact>
             <Fact term="Days studied">{`${recap.daysStudied} of 7`}</Fact>
-            <Fact term="Best day">{recap.bestDay ? `${formatDayLabel(recap.bestDay.dayKey)} · ${formatHm(recap.bestDay.ms)}` : '—'}</Fact>
+            <Fact term="Best day">
+              {recap.bestDay
+                ? `${formatDayLabel(recap.bestDay.dayKey)} · ${formatHm(recap.bestDay.ms)}`
+                : '—'}
+            </Fact>
             <Fact term="Longest session">{formatHm(recap.longestSessionMs)}</Fact>
             <Fact term="Streak">{formatDays(recap.streakAtEnd)}</Fact>
             <Fact term="Goal hit">{formatDays(recap.goalDaysHit)}</Fact>
@@ -53,7 +65,11 @@ export function RecapCard({ recap, onClose, titleId }: { recap: WeeklyRecap; onC
               <ul className={styles.topSubjects} aria-labelledby={topId}>
                 {recap.topSubjects.map((t) => (
                   <li key={t.subjectId ?? 'none'}>
-                    <span className={styles.dot} style={{ background: subjectColour(t.subjectId, subjects) }} aria-hidden="true" />
+                    <span
+                      className={styles.dot}
+                      style={{ background: subjectColour(t.subjectId, subjects) }}
+                      aria-hidden="true"
+                    />
                     <span>{t.name}</span>
                     <span>{formatHm(t.ms)}</span>
                   </li>
@@ -107,7 +123,14 @@ export function RecapPopup({ recap, onClose }: { recap: WeeklyRecap; onClose: ()
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div ref={dialog} className={styles.popup} role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}>
+      <div
+        ref={dialog}
+        className={styles.popup}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onKeyDown={onKeyDown}
+      >
         <RecapCard recap={recap} onClose={onClose} titleId={titleId} />
       </div>
     </div>

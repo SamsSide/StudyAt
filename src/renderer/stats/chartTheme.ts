@@ -3,7 +3,8 @@
 import { NO_SUBJECT_COLOUR, NO_SUBJECT_KEY, NO_SUBJECT_NAME } from '../../core/stats/totals';
 import type { Subject } from '../../shared/types';
 
-export const AXIS_TICK = { fill: '#a9afbd', fontSize: 12 } as const;
+/** --text-faint: AA on the glass sheet. */
+export const AXIS_TICK = { fill: '#b8bdca', fontSize: 12 } as const;
 export const GRID_STROKE = 'rgba(255, 255, 255, 0.08)';
 export const CURSOR_FILL = 'rgba(255, 255, 255, 0.05)';
 export const ACCENT = '#7c9cff';
@@ -12,7 +13,9 @@ export const CHART_HEIGHT = 200;
 export const INITIAL_SIZE = { width: 480, height: CHART_HEIGHT } as const;
 
 export function prefersReducedMotion(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 export interface SubjectLook {
@@ -27,7 +30,8 @@ export interface SubjectLook {
  * knows but the store doesn't yet falls back to the untagged grey rather than disappearing.
  */
 export function subjectLook(key: string, subjects: Subject[]): SubjectLook {
-  if (key === NO_SUBJECT_KEY) return { key, name: NO_SUBJECT_NAME, colour: NO_SUBJECT_COLOUR, sort: Infinity };
+  if (key === NO_SUBJECT_KEY)
+    return { key, name: NO_SUBJECT_NAME, colour: NO_SUBJECT_COLOUR, sort: Infinity };
   const subject = subjects.find((s) => String(s.id) === key);
   return subject
     ? { key, name: subject.name, colour: subject.colour, sort: subject.sort }

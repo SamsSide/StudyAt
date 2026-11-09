@@ -40,10 +40,16 @@ export function StatsOverlay() {
       <section className={styles.full} aria-label="Totals" aria-busy={overview.status === 'loading'}>
         {overview.status === 'loading' && <Skeleton kind="tiles" />}
         {overview.status === 'ready' && <Tiles overview={overview.data} />}
-        {overview.status === 'error' && <LoadError message="Couldn’t load your totals." onRetry={overview.reload} />}
+        {overview.status === 'error' && (
+          <LoadError message="Couldn’t load your totals." onRetry={overview.reload} />
+        )}
       </section>
 
-      <section className={`${styles.section} ${styles.full}`} aria-labelledby={calendarId} aria-busy={heatmap.status === 'loading'}>
+      <section
+        className={`${styles.section} ${styles.full}`}
+        aria-labelledby={calendarId}
+        aria-busy={heatmap.status === 'loading'}
+      >
         <div className={styles.sectionHeader}>
           <h3 id={calendarId} className={styles.sectionTitle}>
             Study calendar
@@ -51,14 +57,20 @@ export function StatsOverlay() {
         </div>
         {heatmap.status === 'loading' && <Skeleton kind="calendar" />}
         {heatmap.status === 'ready' && <Heatmap cells={heatmap.data} />}
-        {heatmap.status === 'error' && <LoadError message="Couldn’t load the calendar." onRetry={heatmap.reload} />}
+        {heatmap.status === 'error' && (
+          <LoadError message="Couldn’t load the calendar." onRetry={heatmap.reload} />
+        )}
       </section>
 
       <WeekChart revision={revision} className={`${styles.section} ${styles.half}`} />
       <TrendChart revision={revision} className={`${styles.section} ${styles.half}`} />
 
       <SubjectBreakdown revision={revision} className={`${styles.section} ${styles.third}`} />
-      <SessionsTable revision={revision} onChanged={onChanged} className={`${styles.section} ${styles.twoThirds}`} />
+      <SessionsTable
+        revision={revision}
+        onChanged={onChanged}
+        className={`${styles.section} ${styles.twoThirds}`}
+      />
 
       <RecapList revision={revision} className={`${styles.section} ${styles.full}`} />
     </div>

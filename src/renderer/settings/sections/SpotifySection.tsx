@@ -9,6 +9,7 @@ import type { SectionProps } from './types';
 
 export const REDIRECT_URI = 'http://127.0.0.1:43821/callback';
 export const PORT_IN_USE_COPY = 'Port 43821 is in use — close the other app and retry';
+const NEEDS_CLIENT_ID_COPY = 'Paste your Client ID to connect.';
 
 export function SpotifySection({ settings, update }: SectionProps) {
   const id = useId();
@@ -71,6 +72,8 @@ export function SpotifySection({ settings, update }: SectionProps) {
   };
 
   const connected = status?.connected ?? false;
+  const needsClientId = !connected && clientId.trim() === '';
+  const helpId = `${id}-help`;
 
   return (
     <section aria-labelledby="settings-spotify">
@@ -108,13 +111,19 @@ export function SpotifySection({ settings, update }: SectionProps) {
           <button
             type="button"
             className={`${styles.button} ${styles.primary}`}
-            disabled={busy || clientId.trim() === ''}
+            disabled={busy || needsClientId}
+            aria-describedby={needsClientId ? helpId : undefined}
             onClick={() => void connect()}
           >
             Connect
           </button>
         )}
       </Row>
+      {needsClientId && (
+        <p id={helpId} className={styles.note}>
+          {NEEDS_CLIENT_ID_COPY}
+        </p>
+      )}
       {error && (
         <p role="alert" className={styles.error}>
           {error}

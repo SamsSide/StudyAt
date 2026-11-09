@@ -12,7 +12,8 @@ const loadRecaps = (): Promise<WeeklyRecap[]> => window.studyat.recaps.list();
 export function RecapList({ revision, className }: { revision: number; className?: string }) {
   const titleId = useId();
   const query = useStatsQuery(loadRecaps, undefined, revision);
-  const recaps = query.status === 'ready' ? [...query.data].sort((a, b) => b.weekStart.localeCompare(a.weekStart)) : null;
+  const recaps =
+    query.status === 'ready' ? [...query.data].sort((a, b) => b.weekStart.localeCompare(a.weekStart)) : null;
 
   return (
     <section className={className} aria-labelledby={titleId} aria-busy={query.status === 'loading'}>
@@ -23,7 +24,9 @@ export function RecapList({ revision, className }: { revision: number; className
       </div>
       {query.status === 'loading' && <Skeleton kind="list" />}
       {query.status === 'error' && <LoadError message="Couldn’t load your recaps." onRetry={query.reload} />}
-      {recaps && recaps.length === 0 && <p className={styles.empty}>Your first recap arrives after your first full week.</p>}
+      {recaps && recaps.length === 0 && (
+        <p className={styles.empty}>Your first recap arrives after your first full week.</p>
+      )}
       {recaps && recaps.length > 0 && (
         <ul className={styles.recaps}>
           {recaps.map((r) => (

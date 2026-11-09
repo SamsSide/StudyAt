@@ -136,7 +136,9 @@ export function Heatmap({ cells }: { cells: HeatmapCell[] }) {
       </div>
       <div className={styles.heatmapFooter}>
         <span id={tipId} className={styles.tip} data-testid="heatmap-tip" aria-live="polite">
-          {current ? `${cellLabel(current)}${current.goalHit ? ' · goal hit' : ''}` : 'Hover over a day, or focus the calendar and use the arrow keys.'}
+          {current
+            ? `${cellLabel(current)}${current.goalHit ? ' · goal hit' : ''}`
+            : 'Hover over a day, or focus the calendar and use the arrow keys.'}
         </span>
         <span className={styles.legend}>
           Less

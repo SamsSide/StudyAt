@@ -27,13 +27,31 @@ const loadSessions = (): Promise<Session[]> => window.studyat.stats.sessions();
 
 function TrashIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />
     </svg>
   );
 }
 
-export function SessionsTable({ revision, onChanged, className }: { revision: number; onChanged: () => void; className?: string }) {
+export function SessionsTable({
+  revision,
+  onChanged,
+  className,
+}: {
+  revision: number;
+  onChanged: () => void;
+  className?: string;
+}) {
   const titleId = useId();
   const subjects = useStudyStore((s) => s.subjects);
   const query = useStatsQuery(loadSessions, undefined, revision);
@@ -59,12 +77,17 @@ export function SessionsTable({ revision, onChanged, className }: { revision: nu
     setSeen(data);
     if (data) {
       const byId = new Map(data.map((s) => [s.id, s]));
-      setEdits((m) => new Map([...m].filter(([id, e]) => !e.saved && byId.get(id)?.subjectId !== e.subjectId)));
+      setEdits(
+        (m) => new Map([...m].filter(([id, e]) => !e.saved && byId.get(id)?.subjectId !== e.subjectId)),
+      );
       setGone((g) => new Set([...g].filter((id) => byId.has(id))));
     }
   }
 
-  const sessions = query.status === 'ready' ? query.data.filter((s) => !gone.has(s.id)).sort((a, b) => b.startedAt - a.startedAt) : null;
+  const sessions =
+    query.status === 'ready'
+      ? query.data.filter((s) => !gone.has(s.id)).sort((a, b) => b.startedAt - a.startedAt)
+      : null;
   const live = subjects.filter((s) => !s.archived).sort((a, b) => a.sort - b.sort);
 
   const subjectOf = (s: Session): number | null => {
@@ -135,16 +158,22 @@ export function SessionsTable({ revision, onChanged, className }: { revision: nu
         <h3 id={titleId} className={styles.sectionTitle}>
           Sessions
         </h3>
-        {sessions && sessions.length > 0 && <p className={styles.muted}>Change a subject, or delete a session.</p>}
+        {sessions && sessions.length > 0 && (
+          <p className={styles.muted}>Change a subject, or delete a session.</p>
+        )}
       </div>
       {query.status === 'loading' && <Skeleton kind="table" />}
-      {query.status === 'error' && <LoadError message="Couldn’t load your sessions." onRetry={query.reload} />}
+      {query.status === 'error' && (
+        <LoadError message="Couldn’t load your sessions." onRetry={query.reload} />
+      )}
       {error && (
         <p className={styles.muted} role="alert">
           {error}
         </p>
       )}
-      {sessions && sessions.length === 0 && <p className={styles.empty}>No sessions yet. Start a Pomodoro and they’ll appear here.</p>}
+      {sessions && sessions.length === 0 && (
+        <p className={styles.empty}>No sessions yet. Start a Pomodoro and they’ll appear here.</p>
+      )}
       {sessions && sessions.length > 0 && (
         <div className={styles.tableWrap} ref={wrap} tabIndex={-1}>
           <table className={styles.table}>
@@ -179,7 +208,9 @@ export function SessionsTable({ revision, onChanged, className }: { revision: nu
                         aria-label="Subject"
                         value={subjectId ?? ''}
                         disabled={running}
-                        onChange={(e) => void changeSubject(s, e.target.value === '' ? null : Number(e.target.value))}
+                        onChange={(e) =>
+                          void changeSubject(s, e.target.value === '' ? null : Number(e.target.value))
+                        }
                       >
                         <option value="">{NO_SUBJECT_NAME}</option>
                         {live.map((x) => (
@@ -187,8 +218,12 @@ export function SessionsTable({ revision, onChanged, className }: { revision: nu
                             {x.name}
                           </option>
                         ))}
-                        {subjectId !== null && known?.archived && <option value={known.id}>{known.name}</option>}
-                        {subjectId !== null && !known && <option value={subjectId}>{UNKNOWN_SUBJECT_NAME}</option>}
+                        {subjectId !== null && known?.archived && (
+                          <option value={known.id}>{known.name}</option>
+                        )}
+                        {subjectId !== null && !known && (
+                          <option value={subjectId}>{UNKNOWN_SUBJECT_NAME}</option>
+                        )}
                       </select>
                     </td>
                     <td className={styles.numeric}>
@@ -212,7 +247,12 @@ export function SessionsTable({ revision, onChanged, className }: { revision: nu
                   confirming === s.id && (
                     <tr key={`${s.id}-confirm`}>
                       <td colSpan={5}>
-                        <div className={styles.confirm} role="group" aria-label="Confirm delete" onKeyDown={(e) => onConfirmKey(e, s.id)}>
+                        <div
+                          className={styles.confirm}
+                          role="group"
+                          aria-label="Confirm delete"
+                          onKeyDown={(e) => onConfirmKey(e, s.id)}
+                        >
                           <p>{`Delete this session? This removes ${formatHm(s.focusMs)} from your stats.`}</p>
                           <button type="button" className={styles.danger} onClick={() => void remove(s)}>
                             Delete
@@ -236,7 +276,11 @@ export function SessionsTable({ revision, onChanged, className }: { revision: nu
         </div>
       )}
       {sessions && sessions.length > shown && (
-        <button type="button" className={`${styles.secondary} ${styles.more}`} onClick={() => setShown((n) => n + PAGE)}>
+        <button
+          type="button"
+          className={`${styles.secondary} ${styles.more}`}
+          onClick={() => setShown((n) => n + PAGE)}
+        >
           Show more
         </button>
       )}

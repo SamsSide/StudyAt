@@ -378,6 +378,94 @@ describe('SettingsOverlay', () => {
     }
   });
 
+  it('the volume slider never jumps back while a newer value is waiting to save', async () => {
+    vi.useFakeTimers();
+    try {
+      let answerFirst: (s: PublicSettings) => void = () => undefined;
+      const set = vi.fn((patch: { chimeVolume?: number }) =>
+        patch.chimeVolume === 0.3
+          ? new Promise<PublicSettings>((resolve) => {
+              answerFirst = resolve;
+            })
+          : Promise.resolve({ ...publicDefaults(), ...patch }),
+      );
+      setup(mockApi({ settings: { set } }));
+      fireEvent.click(screen.getByRole('tab', { name: 'Chimes' }));
+      const slider = screen.getByLabelText('Volume');
+      fireEvent.change(slider, { target: { value: '0.3' } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(set).toHaveBeenCalledWith({ chimeVolume: 0.3 });
+      fireEvent.change(slider, { target: { value: '0.6' } });
+      await act(async () => {
+        answerFirst({ ...publicDefaults(), chimeVolume: 0.3 });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(slider).toHaveValue('0.6');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+      expect(set).toHaveBeenLastCalledWith({ chimeVolume: 0.6 });
+      expect(slider).toHaveValue('0.6');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaving the chimes section mid-drag still saves where the slider stopped', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = setup();
+      fireEvent.click(screen.getByRole('tab', { name: 'Chimes' }));
+      fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '0.4' } });
+      fireEvent.click(screen.getByRole('tab', { name: 'Timer' }));
+      expect(api.settings.set).toHaveBeenCalledTimes(1);
+      expect(api.settings.set).toHaveBeenCalledWith({ chimeVolume: 0.4 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('data: a daily backup shows its date only; other backups keep their time', async () => {
+    const api = mockApi({
+      data: {
+        listBackups: vi.fn(() =>
+          Promise.resolve([
+            {
+              name: 'daily-2026-11-07.sqlite',
+              size: 20480,
+              createdAt: new Date(2026, 10, 7, 0, 0).getTime(),
+            },
+            {
+              name: 'pre-migration-v2-2026-11-06.sqlite',
+              size: 20480,
+              createdAt: new Date(2026, 10, 6, 14, 30).getTime(),
+            },
+          ]),
+        ),
+      },
+    });
+    setup(api);
+    await openSection('Data');
+    const list = await screen.findByRole('list', { name: 'Backups' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('7 Nov 2026 · 20 KB');
+    expect(items[0]).not.toHaveTextContent(/\d{2}:\d{2}/);
+    expect(items[1]).toHaveTextContent('6 Nov 2026, 14:30 · 20 KB');
+  });
+
+  it('spotify: Connect waits for a Client ID and says so', async () => {
+    setup();
+    await openSection('Spotify');
+    const connect = screen.getByRole('button', { name: 'Connect' });
+    expect(connect).toBeDisabled();
+    expect(connect).toHaveAccessibleDescription('Paste your Client ID to connect.');
+    await userEvent.type(screen.getByLabelText('Client ID'), 'abc123');
+    expect(connect).toBeEnabled();
+    expect(screen.queryByText('Paste your Client ID to connect.')).not.toBeInTheDocument();
+  });
+
   it('a custom chime that is already a sound is offered in the list and the user is told', async () => {
     const existing = {
       id: 3,
@@ -399,7 +487,9 @@ describe('SettingsOverlay', () => {
     const select = screen.getByLabelText('Focus ends');
     await waitFor(() => expect(within(select).getByRole('option', { name: 'ding' })).toBeInTheDocument());
     await userEvent.selectOptions(select, 'custom');
-    expect(await screen.findByRole('alert')).toHaveTextContent('already in your sounds');
+    // Main can't say whether the dialog was cancelled, so this is a quiet note, not an alert.
+    expect(await screen.findByRole('status')).toHaveTextContent('already in your sounds');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(api.settings.set).not.toHaveBeenCalled();
     await userEvent.selectOptions(select, 'file:3');
     expect(api.settings.set).toHaveBeenCalledWith({ chimeFocusEnd: 'file:3' });

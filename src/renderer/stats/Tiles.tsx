@@ -38,7 +38,9 @@ export function Tiles({ overview }: { overview: StatsOverview }) {
       <Tile
         label="Day streak"
         value={String(overview.currentStreak)}
-        note={<span className={styles.tileNote}>{overview.currentStreak === 1 ? 'day' : 'days'} in a row</span>}
+        note={
+          <span className={styles.tileNote}>{overview.currentStreak === 1 ? 'day' : 'days'} in a row</span>
+        }
       />
       <Tile
         label="Longest streak"

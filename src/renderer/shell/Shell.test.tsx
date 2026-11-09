@@ -31,7 +31,9 @@ describe('Shell', () => {
     await renderShell();
     expect(screen.getByTestId('background')).toBeInTheDocument();
     const dock = screen.getByRole('navigation', { name: 'Dock' });
-    const labels = within(dock).getAllByRole('button').map((b) => b.textContent);
+    const labels = within(dock)
+      .getAllByRole('button')
+      .map((b) => b.textContent);
     expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Stats', 'Settings']);
     expect(screen.getByTestId('timer-widget')).toBeInTheDocument();
     expect(screen.queryByTestId('tasks-widget')).not.toBeInTheDocument();
@@ -83,6 +85,42 @@ describe('Shell', () => {
     await user.keyboard('s');
     expect(screen.getByRole('dialog', { name: 'Stats' })).toBeInTheDocument();
     expect(screen.getByTestId('stats-overlay')).toBeInTheDocument();
+  });
+
+  it('typing in a contenteditable leaves the shortcuts alone', async () => {
+    const user = userEvent.setup();
+    const api = await renderShell();
+    const note = document.createElement('div');
+    note.setAttribute('contenteditable', 'true');
+    note.tabIndex = 0;
+    document.body.appendChild(note);
+    note.focus();
+    await user.keyboard('sr ');
+    expect(useStudyStore.getState().overlay).toBeNull();
+    expect(api.timer.reset).not.toHaveBeenCalled();
+    expect(api.timer.start).not.toHaveBeenCalled();
+    note.remove();
+  });
+
+  it('behind an open overlay the timer and panel keys do nothing; Esc, ? and S still work', async () => {
+    const user = userEvent.setup();
+    const api = await renderShell();
+    act(() => useStudyStore.getState().setOverlay('settings'));
+    await user.keyboard(' rn123kgtmf');
+    expect(api.timer.start).not.toHaveBeenCalled();
+    expect(api.timer.reset).not.toHaveBeenCalled();
+    expect(api.timer.skip).not.toHaveBeenCalled();
+    expect(api.timer.setMode).not.toHaveBeenCalled();
+    expect(api.app.showMini).not.toHaveBeenCalled();
+    expect(api.app.toggleFullscreen).not.toHaveBeenCalled();
+    expect(api.settings.set).not.toHaveBeenCalled();
+    expect(useStudyStore.getState().openPanel).toBeNull();
+    await user.keyboard('s');
+    expect(useStudyStore.getState().overlay).toBe('stats');
+    await user.keyboard('?');
+    expect(useStudyStore.getState().overlay).toBe('help');
+    await user.keyboard('{Escape}');
+    expect(useStudyStore.getState().overlay).toBeNull();
   });
 
   it('Space calls timer.start when idle and pause when running', async () => {
@@ -138,7 +176,9 @@ describe('Shell', () => {
     await renderShell();
     await user.keyboard('?');
     const help = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
-    const keys = within(help).getAllByRole('term').map((k) => k.textContent);
+    const keys = within(help)
+      .getAllByRole('term')
+      .map((k) => k.textContent);
     expect(keys).toEqual(['Space', 'R', 'N', '1 / 2 / 3', 'S', 'T', 'K', 'G', 'M', 'F', 'Esc', '?']);
     expect(SHORTCUTS).toHaveLength(12);
   });

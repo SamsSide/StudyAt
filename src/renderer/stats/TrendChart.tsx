@@ -4,7 +4,14 @@ import { useId } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { TrendPoint } from '../../shared/types';
 import { formatHm } from '../shell/format';
-import { ACCENT, AXIS_TICK, CHART_HEIGHT, GRID_STROKE, INITIAL_SIZE, prefersReducedMotion } from './chartTheme';
+import {
+  ACCENT,
+  AXIS_TICK,
+  CHART_HEIGHT,
+  GRID_STROKE,
+  INITIAL_SIZE,
+  prefersReducedMotion,
+} from './chartTheme';
 import { formatDayMonth, formatWeekRange, toHours } from './format';
 import { LoadError } from './LoadError';
 import { Skeleton } from './Skeleton';
@@ -23,7 +30,11 @@ export function TrendChart({ revision, className }: { revision: number; classNam
   const titleId = useId();
   const query = useStatsQuery(loadTrend, undefined, revision);
   const points = query.status === 'ready' ? query.data : null;
-  const rows: Row[] = (points ?? []).map((point) => ({ label: formatDayMonth(point.weekStart), hours: toHours(point.ms), point }));
+  const rows: Row[] = (points ?? []).map((point) => ({
+    label: formatDayMonth(point.weekStart),
+    hours: toHours(point.ms),
+    point,
+  }));
   const summary = `Last 12 weeks, week by week: ${rows.map((r) => `${r.label} ${formatHm(r.point.ms)}`).join(', ')}`;
 
   return (
@@ -46,8 +57,21 @@ export function TrendChart({ revision, className }: { revision: number; classNam
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke={GRID_STROKE} />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} tick={AXIS_TICK} interval="preserveStartEnd" minTickGap={16} />
-              <YAxis tickLine={false} axisLine={false} tick={AXIS_TICK} allowDecimals={false} tickFormatter={(h: number) => `${h}h`} />
+              <XAxis
+                dataKey="label"
+                tickLine={false}
+                axisLine={false}
+                tick={AXIS_TICK}
+                interval="preserveStartEnd"
+                minTickGap={16}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tick={AXIS_TICK}
+                allowDecimals={false}
+                tickFormatter={(h: number) => `${h}h`}
+              />
               <Tooltip
                 isAnimationActive={false}
                 cursor={{ stroke: GRID_STROKE }}

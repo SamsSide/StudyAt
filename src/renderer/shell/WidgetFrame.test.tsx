@@ -60,8 +60,26 @@ describe('WidgetFrame', () => {
     fireEvent.pointerUp(window, { clientX: 2500, clientY: -900, pointerId: 1 });
     expect(frame().style.left).toBe('800px');
     expect(frame().style.top).toBe('0px');
-    expect(api.settings.set).toHaveBeenCalledWith({ widgets: { tasks: { open: true, x: 0.9, y: 0, autoHide: false } } });
+    expect(api.settings.set).toHaveBeenCalledWith({
+      widgets: { tasks: { open: true, x: 0.9, y: 0, autoHide: false } },
+    });
     await waitFor(() => expect(useStudyStore.getState().settings?.widgets.tasks.x).toBe(0.9));
+  });
+
+  it('a click on the handle without a move saves nothing', () => {
+    const api = mockApi();
+    installMockApi(api);
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <p>body</p>
+      </WidgetFrame>,
+    );
+    const handle = screen.getByRole('button', { name: 'Move Tasks' });
+    fireEvent.pointerDown(handle, { clientX: 500, clientY: 420, button: 0, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 500, clientY: 420, pointerId: 1 });
+    expect(api.settings.set).not.toHaveBeenCalled();
+    expect(frame().style.left).toBe('400px');
   });
 
   it('re-clamps on resize without persisting', () => {
@@ -112,6 +130,8 @@ describe('WidgetFrame', () => {
       </WidgetFrame>,
     );
     await user.click(screen.getByRole('button', { name: 'Close Tasks' }));
-    expect(api.settings.set).toHaveBeenCalledWith({ widgets: { tasks: { open: false, x: 0.5, y: 0.5, autoHide: false } } });
+    expect(api.settings.set).toHaveBeenCalledWith({
+      widgets: { tasks: { open: false, x: 0.5, y: 0.5, autoHide: false } },
+    });
   });
 });
