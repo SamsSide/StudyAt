@@ -4,7 +4,11 @@ import { resolve } from 'node:path';
 
 export default defineConfig({
   main: {
-    build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } } },
+    build: {
+      // ical.js ships ESM only; bundling it keeps the CommonJS main from having to require() ESM.
+      externalizeDeps: { exclude: ['ical.js'] },
+      rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } },
+    },
   },
   preload: {
     build: { rollupOptions: { input: { index: resolve(__dirname, 'src/preload/index.ts') } } },
