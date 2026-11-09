@@ -55,7 +55,8 @@ No native modules anywhere (study-dev rule 6). npm scripts: `dev`, `build`, `typ
   HTTP server in main bound to `127.0.0.1` on a random free port, serving the built renderer
   only (path traversal rejected). This gives YouTube embeds a real `http` origin (appplan §6.2).
   A Content-Security-Policy allows self, `https://www.youtube.com`, `https://i.ytimg.com`,
-  `https://i.scdn.co`, `studyat-media:`, `data:`, `blob:`.
+  `https://i.scdn.co`, `https://*.spotifycdn.com`, `https://mosaic.scdn.co` (Spotify album and
+  playlist art, ruling R40), `studyat-media:`, `data:`, `blob:`.
 - **Media protocol `studyat-media://<kind>/<id>`** (privileged, `stream: true`): resolves a
   space, sound or chime id to a file path **registered in the database** and streams it with
   **HTTP Range support** (video seeking). Unknown ids → 404. No other file access.
@@ -90,8 +91,9 @@ test so Sam's real data is never touched).
   then run each pending `up` in a transaction.
 - **Backups:** on the first launch of each calendar day, copy to
   `backups/daily-YYYY-MM-DD.sqlite`; keep the newest **14** daily files.
-- **Corrupt file:** if the DB fails to open, rename it to `studyat.corrupt-<timestamp>.sqlite`,
-  show a dialog offering "Restore latest backup" (default) or "Start fresh", never delete it.
+- **Corrupt file:** if the DB fails to open, copy it aside as `studyat.corrupt-<timestamp>.sqlite`
+  (the fresh database replaces it once saved; the choice is asked again until made), show a
+  dialog offering "Restore latest backup" (default) or "Start fresh", never delete it.
 
 ### 3.4 Timer and accounting (appplan §4.4, §5)
 
