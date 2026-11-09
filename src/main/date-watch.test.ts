@@ -85,6 +85,21 @@ describe('watchDateChange', () => {
     expect(backup).toHaveBeenCalledTimes(2);
   });
 
+  it('logs a backup that throws synchronously, never throws, and retries at the next check', async () => {
+    backup.mockImplementation(() => {
+      throw new Error('EPERM');
+    });
+    stop = watchDateChange(deps({ lastBackupDay: null }));
+    for (let i = 0; i < 6; i++) {
+      expect(() => clock.advance(HOUR)).not.toThrow(); // 23:30 … 04:30, every check fails
+      await flush();
+    }
+    expect(backup).toHaveBeenCalledTimes(6);
+    expect(log).toHaveBeenCalledTimes(6);
+    expect(log).toHaveBeenCalledWith('StudyAt: daily backup failed', expect.any(Error));
+    expect(recaps).toHaveBeenCalledTimes(1); // the 04:30 study-day change still ran
+  });
+
   it('logs a failing recap computation and keeps checking', async () => {
     recaps.mockImplementation(() => {
       throw new Error('boom');

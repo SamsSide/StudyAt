@@ -120,29 +120,34 @@ export class TimerController {
 
   /**
    * Spec §3.4 rule 7: closes every `running` row at its last checkpoint, then rule 6 applies. A row
-   * named by an away marker left by a crash loses the focus it accrued after the away period began,
-   * which becomes discarded time, running or already closed (R39: an unanswered period is discarded).
+   * named by an away marker left by a crash loses its away time, which becomes discarded time,
+   * running or already closed (R39: an unanswered period is discarded). An unnoticed period takes
+   * the focus accrued after it began; a period whose prompt was pending takes the prompt's fixed
+   * charge, so focus earned after Sam came back is kept.
    */
   recoverOrphans(): void {
     if (this.disposed) return;
     const marker = this.markerOpen ? null : readAwayMarker(this.deps.db);
-    const atSince = new Map(marker?.rows.map((r) => [r.rowId, r.focusMsAtSince]));
+    // Per marked row: how much of its focus the away period took.
+    const taken = new Map<number, (focusMs: number) => number>();
+    if (marker && 'charges' in marker)
+      for (const { rowId, ms } of marker.charges) taken.set(rowId, (f) => Math.min(ms, f));
+    else if (marker)
+      for (const { rowId, focusMsAtSince: cap } of marker.rows) taken.set(rowId, (f) => Math.max(0, f - cap));
     const capped = (focusMs: number, discardedMs: number, id: number): [number, number] => {
-      const cap = atSince.get(id);
-      return cap === undefined || focusMs <= cap
-        ? [focusMs, discardedMs]
-        : [cap, discardedMs + focusMs - cap];
+      const take = Math.max(0, taken.get(id)?.(focusMs) ?? 0);
+      return [focusMs - take, discardedMs + take];
     };
     for (const row of this.sessions.listRunning()) {
       if (row.id === this.open?.id) continue;
       const [focusMs, discardedMs] = capped(row.focusMs, row.discardedMs, row.id);
       this.sessions.close(row.id, row.checkpointAt, focusMs, discardedMs);
       this.sessions.deleteIfShort(row.id);
-      atSince.delete(row.id);
+      taken.delete(row.id);
       this.dirty = true;
     }
     // Rows that closed during the away period (a segment end or a subject split) before the crash.
-    for (const id of atSince.keys()) {
+    for (const id of taken.keys()) {
       const row = this.sessions.get(id);
       if (!row || row.status !== 'done') continue;
       const [focusMs, discardedMs] = capped(row.focusMs, row.discardedMs, id);
@@ -534,9 +539,16 @@ export class TimerController {
       this.settle(now);
     } else if (result.kind === 'back') {
       this.tick(now);
-      this.raiseAway(result.since, now);
-      // Nothing ran while away, so there is no prompt and nothing left to discard on a crash.
-      if (!this.pending) this.clearMarker();
+      const pending = this.raiseAway(result.since, now);
+      if (pending) {
+        // From here a crash discards exactly the prompt's charges and keeps what Sam earns after
+        // coming back; the row reaches the disk with the marker so the two agree.
+        this.checkpoint(now);
+        this.writeChargeMarker(result.since, pending.charges);
+      } else {
+        // Nothing ran while away, so there is no prompt and nothing left to discard on a crash.
+        this.clearMarker();
+      }
       this.settle(now, true);
     } else {
       this.syncTimers();
@@ -556,6 +568,13 @@ export class TimerController {
     this.dirty = true;
   }
 
+  /** The pending prompt's fixed per-row charges replace the unnoticed period's caps (R39). */
+  private writeChargeMarker(since: number, charges: Pending['charges']): void {
+    writeAwayMarker(this.deps.db, { since, charges: charges.map(({ rowId, ms }) => ({ rowId, ms })) });
+    this.markerOpen = true;
+    this.dirty = true;
+  }
+
   private clearMarker(): void {
     if (!this.markerOpen) return;
     clearAwayMarker(this.deps.db);
@@ -569,12 +588,13 @@ export class TimerController {
    * between segments meanwhile. The prompt's "{n} min" shows this figure (Sam's ruling A2,
    * 2026-11-08), not the wall-clock absence.
    */
-  private raiseAway(since: number, now: number): void {
+  private raiseAway(since: number, now: number): Pending | null {
     const charges = this.ledger.covered(since, now);
     const awayMs = charges.reduce((sum, c) => sum + c.ms, 0);
-    if (awayMs <= 0) return; // no focus time ran while away: nothing to keep or discard
+    if (awayMs <= 0) return null; // no focus time ran while away: nothing to keep or discard
     this.pending = { prompt: { awayMs, deadline: now + AWAY_AUTO_DISCARD_MS }, charges };
     this.deps.emit.away(this.pending.prompt);
+    return this.pending;
   }
 
   private onAwayCheck(): void {

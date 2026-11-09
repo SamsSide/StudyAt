@@ -327,13 +327,19 @@ async function boot(): Promise<void> {
   });
   // Every window first saves what it still holds (note text), within FLUSH_LIMIT_MS of QUIT_LIMIT_MS.
   const renderers = createRendererFlush({ targets: () => broadcaster.live(), ...quitTimers });
+  // Set once the date watch starts (below); stopped first on quit, so no backup or recap check
+  // starts against a database that is closing.
+  let stopDateWatch: (() => void) | null = null;
   const quitting = installQuit(
     app,
     () =>
-      runShutdown([() => main?.flush(), () => mini?.flush(), () => hotkey.dispose()], async () => {
-        await renderers.flush().catch((err: unknown) => console.error('StudyAt: window flush failed', err));
-        await stopTimerAndDb();
-      }),
+      runShutdown(
+        [() => stopDateWatch?.(), () => main?.flush(), () => mini?.flush(), () => hotkey.dispose()],
+        async () => {
+          await renderers.flush().catch((err: unknown) => console.error('StudyAt: window flush failed', err));
+          await stopTimerAndDb();
+        },
+      ),
     async () => {
       tray?.destroy();
       await rendererServer?.close();
@@ -386,7 +392,7 @@ async function boot(): Promise<void> {
   wirePower(powerMonitor, timer);
   // The app lives in the tray for days: the daily backup and a finished week's recap follow the
   // date, not the launch (study-dev rule 2, spec §3.5).
-  watchDateChange({
+  stopDateWatch = watchDateChange({
     now: Date.now,
     setInterval,
     clearInterval,

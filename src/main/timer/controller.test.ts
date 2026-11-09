@@ -688,12 +688,51 @@ describe('TimerController', () => {
     expect(marker()).toBeNull();
   });
 
-  it('a crash with the away prompt unanswered recovers the row without the away time', () => {
+  it('a crash with the away prompt unanswered keeps the focus earned after return', () => {
     awayTwelveMinutes();
-    at(12 * MIN + 30_000);
+    const away = 11 * MIN + 5_000;
+    at(14 * MIN); // two more minutes of focus after Sam came back
     const cp = rows()[0]!;
+    expect(cp.focusMs).toBeGreaterThan(away + MIN);
     crashAndRelaunch();
-    expect(rows()[0]).toMatchObject({ status: 'done', focusMs: MIN, discardedMs: cp.focusMs - MIN });
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        status: 'done',
+        endedAt: cp.checkpointAt,
+        focusMs: cp.focusMs - away,
+        discardedMs: away,
+      }),
+    ]);
+    expect(marker()).toBeNull();
+  });
+
+  it('once the prompt is raised, the marker holds its fixed charges and the row is checkpointed', () => {
+    awayTwelveMinutes();
+    expect(JSON.parse(String(marker()?.value))).toEqual({
+      since: NOW + MIN,
+      charges: [{ rowId: rows()[0]!.id, ms: 11 * MIN + 5_000 }],
+    });
+    expect(rows()[0]).toMatchObject({ checkpointAt: NOW + 12 * MIN + 5_000, focusMs: 12 * MIN + 5_000 });
+  });
+
+  it('a crash with the prompt unanswered after the segment ended charges the closed row', () => {
+    settingsRepo(db).set({ focusMinutes: 13 });
+    c.start();
+    lastInput = NOW + MIN;
+    at(12 * MIN + 2_000);
+    lastInput = clock.time;
+    at(12 * MIN + 5_000); // prompt: 11:05 at stake, auto-discard at 14:05
+    at(13 * MIN + 30_000); // the focus row closed at 13:00, the prompt still open
+    expect(aways.at(-1)).not.toBeNull();
+    crashAndRelaunch();
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        status: 'done',
+        endedAt: NOW + 13 * MIN,
+        focusMs: 13 * MIN - (11 * MIN + 5_000),
+        discardedMs: 11 * MIN + 5_000,
+      }),
+    ]);
   });
 
   it('a crash while away after the segment ended takes the away time out of the closed row', () => {

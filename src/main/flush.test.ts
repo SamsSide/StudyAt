@@ -87,4 +87,19 @@ describe('createRendererFlush', () => {
     f.ack({ id: 1 });
     await p;
   });
+  it('a second flush while one is in flight returns the same promise and sends nothing again', async () => {
+    const timers = fakeTimers();
+    const a = target(1);
+    const f = createRendererFlush({ targets: () => [a], ...timers });
+    const first = f.flush();
+    const second = f.flush();
+    expect(second).toBe(first);
+    expect(a.send).toHaveBeenCalledTimes(1);
+    expect(timers.setTimeout).toHaveBeenCalledTimes(1);
+    f.ack({ id: 1 });
+    await expect(second).resolves.toBeUndefined();
+    // Once settled, a later flush asks again.
+    void f.flush();
+    expect(a.send).toHaveBeenCalledTimes(2);
+  });
 });

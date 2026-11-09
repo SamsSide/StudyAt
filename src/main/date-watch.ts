@@ -39,9 +39,9 @@ export function watchDateChange(deps: DateWatchDeps): () => void {
     const day = localDateKey(now);
     if (day !== backedUp && !running) {
       running = true;
-      // Recorded only once it succeeds, so a failure is retried at the next check.
-      deps
-        .backup(now)
+      // Recorded only once it succeeds, so a failure is retried at the next check. A backup that
+      // throws before returning its promise is caught too, so `running` never sticks.
+      new Promise<void>((resolve) => resolve(deps.backup(now)))
         .then(() => {
           backedUp = day;
         })

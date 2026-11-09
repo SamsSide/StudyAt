@@ -20,10 +20,13 @@ export interface RendererFlushDeps {
 
 export function createRendererFlush(deps: RendererFlushDeps) {
   let waiting: { ids: Set<number>; done: () => void } | null = null;
+  /** The flush in flight; a second call (a repeated quit) joins it instead of replacing `waiting`. */
+  let inFlight: Promise<void> | null = null;
 
   return {
     /** Sends `app:flush` to every live window; resolves when all have acked or the limit passes. */
     flush(): Promise<void> {
+      if (inFlight) return inFlight;
       const ids = new Set<number>();
       for (const t of deps.targets()) {
         if (t.isDestroyed()) continue;
@@ -35,7 +38,7 @@ export function createRendererFlush(deps: RendererFlushDeps) {
         }
       }
       if (ids.size === 0) return Promise.resolve();
-      return new Promise<void>((resolve) => {
+      inFlight = new Promise<void>((resolve) => {
         const limit = deps.setTimeout(() => {
           console.error(`StudyAt: a window did not save within ${FLUSH_LIMIT_MS} ms; quitting anyway`);
           finish();
@@ -43,10 +46,12 @@ export function createRendererFlush(deps: RendererFlushDeps) {
         const finish = (): void => {
           deps.clearTimeout(limit);
           waiting = null;
+          inFlight = null;
           resolve();
         };
         waiting = { ids, done: finish };
       });
+      return inFlight;
     },
 
     /** `app:flushed` from `sender`; ignored outside a flush or from a window not asked. */
