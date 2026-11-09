@@ -13,7 +13,10 @@ import { YT_SCRIPT, type YTPlayerOptions } from './youtube';
 const mount = async (spaces: Space[], activeId: number | null = spaces[0]?.id ?? null) => {
   const { spotifyTokens: _t, ...pub } = structuredClone(DEFAULT_SETTINGS);
   const api = mockApi({
-    spaces: { list: vi.fn(() => Promise.resolve(spaces)), update: vi.fn(() => Promise.resolve(useSpacesStore.getState().spaces)) },
+    spaces: {
+      list: vi.fn(() => Promise.resolve(spaces)),
+      update: vi.fn(() => Promise.resolve(useSpacesStore.getState().spaces)),
+    },
     settings: { get: vi.fn(() => Promise.resolve({ ...pub, activeSpaceId: activeId })) },
   });
   installMockApi(api);
@@ -25,6 +28,9 @@ const mount = async (spaces: Space[], activeId: number | null = spaces[0]?.id ??
 beforeEach(() => {
   resetSpacesStore();
   useWindowVisibility.setState({ visible: true });
+  // jsdom has no media playback: stub it so no test logs "not implemented" noise.
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(() => Promise.resolve());
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
 });
 afterEach(() => {
   delete window.YT;
@@ -57,7 +63,14 @@ describe('SpaceBackground', () => {
 
   it('the relocate notice sits above the blurred media and the dim, even with a thumbnail', async () => {
     const thumb = 'data:image/jpeg;base64,AAA';
-    await mount([makeSpace({ id: 1, missing: true, thumb, opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6 } })]);
+    await mount([
+      makeSpace({
+        id: 1,
+        missing: true,
+        thumb,
+        opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6 },
+      }),
+    ]);
     const button = screen.getByRole('button', { name: 'File moved — Relocate…' });
     const layer = screen.getByTestId('space-layer');
     const dim = screen.getByTestId('space-dim');
@@ -90,7 +103,17 @@ describe('SpaceBackground', () => {
   describe('YouTube', () => {
     const yt = (space: Space) => {
       let opts: YTPlayerOptions | undefined;
-      const player = { playVideo: vi.fn(), pauseVideo: vi.fn(), mute: vi.fn(), unMute: vi.fn(), setVolume: vi.fn(), setPlaybackRate: vi.fn(), destroy: vi.fn() };
+      const player = {
+        playVideo: vi.fn(),
+        pauseVideo: vi.fn(),
+        mute: vi.fn(),
+        unMute: vi.fn(),
+        setVolume: vi.fn(),
+        setPlaybackRate: vi.fn(),
+        destroy: vi.fn(),
+        unloadModule: vi.fn(),
+        setOption: vi.fn(),
+      };
       class FakePlayer {
         constructor(_el: HTMLElement, o: YTPlayerOptions) {
           opts = o;
@@ -117,6 +140,47 @@ describe('SpaceBackground', () => {
         modestbranding: 1,
         origin: window.location.origin,
       });
+    });
+
+    it('asks for no captions, no annotations, no keyboard and no fullscreen button', async () => {
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      expect(h.opts()?.playerVars).toMatchObject({
+        cc_load_policy: 0,
+        iv_load_policy: 3,
+        disablekb: 1,
+        fs: 0,
+      });
+    });
+
+    it('turns captions off once the player is ready, even when the video forces them', async () => {
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onReady?.());
+      expect(h.player.unloadModule).toHaveBeenCalledWith('captions');
+      expect(h.player.setOption).toHaveBeenCalledWith('captions', 'track', {});
+    });
+
+    it('coming back online retries a video that could not play', async () => {
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onError?.({ data: 5 }));
+      expect(await screen.findByText("This video can't be played.")).toBeInTheDocument();
+      act(() => void window.dispatchEvent(new Event('online')));
+      expect(screen.queryByText("This video can't be played.")).not.toBeInTheDocument();
+      expect(screen.getByTestId('space-youtube')).toBeInTheDocument();
+    });
+
+    it('coming back online keeps an embed block', async () => {
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onError?.({ data: 150 }));
+      act(() => void window.dispatchEvent(new Event('online')));
+      expect(screen.getByText("This video can't be embedded.")).toBeInTheDocument();
     });
 
     it.each([2, 5, 100])('error %i shows the thumbnail and "This video can\'t be played."', async (code) => {
@@ -170,7 +234,11 @@ describe('SpaceBackground', () => {
 
   describe('reduced motion', () => {
     it('stays on the still until play is pressed', async () => {
-      vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q.includes('reduce'),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
       await mount([makeSpace({ id: 1, thumb: 'data:image/jpeg;base64,AAA' })]);
       expect(screen.queryByTestId('space-video')).not.toBeInTheDocument();
       act(() => screen.getByRole('button', { name: 'Play background' }).click());
@@ -178,7 +246,11 @@ describe('SpaceBackground', () => {
     });
 
     it('the footer toggles back to the still', async () => {
-      vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce'), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q.includes('reduce'),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
       await mount([makeSpace({ id: 1, thumb: 'data:image/jpeg;base64,AAA' })]);
       act(() => screen.getByRole('button', { name: 'Play background' }).click());
       expect(await screen.findByTestId('space-video')).toBeInTheDocument();
@@ -186,5 +258,31 @@ describe('SpaceBackground', () => {
       expect(screen.queryByTestId('space-video')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Play background' })).toBeInTheDocument();
     });
+
+    const reducedMotion = () =>
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q.includes('reduce'),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+    const tube = makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ', thumb: 'data:x' });
+
+    it('has no play button while a YouTube space is offline', async () => {
+      reducedMotion();
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      await mount([tube]);
+      expect(await screen.findByText('Offline')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Play background' })).not.toBeInTheDocument();
+    });
+
+    it.each(['embed', 'play'] as const)(
+      'has no play button while a YouTube space shows a %s error',
+      async (kind) => {
+        reducedMotion();
+        await mount([tube]);
+        act(() => useSpacesStore.getState().markEmbedError(3, kind));
+        expect(screen.queryByRole('button', { name: 'Play background' })).not.toBeInTheDocument();
+      },
+    );
   });
 });

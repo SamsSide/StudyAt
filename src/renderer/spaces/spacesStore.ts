@@ -23,6 +23,8 @@ export interface SpacesState {
   setActive(id: number): Promise<void>;
   update(id: number, patch: SpacePatch): Promise<void>;
   markEmbedError(id: number, kind?: VideoError): void;
+  /** Forgets every `play` mark (the connection is back); embed blocks stay. */
+  clearPlayErrors(): void;
 }
 
 // The newest update per space. A reply to an older one is dropped, so a slider dragged quickly
@@ -35,7 +37,10 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   loaded: false,
   embedErrors: {},
   async load() {
-    const [spaces, settings] = await Promise.all([window.studyat.spaces.list(), window.studyat.settings.get()]);
+    const [spaces, settings] = await Promise.all([
+      window.studyat.spaces.list(),
+      window.studyat.settings.get(),
+    ]);
     set({ spaces, activeId: settings.activeSpaceId, loaded: true });
   },
   apply(spaces) {
@@ -66,7 +71,9 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
     updateSeq.set(id, seq);
     // Optimistic, so sliders and the background follow the pointer.
     set({
-      spaces: get().spaces.map((s) => (s.id === id ? { ...s, ...patch, opts: { ...s.opts, ...patch.opts } } : s)),
+      spaces: get().spaces.map((s) =>
+        s.id === id ? { ...s, ...patch, opts: { ...s.opts, ...patch.opts } } : s,
+      ),
     });
     try {
       const spaces = await window.studyat.spaces.update(id, patch);
@@ -78,6 +85,11 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   },
   markEmbedError(id, kind = 'embed') {
     set({ embedErrors: { ...get().embedErrors, [id]: kind } });
+  },
+  clearPlayErrors() {
+    const errors = get().embedErrors;
+    const kept = Object.fromEntries(Object.entries(errors).filter(([, kind]) => kind === 'embed'));
+    if (Object.keys(kept).length !== Object.keys(errors).length) set({ embedErrors: kept });
   },
 }));
 

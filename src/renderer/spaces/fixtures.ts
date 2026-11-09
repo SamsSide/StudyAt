@@ -16,6 +16,20 @@ export const makeSpace = (over: Partial<Space> & { id: number }): Space => ({
 
 export const sampleSpaces = (): Space[] => [
   makeSpace({ id: 1, kind: 'video', name: 'Rainy Window' }),
-  makeSpace({ id: 2, kind: 'image', name: 'Forest Path', source: 'images/forest-path.jpg', builtin: true, favourite: true }),
-  makeSpace({ id: 3, kind: 'youtube', name: 'Lofi Cafe', source: 'dQw4w9WgXcQ', builtin: true, thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' }),
+  makeSpace({
+    id: 2,
+    kind: 'image',
+    name: 'Forest Path',
+    source: 'images/forest-path.jpg',
+    builtin: true,
+    favourite: true,
+  }),
+  makeSpace({
+    id: 3,
+    kind: 'youtube',
+    name: 'Lofi Cafe',
+    source: 'dQw4w9WgXcQ',
+    builtin: true,
+    thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+  }),
 ];

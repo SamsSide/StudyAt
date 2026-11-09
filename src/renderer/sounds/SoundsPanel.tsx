@@ -1,8 +1,9 @@
 // The soundboard side panel (spec §3.9, appplan §4.3): master, the space's audio slider, one row per
 // channel with mute and slider, "Add sound…", and mixes (save current levels, click to apply, delete).
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import type { Mix, Sound } from '../../shared/types';
 import { audioEngine } from '../audio/engine';
+import { ipcErrorMessage } from '../lib/ipcError';
 import styles from './SoundsPanel.module.css';
 import { applyLevel, restoreSoundscape, soundKey } from './soundscape';
 
@@ -19,6 +20,34 @@ export interface SoundsPanelProps {
 /** Slider saves are batched so dragging does not hit the main process on every input event. */
 const SAVE_DEBOUNCE_MS = 300;
 
+/** A short failure line, plus main's reason when it gave one. */
+const withReason = (failure: string, err: unknown): string => {
+  const reason = ipcErrorMessage(err);
+  return reason ? `${failure} ${reason}` : failure;
+};
+
+/** How far along its track a 0–1 slider is, for the accent fill. */
+const fill = (v: number): CSSProperties => ({ '--fill': `${Math.round(v * 100)}%` }) as CSSProperties;
+
+/** Our own speaker glyph: waves while it plays, a cross while muted. */
+function SpeakerIcon({ muted }: { muted: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M2.5 6h2.2L8 3.2v9.6L4.7 10H2.5Z" fill="currentColor" />
+      <g fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+        {muted ? (
+          <path d="m10.5 6.3 3.4 3.4m0-3.4-3.4 3.4" />
+        ) : (
+          <>
+            <path d="M10.4 6.2a2.6 2.6 0 0 1 0 3.6" />
+            <path d="M12.3 4.5a5 5 0 0 1 0 7" />
+          </>
+        )}
+      </g>
+    </svg>
+  );
+}
+
 export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
   const [sounds, setSounds] = useState<Sound[]>([]);
   const [mixes, setMixes] = useState<Mix[]>([]);
@@ -33,6 +62,7 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
   }
   const [mixName, setMixName] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const levelsRef = useRef(levels);
   const masterRef = useRef(master);
@@ -77,6 +107,16 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     };
   }, [flush]);
 
+  /** Runs a call to main; a rejection becomes the inline error rather than an unhandled one. */
+  const attempt = async (call: () => Promise<void>, failure: string): Promise<void> => {
+    setError(null);
+    try {
+      await call();
+    } catch (e) {
+      setError(withReason(failure, e));
+    }
+  };
+
   const changeLevel = (sound: Sound, v: number) => {
     const next = { ...levelsRef.current, [soundKey(sound)]: v };
     levelsRef.current = next;
@@ -105,46 +145,32 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     }
   };
 
-  const addSounds = async () => {
-    setSounds(await window.studyat.sounds.addFiles());
-  };
+  const addSounds = () =>
+    attempt(async () => setSounds(await window.studyat.sounds.addFiles()), "Couldn't add that sound.");
 
-  const removeSound = async (sound: Sound) => {
-    applyLevel(sound, 0);
-    const next = { ...levelsRef.current };
-    delete next[soundKey(sound)];
-    levelsRef.current = next;
-    setLevels(next);
-    dirty.current.levels = true;
-    scheduleSave();
-    setSounds(await window.studyat.sounds.remove(sound.id));
-  };
+  const removeSound = (sound: Sound) =>
+    attempt(async () => {
+      applyLevel(sound, 0);
+      const next = { ...levelsRef.current };
+      delete next[soundKey(sound)];
+      levelsRef.current = next;
+      setLevels(next);
+      dirty.current.levels = true;
+      scheduleSave();
+      setSounds(await window.studyat.sounds.remove(sound.id));
+    }, "Couldn't remove that sound.");
 
-  // The API has no relocate for sounds (spaces do), so pick the replacement first: only once a new sound
-  // is registered does the old one go, taking its level to the new id. Cancelling the picker changes
-  // nothing. Saved mixes still name the old id; a `sounds.relocate` that keeps the id fixes that.
-  const relocate = async (sound: Sound) => {
-    const known = new Set(sounds.map((s) => s.id));
-    const list = await window.studyat.sounds.addFiles();
-    const added = list.find((s) => !known.has(s.id));
-    if (!added) {
+  // Main opens the picker and points the sound at the new file, keeping its id, so its saved level and
+  // every mix that names it stay right. A cancelled picker returns the list unchanged.
+  const relocate = (sound: Sound) =>
+    attempt(async () => {
+      const list = await window.studyat.sounds.relocate(sound.id);
       setSounds(list);
-      return;
-    }
-    const oldKey = soundKey(sound);
-    const level = levelsRef.current[oldKey] ?? 0;
-    const next = { ...levelsRef.current };
-    delete next[oldKey];
-    if (level > 0) {
-      next[soundKey(added)] = level;
-      applyLevel(added, level);
-    }
-    levelsRef.current = next;
-    setLevels(next);
-    dirty.current.levels = true;
-    scheduleSave();
-    setSounds(await window.studyat.sounds.remove(sound.id));
-  };
+      const found = list.find((s) => s.id === sound.id);
+      const level = levelsRef.current[soundKey(sound)] ?? 0;
+      // Found again: start it at the level it was saved with.
+      if (found && !found.missing && level > 0) applyLevel(found, level);
+    }, "Couldn't relocate that sound.");
 
   const saveMix = async (e: FormEvent) => {
     e.preventDefault();
@@ -152,8 +178,10 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     if (!name) return;
     const current: Record<string, number> = {};
     for (const [k, v] of Object.entries(levelsRef.current)) if (v > 0) current[k] = v;
-    setMixes(await window.studyat.mixes.save(name, current));
-    setMixName('');
+    await attempt(async () => {
+      setMixes(await window.studyat.mixes.save(name, current));
+      setMixName('');
+    }, "Couldn't save that mix.");
   };
 
   const applyMix = (mix: Mix) => {
@@ -169,63 +197,68 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
     scheduleSave();
   };
 
-  const deleteMix = async (mix: Mix) => {
-    setMixes(await window.studyat.mixes.remove(mix.id));
-  };
+  const deleteMix = (mix: Mix) =>
+    attempt(async () => setMixes(await window.studyat.mixes.remove(mix.id)), "Couldn't delete that mix.");
 
   return (
     <div className={styles.panel} data-testid="sounds-panel">
-      <label className={styles.master}>
-        <span>Master volume</span>
-        <input
-          className={styles.slider}
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={master}
-          aria-label="Master volume"
-          disabled={!loaded} // a move before the saved levels arrive would be overwritten by them
-          onChange={(e) => changeMaster(Number(e.target.value))}
-        />
-      </label>
-
-      {spaceAudio && (
-        <label className={styles.master}>
-          <span>Space audio</span>
+      <div className={styles.group}>
+        <label className={styles.control}>
+          <span className={styles.label}>Master volume</span>
           <input
             className={styles.slider}
+            style={fill(master)}
             type="range"
             min={0}
             max={1}
             step={0.01}
-            value={space}
-            aria-label="Space audio"
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setSpace(v);
-              spaceAudio.set(v);
-            }}
+            value={master}
+            aria-label="Master volume"
+            disabled={!loaded} // a move before the saved levels arrive would be overwritten by them
+            onChange={(e) => changeMaster(Number(e.target.value))}
           />
         </label>
-      )}
 
-      <ul className={styles.list}>
+        {spaceAudio && (
+          <label className={styles.control}>
+            <span className={styles.label}>Space audio</span>
+            <input
+              className={styles.slider}
+              style={fill(space)}
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={space}
+              aria-label="Space audio"
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setSpace(v);
+                spaceAudio.set(v);
+              }}
+            />
+          </label>
+        )}
+      </div>
+
+      <ul className={`${styles.list} ${styles.group}`}>
         {sounds.map((s) => {
           const level = levels[soundKey(s)] ?? 0;
           return (
             <li key={s.id} className={`${styles.row} ${s.missing ? styles.missing : ''}`}>
               <button
                 type="button"
-                className={styles.button}
+                className={styles.mute}
                 aria-pressed={level === 0}
                 aria-label={`Mute ${s.name}`}
                 disabled={s.missing}
                 onClick={() => toggleMute(s)}
               >
-                {level === 0 ? 'Muted' : 'On'}
+                <SpeakerIcon muted={level === 0} />
               </button>
-              <span className={styles.name}>{s.name}</span>
+              <span className={styles.name} title={s.name}>
+                {s.name}
+              </span>
               <div className={styles.channelControl}>
                 {s.missing ? (
                   <button type="button" className={styles.button} onClick={() => void relocate(s)}>
@@ -234,6 +267,7 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
                 ) : (
                   <input
                     className={styles.slider}
+                    style={fill(level)}
                     type="range"
                     min={0}
                     max={1}
@@ -246,7 +280,7 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
                 {!s.builtin && (
                   <button
                     type="button"
-                    className={styles.button}
+                    className={`${styles.button} ${styles.quiet}`}
                     aria-label={`Remove ${s.name}`}
                     onClick={() => void removeSound(s)}
                   >
@@ -259,33 +293,38 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
         })}
       </ul>
 
-      <button type="button" className={styles.primary} onClick={() => void addSounds()}>
+      {error && (
+        <div role="alert" className={styles.error}>
+          {error}
+        </div>
+      )}
+
+      <button type="button" className={styles.button} disabled={!loaded} onClick={() => void addSounds()}>
         Add sound…
       </button>
 
       <h3 className={styles.heading}>Mixes</h3>
       {loaded && mixes.length === 0 && <p className={styles.empty}>No mixes yet.</p>}
-      <ul className={styles.list}>
-        {mixes.map((m) => (
-          <li key={m.id} className={styles.mix}>
-            <button
-              type="button"
-              className={`${styles.button} ${styles.mixName}`}
-              onClick={() => applyMix(m)}
-            >
-              {m.name}
-            </button>
-            <button
-              type="button"
-              className={styles.button}
-              aria-label={`Delete ${m.name}`}
-              onClick={() => void deleteMix(m)}
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-      </ul>
+      {mixes.length > 0 && (
+        <ul className={`${styles.list} ${styles.group}`}>
+          {mixes.map((m) => (
+            <li key={m.id} className={styles.mix}>
+              <button type="button" className={styles.mixName} onClick={() => applyMix(m)}>
+                {m.name}
+              </button>
+              <button
+                type="button"
+                className={`${styles.button} ${styles.quiet}`}
+                aria-label={`Delete ${m.name}`}
+                onClick={() => void deleteMix(m)}
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Disabled until the levels have loaded: a mix saved before then would be empty. */}
       <form className={styles.form} onSubmit={(e) => void saveMix(e)}>
         <input
           className={styles.input}
@@ -294,9 +333,10 @@ export function SoundsPanel({ spaceAudio }: SoundsPanelProps) {
           placeholder="Mix name"
           aria-label="Mix name"
           maxLength={60}
+          disabled={!loaded}
           onChange={(e) => setMixName(e.target.value)}
         />
-        <button type="submit" className={styles.primary} disabled={mixName.trim() === ''}>
+        <button type="submit" className={styles.primary} disabled={!loaded || mixName.trim() === ''}>
           Save mix
         </button>
       </form>

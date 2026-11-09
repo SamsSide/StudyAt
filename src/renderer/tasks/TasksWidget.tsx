@@ -1,14 +1,23 @@
 // The sticky-note Tasks widget body (spec §3.10, appplan §4.6): add with Enter, notes in six colours,
 // click text to edit, tick to move to a collapsible "Done (n)" list, reorder by drag handle or
 // Alt+ArrowUp/Down, "Clear done". The shell's WidgetFrame supplies the frosted container and title.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type PointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent,
+} from 'react';
 import type { Task, TaskColour } from '../../shared/types';
 import { ColourSwatches, TaskNote } from './TaskNote';
 import styles from './TasksWidget.module.css';
 import { clampTaskText, DEFAULT_TASK_COLOUR, MAX_TASK_LENGTH } from './taskColours';
 
 const openOf = (tasks: Task[]): Task[] => tasks.filter((t) => !t.done).sort((a, b) => a.sort - b.sort);
-const doneOf = (tasks: Task[]): Task[] => tasks.filter((t) => t.done).sort((a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0));
+const doneOf = (tasks: Task[]): Task[] =>
+  tasks.filter((t) => t.done).sort((a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0));
 
 /** Apply a new open-note order locally (optimistic) by rewriting each open note's sort. */
 const withOrder = (tasks: Task[], ids: number[]): Task[] =>
@@ -42,6 +51,10 @@ export function TasksWidget() {
     const target = refocus.current;
     if (!target) return;
     refocus.current = null;
+    // Only when focus was actually dropped: if Sam has moved on (clicked the add box while a slow
+    // save was in flight, say), leave focus where they put it.
+    const now = document.activeElement;
+    if (now && now !== document.body) return;
     target()?.focus();
   }, [tasks]);
 
@@ -83,6 +96,8 @@ export function TasksWidget() {
         refocus.current = null;
         try {
           setTasks(await window.studyat.tasks.list());
+          // The list is on screen now, so an earlier "Couldn't load" no longer holds.
+          setLoadFailed(false);
           setSaveError('refreshed');
         } catch {
           setSaveError('plain');
@@ -125,11 +140,14 @@ export function TasksWidget() {
     void run(window.studyat.tasks.update(task.id, { done: true }));
   };
 
-  /** Un-ticked notes return to the end of the open list. */
+  /** Un-ticked notes return to the end of the open list; focus follows the note there. */
   const untick = (task: Task) => {
+    refocus.current = focusControl(task.id, 'check');
     void run(
       window.studyat.tasks.update(task.id, { done: false }).then((list) => {
-        const ids = openOf(list).map((t) => t.id).filter((id) => id !== task.id);
+        const ids = openOf(list)
+          .map((t) => t.id)
+          .filter((id) => id !== task.id);
         return window.studyat.tasks.reorder([...ids, task.id]);
       }),
     );
@@ -163,7 +181,8 @@ export function TasksWidget() {
     onPointerEnd(e: PointerEvent<HTMLButtonElement>) {
       if (dragIdRef.current === null) return;
       dragIdRef.current = null;
-      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId))
+        e.currentTarget.releasePointerCapture(e.pointerId);
       setDragId(null);
       const ids = openOf(tasksRef.current).map((t) => t.id);
       if (ids.some((id, i) => id !== dragStartIds.current[i])) void run(window.studyat.tasks.reorder(ids));
@@ -203,7 +222,9 @@ export function TasksWidget() {
             </button>
           </div>
         )}
-        {!loadFailed && open.length === 0 && done.length === 0 && <p className={styles.empty}>No tasks yet.</p>}
+        {!loadFailed && open.length === 0 && done.length === 0 && (
+          <p className={styles.empty}>No tasks yet.</p>
+        )}
 
         {open.length > 0 && (
           <ul className={styles.list} ref={listRef} aria-label="Tasks">
@@ -236,7 +257,11 @@ export function TasksWidget() {
                 </span>
                 Done ({done.length})
               </button>
-              <button type="button" className={styles.clear} onClick={() => void run(window.studyat.tasks.clearDone())}>
+              <button
+                type="button"
+                className={styles.clear}
+                onClick={() => void run(window.studyat.tasks.clearDone())}
+              >
                 Clear done
               </button>
             </div>

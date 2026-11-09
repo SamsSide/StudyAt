@@ -21,6 +21,20 @@ export interface TaskNoteProps {
   onMove?(task: Task, delta: -1 | 1, control: string): void;
 }
 
+/** Our own six-dot grip (real-app finding F14: big enough to find and to grab). */
+function GripIcon() {
+  return (
+    <svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true" focusable="false">
+      {[3, 8, 13].map((y) => (
+        <g key={y} fill="currentColor">
+          <circle cx="2.5" cy={y} r="1.4" />
+          <circle cx="7.5" cy={y} r="1.4" />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export function ColourSwatches({
   label,
   value,
@@ -47,7 +61,15 @@ export function ColourSwatches({
   );
 }
 
-export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragHandlers, onMove }: TaskNoteProps) {
+export function TaskNote({
+  task,
+  dragging,
+  onToggle,
+  onEditText,
+  onColour,
+  dragHandlers,
+  onMove,
+}: TaskNoteProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.text);
   const [picking, setPicking] = useState(false);
@@ -110,7 +132,12 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
     }
   };
 
-  const classes = [styles.note, styles[task.colour], task.done ? styles.doneNote : '', dragging ? styles.dragging : '']
+  const classes = [
+    styles.note,
+    styles[task.colour],
+    task.done ? styles.doneNote : '',
+    dragging ? styles.dragging : '',
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -130,7 +157,7 @@ export function TaskNote({ task, dragging, onToggle, onEditText, onColour, dragH
             onPointerCancel={dragHandlers.onPointerEnd}
             onLostPointerCapture={dragHandlers.onPointerEnd}
           >
-            <span aria-hidden="true">⋮⋮</span>
+            <GripIcon />
           </button>
         )}
         <input

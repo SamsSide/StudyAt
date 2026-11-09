@@ -9,6 +9,9 @@ export interface YTPlayer {
   setVolume(v: number): void;
   setPlaybackRate(r: number): void;
   destroy(): void;
+  /** Not in every build of the player, so both are optional. Used to switch captions off. */
+  unloadModule?(module: string): void;
+  setOption?(module: string, option: string, value: unknown): void;
 }
 
 export interface YTPlayerOptions {
@@ -17,6 +20,7 @@ export interface YTPlayerOptions {
   events: {
     onReady?: () => void;
     onError?: (e: { data: number }) => void;
+    onStateChange?: (e: { data: number }) => void;
   };
 }
 
@@ -59,7 +63,9 @@ export function loadYouTubeApi(): Promise<YTNamespace> {
 
 /**
  * The §3.8 player parameters: muted, no controls, looping, inline, no related, minimal brand.
- * `origin` tells the player which page hosts it, so its postMessage traffic is accepted.
+ * A background never wants captions, annotations, the player's keyboard or its fullscreen button
+ * (real-app findings F6, F7). `origin` tells the player which page hosts it, so its postMessage
+ * traffic is accepted.
  */
 export const playerVars = (videoId: string) => ({
   origin: window.location.origin,
@@ -71,4 +77,21 @@ export const playerVars = (videoId: string) => ({
   playsinline: 1,
   rel: 0,
   modestbranding: 1,
+  cc_load_policy: 0,
+  iv_load_policy: 3,
+  disablekb: 1,
+  fs: 0,
 });
+
+/**
+ * Switches captions off. `cc_load_policy: 0` is only a hint: a video whose owner forces captions
+ * still loads them, so the captions module is unloaded once the player is ready.
+ */
+export function captionsOff(player: YTPlayer): void {
+  try {
+    player.unloadModule?.('captions');
+    player.setOption?.('captions', 'track', {});
+  } catch {
+    // A player without the captions module has nothing to switch off.
+  }
+}

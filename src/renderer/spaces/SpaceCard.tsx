@@ -1,6 +1,6 @@
 // One card in the Spaces grid (spec §3.8): thumb, name, heart, and the ⋯ menu. The panel keeps
 // at most one menu open; it closes on Escape, an outside click or focus leaving it.
-import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactElement } from 'react';
 import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
 import { mediaUrl, type VideoError } from './spacesStore';
@@ -19,17 +19,89 @@ export interface SpaceCardProps {
   onRelocate(): void;
 }
 
-const KIND_ICON: Record<Space['kind'], string> = { video: '🎞', image: '🖼', youtube: '▶' };
+// Our own line icons: 16-unit grid, stroke follows the text colour.
+const svg = { viewBox: '0 0 16 16', width: 16, height: 16, 'aria-hidden': true, focusable: false } as const;
+const line = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.4,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
 
-/** The card's picture: its thumb, an image space's own file, or a tinted tile for its kind. */
+function HeartIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg {...svg}>
+      <path
+        {...line}
+        fill={filled ? 'currentColor' : 'none'}
+        d="M8 13.2S2.5 9.9 2.5 6.1A2.9 2.9 0 0 1 8 4.6a2.9 2.9 0 0 1 5.5 1.5C13.5 9.9 8 13.2 8 13.2Z"
+      />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg {...svg}>
+      <circle cx="3.5" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+const KIND_ICON: Record<Space['kind'], ReactElement> = {
+  video: (
+    <svg {...svg} width={22} height={22}>
+      <rect {...line} x="2" y="3.5" width="12" height="9" rx="2" />
+      <path {...line} d="M6.8 6.2v3.6L9.8 8Z" />
+    </svg>
+  ),
+  image: (
+    <svg {...svg} width={22} height={22}>
+      <rect {...line} x="2" y="3" width="12" height="10" rx="2" />
+      <path {...line} d="m2.5 11 3.2-3.2 2.6 2.6 1.8-1.8 3.4 3.4" />
+      <circle cx="10.8" cy="6" r="1" fill="currentColor" />
+    </svg>
+  ),
+  youtube: (
+    <svg {...svg} width={22} height={22}>
+      <rect {...line} x="1.8" y="3.5" width="12.4" height="9" rx="3" />
+      <path d="M6.8 6.1v3.8L10 8Z" fill="currentColor" />
+    </svg>
+  ),
+};
+
+/**
+ * The card's picture: its thumb, then an image space's own file, then a tinted tile for its kind.
+ * Each source that fails to load hands over to the next.
+ */
 function CardThumb({ space }: { space: Space }) {
-  const src = space.thumb ?? (space.kind === 'image' && !space.missing ? mediaUrl(space.id) : null);
-  const [failed, setFailed] = useState<string | null>(null);
-  if (src && failed !== src) {
-    return <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} />;
+  const sources = [space.thumb, space.kind === 'image' && !space.missing ? mediaUrl(space.id) : null].filter(
+    (s): s is string => !!s,
+  );
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
+  const src = sources.find((s) => !failed.has(s));
+  if (src) {
+    return (
+      <img
+        key={src}
+        src={src}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed((prev) => new Set(prev).add(src))}
+      />
+    );
   }
   return (
-    <div data-testid="space-placeholder" data-kind={space.kind} className={styles.placeholder} aria-hidden="true">
+    <div
+      data-testid="space-placeholder"
+      data-kind={space.kind}
+      className={styles.placeholder}
+      aria-hidden="true"
+    >
       {KIND_ICON[space.kind]}
     </div>
   );
@@ -126,15 +198,45 @@ export function SpaceCard(p: SpaceCardProps) {
 
   return (
     <li aria-current={p.active ? 'true' : undefined} className={styles.card}>
-      <button type="button" aria-label={`Use ${space.name}`} onClick={p.onSelect} className={styles.thumbBtn}>
-        <div className={styles.thumb}>
-          <CardThumb space={space} />
-        </div>
-      </button>
+      {/* The heart and ⋯ float on the picture's corners as glass chips (real-app finding F12), so a
+          card is a picture and a name and three rows fit the panel at 1280×800. They sit beside
+          the select button, not inside it: a button can't hold buttons. */}
+      <div className={styles.cardMedia}>
+        <button
+          type="button"
+          aria-label={`Use ${space.name}`}
+          onClick={p.onSelect}
+          className={styles.thumbBtn}
+        >
+          <div className={styles.thumb}>
+            <CardThumb space={space} />
+          </div>
+        </button>
+        <button
+          type="button"
+          className={`${styles.chip} ${styles.chipFav}`}
+          aria-label={space.favourite ? `Unfavourite ${space.name}` : `Favourite ${space.name}`}
+          aria-pressed={space.favourite}
+          onClick={p.onFavourite}
+        >
+          <HeartIcon filled={space.favourite} />
+        </button>
+        <button
+          ref={trigger}
+          type="button"
+          className={`${styles.chip} ${styles.chipMenu}`}
+          aria-label={`Menu for ${space.name}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => onMenu(!menuOpen)}
+        >
+          <MoreIcon />
+        </button>
+      </div>
       {renaming ? (
         <input
           aria-label="Space name"
-          className={styles.input}
+          className={`${styles.input} ${styles.renameInput}`}
           autoFocus
           maxLength={120}
           value={name}
@@ -154,30 +256,15 @@ export function SpaceCard(p: SpaceCardProps) {
       )}
       {p.videoError === 'embed' && <div className={styles.note}>This video can't be embedded</div>}
       {p.videoError === 'play' && <div className={styles.note}>This video can't be played</div>}
-      <div className={styles.cardActions}>
-        <button
-          type="button"
-          className={styles.icon}
-          aria-label={space.favourite ? `Unfavourite ${space.name}` : `Favourite ${space.name}`}
-          aria-pressed={space.favourite}
-          onClick={p.onFavourite}
-        >
-          {space.favourite ? '♥' : '♡'}
-        </button>
-        <button
-          ref={trigger}
-          type="button"
-          className={styles.icon}
-          aria-label={`Menu for ${space.name}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => onMenu(!menuOpen)}
-        >
-          ⋯
-        </button>
-      </div>
       {menuOpen && (
-        <ul ref={menu} role="menu" aria-label={`${space.name} actions`} className={styles.menu} onKeyDown={onMenuKey} onBlur={onMenuBlur}>
+        <ul
+          ref={menu}
+          role="menu"
+          aria-label={`${space.name} actions`}
+          className={styles.menu}
+          onKeyDown={onMenuKey}
+          onBlur={onMenuBlur}
+        >
           {!space.builtin && (
             <li role="none">
               <button role="menuitem" type="button" tabIndex={-1} onClick={() => choose(startRename)}>

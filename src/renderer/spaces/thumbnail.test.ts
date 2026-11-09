@@ -43,7 +43,9 @@ describe('captureThumbnail', () => {
   it('seeks, draws a 320-px-wide frame and resolves a JPEG data URL', async () => {
     const drawImage = vi.fn();
     const toDataURL = vi.fn(() => 'data:image/jpeg;base64,ZZZ');
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage,
+    } as unknown as CanvasRenderingContext2D);
     vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(toDataURL);
     vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
     const video = catchVideo();

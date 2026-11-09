@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { parseYouTubeId } from '../../core/youtube';
 import type { Space } from '../../shared/types';
+import { ipcErrorMessage } from '../lib/ipcError';
 import { SpaceCard } from './SpaceCard';
 import { SpaceSettings } from './SpaceSettings';
 import styles from './spaces.module.css';
@@ -10,6 +11,12 @@ import { captureThumbnail } from './thumbnail';
 
 export const TABS = ['All', 'Videos', 'Images', 'YouTube', 'Favourites'] as const;
 type Tab = (typeof TABS)[number];
+
+/** A short failure line, plus main's reason when it gave one. */
+const withReason = (failure: string, err: unknown): string => {
+  const reason = ipcErrorMessage(err);
+  return reason ? `${failure} ${reason}` : failure;
+};
 
 const inTab = (s: Space, tab: Tab): boolean =>
   tab === 'All' ||
@@ -54,8 +61,8 @@ export function SpacesPanel() {
     setError(null);
     try {
       return await call();
-    } catch {
-      setError(message);
+    } catch (e) {
+      setError(withReason(message, e));
       await reload();
       return undefined;
     }
@@ -86,9 +93,9 @@ export function SpacesPanel() {
     try {
       apply(await api.addYouTube(url.trim()));
       setUrl('');
-    } catch {
+    } catch (e) {
       // The link stays in the box so Sam can retry.
-      setUrlError("Couldn't add that video. Try again.");
+      setUrlError(withReason("Couldn't add that video. Try again.", e));
       await reload();
     }
   };
@@ -100,7 +107,11 @@ export function SpacesPanel() {
     // Removing the space on screen would leave an empty background: fall back to a built-in one.
     if (useSpacesStore.getState().activeId === id) {
       const fallback = next.find((s) => s.builtin) ?? next[0];
-      if (fallback) await attempt(() => setActive(fallback.id), "Couldn't switch spaces. Try again.");
+      if (!fallback) return;
+      // Show the fallback straight away, so a failed save rolls back to it and never to the
+      // space that no longer exists.
+      useSpacesStore.setState({ activeId: fallback.id });
+      await attempt(() => setActive(fallback.id), "Couldn't switch spaces. Try again.");
     }
   };
 
@@ -116,7 +127,14 @@ export function SpacesPanel() {
     <div className={styles.panel}>
       <div role="tablist" aria-label="Space kinds" className={styles.tabs}>
         {TABS.map((t) => (
-          <button key={t} role="tab" type="button" className={styles.tab} aria-selected={t === tab} onClick={() => setTab(t)}>
+          <button
+            key={t}
+            role="tab"
+            type="button"
+            className={styles.tab}
+            aria-selected={t === tab}
+            onClick={() => setTab(t)}
+          >
             {t}
           </button>
         ))}

@@ -1,4 +1,5 @@
-/* Spaces: the background and the side panel (spec §3.8, §4 visual direction). Tokens from styles/tokens.css. */
+/* Spaces: the background and the side panel (spec §3.8; R27 visual direction: Liquid Glass, Mac-like
+   controls). Tokens from styles/tokens.css. */
 
 /* ---- Background: always covers the window ---- */
 .bg {
@@ -11,6 +12,7 @@
 .layer {
   position: absolute;
   inset: 0;
+  overflow: hidden;
 }
 
 .media {
@@ -21,14 +23,15 @@
   object-fit: cover;
 }
 
-/* A 16:9 frame scaled to cover, centred. */
+/* A 16:9 frame scaled to cover, centred, then enlarged a further 20 % so the player's own chrome
+   (title bar, logo, "More videos") falls outside the window and is cropped (real-app finding F7). */
 .youtube {
   position: absolute;
   top: 50%;
   left: 50%;
   width: max(100vw, 177.78vh);
   height: max(100vh, 56.25vw);
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(1.2);
   pointer-events: none;
 }
 
@@ -68,10 +71,10 @@
   margin: 0;
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-md);
-  background: var(--panel);
+  background: var(--glass-sheen), var(--panel);
   backdrop-filter: var(--blur);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   box-shadow: var(--shadow);
 }
 
@@ -85,32 +88,46 @@
 }
 
 .footer .btn {
-  background: var(--panel);
+  background: var(--glass-sheen), var(--panel);
   backdrop-filter: var(--blur);
+  box-shadow: var(--shadow);
 }
 
-/* ---- Buttons shared by panel and background ---- */
+/* ---- Buttons shared by panel and background: capsules ---- */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
   font: inherit;
   font-size: var(--text-md);
+  font-weight: 500;
   color: var(--text);
-  background: var(--hover);
+  background: var(--glass-fill-thin);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  padding: 0 var(--space-4);
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
 }
 
 .btn:hover {
-  background: var(--active);
+  background: var(--glass-fill-raised);
+}
+
+.btn:active {
+  transform: scale(0.97);
 }
 
 .btn:focus-visible,
 .tab:focus-visible,
 .thumbBtn:focus-visible,
 .input:focus-visible,
-.icon:focus-visible {
+.chip:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
@@ -123,7 +140,7 @@
 
 .primary:hover {
   background: var(--accent);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 /* ---- Panel ---- */
@@ -133,21 +150,24 @@
   color: var(--text);
 }
 
-/* A one-row segmented control: five equal segments fit the 360 px panel without wrapping. */
+/* A macOS segmented control: a glass track with a raised pill on the chosen segment. Five equal
+   segments fit the 360 px panel without wrapping. */
 .tabs {
   display: flex;
   gap: 2px;
-  padding: 2px;
-  background: var(--hover);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  padding: 3px;
+  background: var(--glass-fill-thin);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
 }
 
 .tab {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 26px;
   font: inherit;
   font-size: var(--text-sm);
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -155,12 +175,13 @@
   color: var(--text-muted);
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  padding: var(--space-1) 0;
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-1);
   cursor: pointer;
   transition:
     background var(--duration) var(--ease),
-    color var(--duration) var(--ease);
+    color var(--duration) var(--ease),
+    box-shadow var(--duration) var(--ease);
 }
 
 .tab:hover {
@@ -168,22 +189,39 @@
 }
 
 .tab[aria-selected='true'] {
-  color: var(--accent-text);
-  background: var(--accent);
+  color: var(--text);
+  background: var(--glass-fill-raised);
+  box-shadow: var(--shadow-sm);
 }
 
 .input {
+  min-height: var(--control-h);
   font: inherit;
   color: var(--text);
-  background: var(--hover);
-  border: 1px solid var(--border);
+  background: var(--glass-fill-thin);
+  border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
   min-width: 0;
+  transition:
+    background var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+.input:hover {
+  border-color: var(--border);
+}
+
+.input:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .input::placeholder {
   color: var(--text-faint);
+}
+
+.input[type='search']::-webkit-search-cancel-button {
+  filter: invert(1) opacity(0.6);
 }
 
 .row {
@@ -196,7 +234,7 @@
 }
 
 .error {
-  color: #ffb4a8;
+  color: var(--danger);
   font-size: var(--text-sm);
 }
 
@@ -210,38 +248,63 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-3) var(--space-3);
   margin: 0;
   padding: 0;
 }
 
-/* ---- Card ---- */
+/* ---- Card: a picture with its controls on its corners, and a name ---- */
 .card {
   list-style: none;
   position: relative;
   display: grid;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: 2px solid transparent;
-  border-radius: var(--radius);
+  gap: 6px;
+  align-content: start;
 }
 
-.card[aria-current='true'] {
-  border-color: var(--accent);
+.cardMedia {
+  position: relative;
 }
 
 .thumbBtn {
   all: unset;
   display: block;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
+  transition: transform var(--duration) var(--ease);
+}
+
+.thumbBtn:hover {
+  transform: translateY(-1px);
+}
+
+.thumbBtn:active {
+  transform: scale(0.98);
 }
 
 .thumb {
   aspect-ratio: 16 / 9;
-  background: var(--panel-strong);
-  border-radius: var(--radius-sm);
+  background: var(--glass-fill-thin);
+  border-radius: var(--radius);
   overflow: hidden;
+  /* A hairline edge so a dark picture still reads as a card on the glass. */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: box-shadow var(--duration) var(--ease);
+}
+
+.thumbBtn:hover .thumb {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 8px 20px rgba(0, 0, 0, 0.32);
+}
+
+/* The space on screen: an accent ring around its picture. */
+.card[aria-current='true'] .thumb {
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 6px 18px rgba(0, 0, 0, 0.3);
 }
 
 .thumb img {
@@ -257,64 +320,116 @@
   place-items: center;
   width: 100%;
   height: 100%;
-  font-size: 22px;
   color: var(--text-muted);
-  background: linear-gradient(135deg, rgba(124, 156, 255, 0.22), rgba(124, 156, 255, 0.06));
+  background: linear-gradient(135deg, rgba(124, 156, 255, 0.26), rgba(124, 156, 255, 0.06));
 }
 
 .placeholder[data-kind='image'] {
-  background: linear-gradient(135deg, rgba(124, 214, 170, 0.22), rgba(124, 214, 170, 0.06));
+  background: linear-gradient(135deg, rgba(124, 214, 170, 0.26), rgba(124, 214, 170, 0.06));
 }
 
 .placeholder[data-kind='youtube'] {
-  background: linear-gradient(135deg, rgba(255, 128, 128, 0.22), rgba(255, 128, 128, 0.06));
+  background: linear-gradient(135deg, rgba(255, 128, 128, 0.26), rgba(255, 128, 128, 0.06));
+}
+
+/* Glass chips on the picture's top corners. Dark enough that the white glyph clears AA on any
+   picture underneath. */
+.chip {
+  position: absolute;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #fff;
+  background: rgba(12, 14, 20, 0.62);
+  backdrop-filter: blur(14px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.chip:hover {
+  background: rgba(30, 33, 42, 0.78);
+}
+
+.chip:active {
+  transform: scale(0.92);
+}
+
+.chipFav {
+  left: 6px;
+}
+
+.chipFav[aria-pressed='true'] {
+  /* Light enough to keep 3:1 against the chip even over a white picture. */
+  color: #ffb3c1;
+}
+
+.chipMenu {
+  right: 6px;
+}
+
+.chipMenu[aria-expanded='true'] {
+  background: rgba(30, 33, 42, 0.86);
 }
 
 .name {
+  padding: 0 2px;
   font-size: var(--text-sm);
+  font-weight: 500;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.renameInput {
+  min-height: 26px;
+  font-size: var(--text-sm);
+}
+
+.card .btn {
+  min-height: 26px;
+  font-size: var(--text-sm);
+  padding: 0 var(--space-3);
+}
+
 .note {
+  padding: 0 2px;
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
-.cardActions {
-  display: flex;
-  justify-content: space-between;
-}
-
-.icon {
-  font: inherit;
-  color: var(--text);
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.icon:hover {
-  background: var(--hover);
-}
-
+/* The ⋯ menu: a glass popover under the chip. */
 .menu {
   position: absolute;
-  right: var(--space-1);
-  bottom: 32px;
-  z-index: 1;
+  top: 40px;
+  right: 0;
+  z-index: 2;
+  min-width: 140px;
   margin: 0;
-  padding: var(--space-1);
+  padding: 5px;
   list-style: none;
-  background: var(--panel-strong);
-  backdrop-filter: var(--blur);
+  background: var(--glass-sheen), var(--panel-strong);
+  backdrop-filter: var(--glass-filter-strong);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top right;
+  animation: pop var(--duration) var(--ease);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
 .menu li {
@@ -326,21 +441,24 @@
   display: block;
   box-sizing: border-box;
   width: 100%;
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-sm);
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   font-size: var(--text-md);
+  color: var(--text);
 }
 
 .menu button:hover,
 .menu button:focus-visible {
-  background: var(--active);
+  color: var(--accent-text);
+  background: var(--accent);
+  box-shadow: none;
 }
 
 /* ---- Settings ---- */
 .settings {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
   color: var(--text);
 }
 
@@ -351,11 +469,112 @@
 
 .field {
   display: grid;
-  gap: var(--space-1);
+  gap: var(--space-2);
   font-size: var(--text-sm);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
-.field input[type='range'] {
-  accent-color: var(--accent);
+/* The Audio switch: a label with the text and a macOS toggle. */
+.switchField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--text-md);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform var(--duration) var(--ease);
+}
+
+.switch:checked {
+  background: var(--accent);
+}
+
+.switch:checked::after {
+  transform: translateX(16px);
+}
+
+.switch:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* A macOS slider: a thin track filled with the accent up to the value (`--fill`, set inline), and
+   a round white thumb with a soft shadow. */
+.range {
+  --fill: 50%;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent) 0 var(--fill),
+    rgba(255, 255, 255, 0.2) var(--fill) 100%
+  );
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #fff, #e6e9f0);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.25),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.range:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+/* The ring goes on the thumb, as on macOS, not round the whole row. */
+.range:focus-visible {
+  box-shadow: none;
+}
+
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    var(--focus-ring),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.settings .btn {
+  justify-self: start;
 }

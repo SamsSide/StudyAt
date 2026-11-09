@@ -6,7 +6,10 @@ import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
 import { mediaUrl, useSpacesStore } from './spacesStore';
 import { useWindowVisibility } from './windowVisibility';
-import { EMBED_BLOCKED, loadYouTubeApi, playerVars, type YTPlayer } from './youtube';
+import { captionsOff, EMBED_BLOCKED, loadYouTubeApi, playerVars, type YTPlayer } from './youtube';
+
+/** YT.PlayerState.PLAYING. */
+const YT_PLAYING = 1;
 
 function useDocumentHidden(): boolean {
   const [hidden, setHidden] = useState(() => document.hidden);
@@ -22,7 +25,11 @@ function useDocumentHidden(): boolean {
 function useOnline(): boolean {
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
-    const on = () => setOnline(navigator.onLine);
+    const on = (e: Event) => {
+      // A video that failed while the connection was down deserves another go once it's back.
+      if (e.type === 'online') useSpacesStore.getState().clearPlayErrors();
+      setOnline(navigator.onLine);
+    };
     window.addEventListener('online', on);
     window.addEventListener('offline', on);
     return () => {
@@ -34,7 +41,8 @@ function useOnline(): boolean {
 }
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
-const readReduced = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia(REDUCED).matches;
+const readReduced = (): boolean =>
+  typeof window.matchMedia === 'function' && window.matchMedia(REDUCED).matches;
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(readReduced);
@@ -102,7 +110,13 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
           playerVars: playerVars(space.source),
           events: {
             onReady: () => {
-              if (!dead) setReady(true);
+              if (dead) return;
+              if (player.current) captionsOff(player.current);
+              setReady(true);
+            },
+            // The player can bring captions back when a looped video starts again.
+            onStateChange: (e) => {
+              if (!dead && e.data === YT_PLAYING && player.current) captionsOff(player.current);
             },
             // 101/150: the owner blocked embedding. Anything else (2 bad id, 5 HTML5 player,
             // 100 removed or private) still leaves a black frame, so it gets a message too.
@@ -180,6 +194,8 @@ export function SpaceBackground() {
   // both, so it stays sharp, readable and clickable whatever the space's settings.
   let media: ReactNode;
   let notice: ReactNode = null;
+  // Only a space that can actually move gets the reduced-motion play button.
+  let playable = space.kind !== 'image' && !space.missing;
   if (space.missing) {
     media = <Thumb space={space} />;
     notice = (
@@ -190,16 +206,20 @@ export function SpaceBackground() {
   } else if (space.kind === 'image') {
     media = <img src={mediaUrl(space.id)} alt="" data-testid="space-image" className={styles.media} />;
   } else if (space.kind === 'video') {
-    media = stillFirst && space.thumb ? <Thumb space={space} /> : <LocalVideo space={space} paused={paused} />;
+    media =
+      stillFirst && space.thumb ? <Thumb space={space} /> : <LocalVideo space={space} paused={paused} />;
   } else if (videoError === 'embed') {
     media = <Thumb space={space} />;
     notice = <p>This video can't be embedded.</p>;
+    playable = false;
   } else if (!online) {
     media = <Thumb space={space} />;
     notice = <p data-testid="space-offline">Offline</p>;
+    playable = false;
   } else if (videoError === 'play') {
     media = <Thumb space={space} />;
     notice = <p>This video can't be played.</p>;
+    playable = false;
   } else if (stillFirst) {
     media = <Thumb space={space} />;
   } else {
@@ -220,7 +240,7 @@ export function SpaceBackground() {
       </div>
       <div data-testid="space-dim" className={styles.dim} style={{ opacity: dim }} />
       {notice && <div className={styles.notice}>{notice}</div>}
-      {reduced && space.kind !== 'image' && !space.missing && (
+      {reduced && playable && (
         <div className={styles.footer}>
           <button type="button" className={styles.btn} onClick={() => setPlayId(userPlay ? null : space.id)}>
             {userPlay ? 'Pause background' : 'Play background'}

@@ -6,12 +6,19 @@ import { makeSpace, sampleSpaces } from './fixtures';
 import { resetSpacesStore, useSpacesStore } from './spacesStore';
 import { SpacesPanel } from './SpacesPanel';
 
-vi.mock('./thumbnail', () => ({ captureThumbnail: vi.fn(() => Promise.resolve('data:image/jpeg;base64,AAA')) }));
+vi.mock('./thumbnail', () => ({
+  captureThumbnail: vi.fn(() => Promise.resolve('data:image/jpeg;base64,AAA')),
+}));
 
 const setup = (spaces = sampleSpaces(), overrides: Parameters<typeof mockApi>[0] = {}): MockApi => {
   const api = mockApi({
     ...overrides,
-    spaces: { list: vi.fn(() => Promise.resolve(spaces)), setActive: vi.fn(() => Promise.resolve(spaces)), update: vi.fn(() => Promise.resolve(spaces)), ...overrides.spaces },
+    spaces: {
+      list: vi.fn(() => Promise.resolve(spaces)),
+      setActive: vi.fn(() => Promise.resolve(spaces)),
+      update: vi.fn(() => Promise.resolve(spaces)),
+      ...overrides.spaces,
+    },
   });
   installMockApi(api);
   render(<SpacesPanel />);
@@ -79,10 +86,14 @@ describe('SpacesPanel', () => {
 
   it('adding a video without a thumb captures one and saves it', async () => {
     const added = makeSpace({ id: 9, name: 'New clip' });
-    const api = setup(sampleSpaces(), { spaces: { addFiles: vi.fn(() => Promise.resolve([...sampleSpaces(), added])) } });
+    const api = setup(sampleSpaces(), {
+      spaces: { addFiles: vi.fn(() => Promise.resolve([...sampleSpaces(), added])) },
+    });
     await screen.findByText('Rainy Window');
     await userEvent.click(screen.getByRole('button', { name: 'Add files…' }));
-    await waitFor(() => expect(api.spaces.update).toHaveBeenCalledWith(9, { thumb: 'data:image/jpeg;base64,AAA' }));
+    await waitFor(() =>
+      expect(api.spaces.update).toHaveBeenCalledWith(9, { thumb: 'data:image/jpeg;base64,AAA' }),
+    );
   });
 
   it('the heart toggles the favourite and the menu opens settings that save opts', async () => {
@@ -114,13 +125,26 @@ describe('SpacesPanel', () => {
     });
 
     it('a video without a thumb, or a missing image, gets a placeholder tile for its kind', async () => {
-      setup([makeSpace({ id: 1, name: 'No thumb' }), makeSpace({ id: 2, kind: 'image', name: 'Gone image', missing: true })]);
+      setup([
+        makeSpace({ id: 1, name: 'No thumb' }),
+        makeSpace({ id: 2, kind: 'image', name: 'Gone image', missing: true }),
+      ]);
       const video = (await screen.findByText('No thumb')).closest('li') as HTMLElement;
       const image = screen.getByText('Gone image').closest('li') as HTMLElement;
       expect(video.querySelector('img')).toBeNull();
       expect(within(video).getByTestId('space-placeholder')).toHaveAttribute('data-kind', 'video');
       expect(image.querySelector('img')).toBeNull();
       expect(within(image).getByTestId('space-placeholder')).toHaveAttribute('data-kind', 'image');
+    });
+
+    it('an image card whose thumb fails shows the image itself, then the placeholder if that fails too', async () => {
+      setup([makeSpace({ id: 4, kind: 'image', name: 'Snow', thumb: 'data:image/jpeg;base64,BAD' })]);
+      const card = (await screen.findByText('Snow')).closest('li') as HTMLElement;
+      fireEvent.error(card.querySelector('img') as HTMLImageElement);
+      expect(card.querySelector('img')).toHaveAttribute('src', 'studyat-media://space/4');
+      fireEvent.error(card.querySelector('img') as HTMLImageElement);
+      expect(card.querySelector('img')).toBeNull();
+      expect(within(card).getByTestId('space-placeholder')).toHaveAttribute('data-kind', 'image');
     });
 
     it('a thumb that fails to load falls back to the placeholder', async () => {
@@ -170,7 +194,11 @@ describe('SpacesPanel', () => {
     it('rename starts from the current name, not a stale one', async () => {
       setup();
       await screen.findByText('Rainy Window');
-      act(() => useSpacesStore.getState().apply(sampleSpaces().map((s) => (s.id === 1 ? { ...s, name: 'Renamed elsewhere' } : s))));
+      act(() =>
+        useSpacesStore
+          .getState()
+          .apply(sampleSpaces().map((s) => (s.id === 1 ? { ...s, name: 'Renamed elsewhere' } : s))),
+      );
       await userEvent.click(screen.getByRole('button', { name: 'Menu for Renamed elsewhere' }));
       await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
       expect(screen.getByLabelText('Space name')).toHaveValue('Renamed elsewhere');
@@ -238,7 +266,10 @@ describe('SpacesPanel', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Menu for Rainy Window' }));
       await userEvent.click(screen.getByRole('button', { name: 'Menu for Forest Path' }));
       expect(screen.getAllByRole('menu')).toHaveLength(1);
-      expect(screen.getByRole('button', { name: 'Menu for Rainy Window' })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByRole('button', { name: 'Menu for Rainy Window' })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
     });
 
     it('a click outside closes it', async () => {
@@ -269,7 +300,9 @@ describe('SpacesPanel', () => {
   describe('failures', () => {
     it('a failed add YouTube shows an inline error and reloads the list', async () => {
       const list = vi.fn(() => Promise.resolve(sampleSpaces()));
-      const api = setup(sampleSpaces(), { spaces: { list, addYouTube: vi.fn(() => Promise.reject(new Error('db'))) } });
+      const api = setup(sampleSpaces(), {
+        spaces: { list, addYouTube: vi.fn(() => Promise.reject(new Error('db'))) },
+      });
       await screen.findByText('Rainy Window');
       await userEvent.type(screen.getByLabelText('YouTube link'), 'https://youtu.be/dQw4w9WgXcQ');
       await userEvent.click(screen.getByRole('button', { name: 'Add YouTube' }));
@@ -292,6 +325,46 @@ describe('SpacesPanel', () => {
       setup(sampleSpaces(), { spaces: { setActive: vi.fn(() => Promise.reject(new Error('db'))) } });
       await userEvent.click(await screen.findByRole('button', { name: 'Use Forest Path' }));
       expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't switch spaces. Try again.");
+    });
+
+    it('a failed switch after removing the active space stays on the fallback, not the removed space', async () => {
+      const rest = sampleSpaces().filter((s) => s.id !== 1);
+      setup(sampleSpaces(), {
+        spaces: {
+          remove: vi.fn(() => Promise.resolve(rest)),
+          setActive: vi.fn(() => Promise.reject(new Error('db'))),
+        },
+      });
+      await screen.findByText('Rainy Window');
+      act(() => useSpacesStore.setState({ activeId: 1 }));
+      await userEvent.click(screen.getByRole('button', { name: 'Menu for Rainy Window' }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't switch spaces. Try again.");
+      expect(useSpacesStore.getState().activeId).toBe(2);
+    });
+
+    it("shows main's reason without Electron's prefix", async () => {
+      const err = new Error(
+        "Error invoking remote method 'spaces:setActive': Error: That space no longer exists.",
+      );
+      setup(sampleSpaces(), { spaces: { setActive: vi.fn(() => Promise.reject(err)) } });
+      await userEvent.click(await screen.findByRole('button', { name: 'Use Forest Path' }));
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent("Couldn't switch spaces. Try again. That space no longer exists.");
+      expect(alert).not.toHaveTextContent('Error invoking');
+    });
+
+    it("a failed add YouTube shows main's reason too", async () => {
+      const err = new Error(
+        "Error invoking remote method 'spaces:addYouTube': Error: That video is already a space.",
+      );
+      setup(sampleSpaces(), { spaces: { addYouTube: vi.fn(() => Promise.reject(err)) } });
+      await screen.findByText('Rainy Window');
+      await userEvent.type(screen.getByLabelText('YouTube link'), 'https://youtu.be/dQw4w9WgXcQ');
+      await userEvent.click(screen.getByRole('button', { name: 'Add YouTube' }));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "Couldn't add that video. Try again. That video is already a space.",
+      );
     });
 
     it('a failed remove shows an inline error', async () => {

@@ -1,4 +1,5 @@
-/* The soundboard's contents; the frosted container and title come from the shell's SidePanel. */
+/* The soundboard's contents; the glass container and title come from the shell's SidePanel. Mac-like
+   (R27): grouped inset lists with hairline separators, thin accent sliders, a round speaker toggle. */
 .panel {
   display: flex;
   flex-direction: column;
@@ -10,82 +11,221 @@
 
 .heading {
   margin: var(--space-2) 0 0;
-  font-size: var(--text-sm);
+  padding: 0 var(--space-1);
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.list {
+/* An inset group: one rounded glass card, rows split by hairlines. */
+.group {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius);
+  background: var(--glass-fill-thin);
+  box-shadow: var(--glass-highlight);
+  overflow: hidden;
+}
+
+.group > * + * {
+  border-top: 1px solid var(--separator);
+}
+
+.list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.row {
+/* Master and space audio: a label over a full-width slider. */
+.control {
   display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
+  gap: 2px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--hover);
 }
 
-.master {
-  composes: row;
-  grid-template-columns: 1fr;
+.label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* A channel: speaker toggle, name, slider, all on one line. */
+.row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 7.5em) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  transition: background var(--duration) var(--ease);
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
-.missing {
+.missing .name {
   color: var(--text-muted);
 }
 
+/* A moved file: its relocate button gets a line of its own under the name. */
+.missing {
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding-bottom: var(--space-2);
+}
+
+.missing .channelControl {
+  grid-column: 2 / -1;
+  justify-content: flex-start;
+}
+
 .channelControl {
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
-}
-
-.slider {
-  flex: 1;
   min-width: 0;
-  accent-color: var(--accent);
-  height: 20px;
 }
 
-.slider:focus-visible {
+/* The speaker: a round toggle, accent when the channel plays. */
+.mute {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--accent-text);
+  background: var(--accent);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    color var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.mute[aria-pressed='true'] {
+  color: var(--text-muted);
+  background: var(--glass-fill-raised);
+}
+
+.mute:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.mute:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.mute:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mute:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-  border-radius: var(--radius-sm);
 }
 
+/* A macOS slider: a thin track filled with the accent up to the value (`--fill`, set inline), and a
+   round white thumb with a soft shadow. */
+.slider {
+  --fill: 0%;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    to right,
+    var(--accent) 0 var(--fill),
+    rgba(255, 255, 255, 0.2) var(--fill) 100%
+  );
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #fff, #e6e9f0);
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.25),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.slider:active::-webkit-slider-thumb {
+  transform: scale(1.1);
+}
+
+/* The ring goes on the thumb, as on macOS, not round the whole row. */
+.slider:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    var(--focus-ring),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.slider:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Capsule buttons: glass secondary, accent primary. */
 .button {
-  padding: var(--space-1) var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
+  padding: 0 var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--hover);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  box-shadow: var(--shadow-sm);
   color: var(--text);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    transform var(--duration-fast) var(--ease);
 }
 
 .button:hover:not(:disabled) {
-  background: var(--active);
+  background: var(--glass-fill-raised);
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .button:focus-visible {
@@ -94,41 +234,77 @@
 }
 
 .button:disabled {
-  color: var(--text-faint);
+  opacity: 0.5;
   cursor: default;
 }
 
-.button[aria-pressed='true'] {
+/* Small in-row actions (Remove, Delete, Relocate): lighter, so the sliders lead. */
+.row .button,
+.quiet {
+  min-height: 26px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.quiet {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
   color: var(--text-muted);
+}
+
+.quiet:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
 }
 
 .primary {
   composes: button;
   background: var(--accent);
-  border-color: var(--accent);
+  border-color: transparent;
   color: var(--accent-text);
   font-weight: 600;
 }
 
 .primary:hover:not(:disabled) {
   background: var(--accent);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .primary:disabled {
-  background: var(--hover);
+  opacity: 1;
+  background: var(--glass-fill-thin);
   border-color: var(--border);
   color: var(--text-faint);
 }
 
 .mix {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-2) 0 0;
 }
 
 .mixName {
+  all: unset;
   flex: 1;
-  text-align: left;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.mixName:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mixName:focus-visible {
+  /* Inside the group's rounded clip, so the ring is drawn inward. */
+  box-shadow: inset 0 0 0 2.5px rgba(140, 166, 255, 0.85);
 }
 
 .form {
@@ -139,12 +315,22 @@
 .input {
   flex: 1;
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
   border-radius: var(--radius-sm);
-  background: var(--panel-strong);
+  background: var(--glass-fill-thin);
   color: var(--text);
   font: inherit;
+  transition: border-color var(--duration) var(--ease);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--border);
+}
+
+.input:disabled {
+  opacity: 0.5;
 }
 
 .input::placeholder {
@@ -156,8 +342,14 @@
   box-shadow: var(--focus-ring);
 }
 
+.error {
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
 .empty {
   margin: 0;
+  padding: 0 var(--space-1);
   color: var(--text-muted);
   font-size: var(--text-sm);
 }

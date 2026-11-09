@@ -1,9 +1,9 @@
 // Spotify widget body (spec §3.10, appplan §4.6). Rendered inside the shell's WidgetFrame.
-import { useCallback, useRef, useState, type ReactNode } from "react";
-import type { Device, NowPlaying, Playlist } from "../../shared/types";
-import { useStudyStore } from "../shell/store";
-import styles from "./SpotifyWidget.module.css";
-import { usePolling } from "./usePolling";
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import type { Device, NowPlaying, Playlist } from '../../shared/types';
+import { useStudyStore } from '../shell/store';
+import styles from './SpotifyWidget.module.css';
+import { usePolling } from './usePolling';
 
 const POLL_MS = 3000;
 
@@ -23,7 +23,7 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
   const seq = useRef(0);
   const haveDevices = useRef(false);
   const havePlaylists = useRef(false);
-  const noDevice = state === "no-device";
+  const noDevice = state === 'no-device';
 
   const poll = useCallback(async () => {
     const mine = ++seq.current;
@@ -31,15 +31,12 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
     try {
       np = await window.studyat.spotify.nowPlaying();
     } catch {
-      np = { state: "offline" };
+      np = { state: 'offline' };
     }
     if (mine !== seq.current) return; // a newer poll has already answered
     setPlaying(np);
     const usable =
-      np.state === "idle" ||
-      np.state === "playing" ||
-      np.state === "paused" ||
-      np.state === "no-device";
+      np.state === 'idle' || np.state === 'playing' || np.state === 'paused' || np.state === 'no-device';
     if (!usable) return;
     // Playlists are retried on later polls until one load succeeds with something to show.
     if (!havePlaylists.current) {
@@ -53,7 +50,7 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
         .catch(() => undefined);
     }
     // Devices refresh on every poll while there is no device (Sam may just have opened Spotify).
-    if (np.state === "no-device" || !haveDevices.current) {
+    if (np.state === 'no-device' || !haveDevices.current) {
       window.studyat.spotify
         .devices()
         .then((d) => {
@@ -76,30 +73,26 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
     await poll();
   };
 
+  /** A transport button: does nothing while there is no device to play on. */
+  const transport = (call: () => Promise<unknown>) => (noDevice ? Promise.resolve() : control(call));
+
   const api = () => window.studyat.spotify;
-  const openSettings = () =>
-    (
-      onOpenSettings ?? (() => useStudyStore.getState().setOverlay("settings"))
-    )();
+  const openSettings = () => (onOpenSettings ?? (() => useStudyStore.getState().setOverlay('settings')))();
 
   if (playing === null) return <div className={styles.root} aria-busy="true" />;
 
-  if (state === "unconfigured") {
+  if (state === 'unconfigured') {
     return (
       <div className={`${styles.root} ${styles.state}`}>
         <StateIcon />
         <p className={styles.message}>Set up Spotify in Settings</p>
-        <button
-          type="button"
-          className={styles.textButton}
-          onClick={openSettings}
-        >
+        <button type="button" className={styles.textButton} onClick={openSettings}>
           Open settings
         </button>
       </div>
     );
   }
-  if (state === "disconnected") {
+  if (state === 'disconnected') {
     return (
       <div className={`${styles.root} ${styles.state}`}>
         <StateIcon />
@@ -113,7 +106,7 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
       </div>
     );
   }
-  if (state === "offline") {
+  if (state === 'offline') {
     return (
       <div className={`${styles.root} ${styles.state}`}>
         <StateIcon />
@@ -125,20 +118,15 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
   }
 
   const track = playing.track;
-  const pct =
-    track && track.durationMs > 0
-      ? Math.min(100, (track.progressMs / track.durationMs) * 100)
-      : 0;
-  const isPlaying = state === "playing";
+  const pct = track && track.durationMs > 0 ? Math.min(100, (track.progressMs / track.durationMs) * 100) : 0;
+  const isPlaying = state === 'playing';
 
   return (
     <div className={styles.root}>
       {noDevice ? (
         <div className={styles.noDevice}>
           <StateIcon />
-          <p className={styles.message}>
-            Open Spotify on any device, then press play
-          </p>
+          <p className={styles.message}>Open Spotify on any device, then press play</p>
           {devices.length > 0 && (
             <ul className={styles.deviceList} aria-label="Devices">
               {devices.map((d) => (
@@ -158,22 +146,14 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
       ) : (
         <div className={styles.track}>
           {track?.artUrl ? (
-            <img
-              className={styles.art}
-              src={track.artUrl}
-              alt="Album art"
-              width={56}
-              height={56}
-            />
+            <img className={styles.art} src={track.artUrl} alt="Album art" width={56} height={56} />
           ) : (
             <div className={styles.art} aria-hidden="true">
               <Glyph name="note" />
             </div>
           )}
           <div className={styles.meta}>
-            <div className={styles.title}>
-              {track?.title ?? "Nothing playing"}
-            </div>
+            <div className={styles.title}>{track?.title ?? 'Nothing playing'}</div>
             {track && <div className={styles.artist}>{track.artist}</div>}
           </div>
           {track && (
@@ -187,10 +167,7 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
                 aria-valuetext={`${clock(track.progressMs)} of ${clock(track.durationMs)}`}
                 className={styles.progress}
               >
-                <div
-                  className={styles.progressFill}
-                  style={{ width: `${pct}%` }}
-                />
+                <div className={styles.progressFill} style={{ width: `${pct}%` }} />
               </div>
               <div className={styles.times} aria-hidden="true">
                 <span>{clock(track.progressMs)}</span>
@@ -201,30 +178,33 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
         </div>
       )}
 
+      {/* With no device there is nothing to control: the transport stays in place, dimmed and
+          marked unavailable, so the layout doesn't jump when a device appears. */}
       <div className={styles.controls}>
         <button
           type="button"
           className={styles.iconButton}
           aria-label="Previous"
-          onClick={() => void control(() => api().previous())}
+          aria-disabled={noDevice || undefined}
+          onClick={() => void transport(() => api().previous())}
         >
           <Glyph name="previous" />
         </button>
         <button
           type="button"
           className={`${styles.iconButton} ${styles.primary}`}
-          aria-label={isPlaying ? "Pause" : "Play"}
-          onClick={() =>
-            void control(() => (isPlaying ? api().pause() : api().play()))
-          }
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          aria-disabled={noDevice || undefined}
+          onClick={() => void transport(() => (isPlaying ? api().pause() : api().play()))}
         >
-          <Glyph name={isPlaying ? "pause" : "play"} />
+          <Glyph name={isPlaying ? 'pause' : 'play'} />
         </button>
         <button
           type="button"
           className={styles.iconButton}
           aria-label="Next"
-          onClick={() => void control(() => api().next())}
+          aria-disabled={noDevice || undefined}
+          onClick={() => void transport(() => api().next())}
         >
           <Glyph name="next" />
         </button>
@@ -236,6 +216,7 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
           <select
             className={styles.select}
             value=""
+            disabled={noDevice}
             onChange={(e) => {
               const uri = e.target.value;
               if (uri) void control(() => api().playContext(uri));
@@ -257,15 +238,13 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
           <span className={styles.selectWrap}>
             <select
               className={styles.select}
-              value={devices.find((d) => d.active)?.id ?? ""}
+              value={devices.find((d) => d.active)?.id ?? ''}
               onChange={(e) => {
                 const id = e.target.value;
                 if (id) void control(() => api().transfer(id));
               }}
             >
-              {!devices.some((d) => d.active) && (
-                <option value="">Choose a device</option>
-              )}
+              {!devices.some((d) => d.active) && <option value="">Choose a device</option>}
               {devices.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -283,10 +262,10 @@ export function SpotifyWidget({ onOpenSettings }: SpotifyWidgetProps) {
 function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const s = total % 60;
-  return `${Math.floor(total / 60)}:${s < 10 ? "0" : ""}${s}`;
+  return `${Math.floor(total / 60)}:${s < 10 ? '0' : ''}${s}`;
 }
 
-type GlyphName = "previous" | "play" | "pause" | "next" | "note";
+type GlyphName = 'previous' | 'play' | 'pause' | 'next' | 'note';
 
 // Drawn in the shell's icon style (24-unit grid, 1.75 stroke); the transport shapes are filled.
 const GLYPHS: Record<GlyphName, ReactNode> = {
@@ -299,14 +278,7 @@ const GLYPHS: Record<GlyphName, ReactNode> = {
   play: <path d="M8.5 5.5v13L19 12z" fill="currentColor" />,
   pause: (
     <>
-      <rect
-        x="6.5"
-        y="5.5"
-        width="3.5"
-        height="13"
-        rx="1"
-        fill="currentColor"
-      />
+      <rect x="6.5" y="5.5" width="3.5" height="13" rx="1" fill="currentColor" />
       <rect x="14" y="5.5" width="3.5" height="13" rx="1" fill="currentColor" />
     </>
   ),

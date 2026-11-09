@@ -145,33 +145,82 @@ describe('SoundsPanel', () => {
   const goneSound = (): Sound =>
     sound(9, 'Lecture hum', { kind: 'file', builtin: false, source: 'C:\\x.mp3', missing: true });
 
-  it('relocating picks a file first, then carries the level over and removes the old sound', async () => {
+  it('relocating points the same sound at the new file: same id, same level, and it plays again', async () => {
     const gone = goneSound();
-    const fresh = sound(10, 'Lecture hum 2', { kind: 'file', builtin: false });
+    const found: Sound = { ...gone, source: 'D:\\x.mp3', missing: false };
     const api = setup({ sounds: [...SOUNDS, gone], settings: { soundLevels: { '9': 0.5 } } });
-    (api.sounds.addFiles as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, gone, fresh]);
-    (api.sounds.remove as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, fresh]);
+    (api.sounds.relocate as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, found]);
     const user = userEvent.setup();
     expect(screen.queryByLabelText('Lecture hum volume')).not.toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'File moved — Relocate…' }));
-    await waitFor(() => expect(api.sounds.remove).toHaveBeenCalledWith(9));
-    expect(api.sounds.addFiles).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText('Lecture hum 2 volume')).toHaveValue('0.5');
-    expect(setLevel).toHaveBeenCalledWith(fresh, 0.5, 'studyat-media://sound/10');
-    await waitFor(() =>
-      expect(api.settings.set).toHaveBeenCalledWith({ soundLevels: { '10': 0.5 } }),
-    );
+    expect(api.sounds.relocate).toHaveBeenCalledWith(9);
+    expect(await screen.findByLabelText('Lecture hum volume')).toHaveValue('0.5');
+    expect(setLevel).toHaveBeenLastCalledWith(found, 0.5, 'studyat-media://sound/9');
+    expect(api.sounds.addFiles).not.toHaveBeenCalled();
+    expect(api.sounds.remove).not.toHaveBeenCalled();
+    // The id didn't change, so the saved levels and every mix still name it: nothing to rewrite.
+    expect(api.settings.set).not.toHaveBeenCalled();
   });
 
-  it('a cancelled relocate picker keeps the sound registered', async () => {
+  it('a cancelled relocate leaves the list exactly as it was', async () => {
     const gone = goneSound();
-    const api = setup({ sounds: [...SOUNDS, gone] });
-    (api.sounds.addFiles as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, gone]);
+    const api = setup({ sounds: [...SOUNDS, gone], settings: { soundLevels: { '9': 0.5 } } });
+    (api.sounds.relocate as ReturnType<typeof vi.fn>).mockResolvedValue([...SOUNDS, gone]);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'File moved — Relocate…' }));
-    expect(api.sounds.addFiles).toHaveBeenCalledTimes(1);
+    expect(api.sounds.relocate).toHaveBeenCalledWith(9);
     expect(api.sounds.remove).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'File moved — Relocate…' })).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+    expect(setLevel).not.toHaveBeenCalledWith(gone, 0.5, expect.anything());
+  });
+
+  it("a failed relocate says so, with main's reason and without Electron's prefix", async () => {
+    const gone = goneSound();
+    const api = setup({ sounds: [...SOUNDS, gone] });
+    (api.sounds.relocate as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("Error invoking remote method 'sounds:relocate': Error: That file can't be read."),
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'File moved — Relocate…' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't relocate that sound. That file can't be read.");
+    expect(alert).not.toHaveTextContent('Error invoking');
+  });
+
+  it('a failed "Add sound…" shows an inline error', async () => {
+    const api = setup();
+    (api.sounds.addFiles as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('disk'));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Add sound…' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't add that sound. disk");
+  });
+
+  it('"Add sound…" and the mix form wait for the saved soundscape', async () => {
+    let release: (s: PublicSettings) => void = () => undefined;
+    installMockApi(
+      mockApi({
+        sounds: { list: vi.fn(() => Promise.resolve(SOUNDS)) },
+        mixes: { list: vi.fn(() => Promise.resolve([])) },
+        settings: { get: vi.fn(() => new Promise<PublicSettings>((r) => (release = r))) },
+      }),
+    );
+    render(<SoundsPanel />);
+    expect(screen.getByRole('button', { name: 'Add sound…' })).toBeDisabled();
+    expect(screen.getByLabelText('Mix name')).toBeDisabled();
+    await act(async () => {
+      release(settingsWith({}));
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add sound…' })).toBeEnabled());
+    expect(screen.getByLabelText('Mix name')).toBeEnabled();
+  });
+
+  it("the mute button's accessible name contains its visible label", async () => {
+    setup({ settings: { soundLevels: { '1': 0.7 } } });
+    const toggle = await screen.findByRole('button', { name: 'Mute White noise' });
+    // An icon button: no visible text that could disagree with the name it is announced by.
+    expect(toggle.textContent?.trim()).toBe('');
+    expect(toggle.querySelector('svg')).not.toBeNull();
   });
 
   it('the master slider is disabled until the saved soundscape has loaded', async () => {

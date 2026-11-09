@@ -255,7 +255,9 @@ describe('TasksWidget', () => {
     await screen.findByRole('button', { name: 'Essay' });
     vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
-    expect(await screen.findByText('Couldn’t save that just now. Your list has been refreshed.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Couldn’t save that just now. Your list has been refreshed.'),
+    ).toBeInTheDocument();
     expect(screen.queryByText('No tasks yet.')).not.toBeInTheDocument();
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
     await screen.findByRole('button', { name: 'Lab' });
@@ -299,12 +301,16 @@ describe('TasksWidget', () => {
     setup([task(1, 'Essay')]);
     const dot = await screen.findByRole('button', { name: 'Change colour of "Essay"' });
     await userEvent.click(dot);
-    await userEvent.click(within(screen.getByRole('group', { name: 'Note colour' })).getByRole('button', { name: 'Blue' }));
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Note colour' })).getByRole('button', { name: 'Blue' }),
+    );
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Note colour' })).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Change colour of "Essay"' })).toHaveFocus();
 
     await userEvent.click(screen.getByRole('button', { name: 'Change colour of "Essay"' }));
-    within(screen.getByRole('group', { name: 'Note colour' })).getByRole('button', { name: 'Pink' }).focus();
+    within(screen.getByRole('group', { name: 'Note colour' }))
+      .getByRole('button', { name: 'Pink' })
+      .focus();
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('group', { name: 'Note colour' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change colour of "Essay"' })).toHaveFocus();
@@ -316,6 +322,42 @@ describe('TasksWidget', () => {
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Mark "Lab" as done' })).toHaveFocus());
     await userEvent.click(screen.getByRole('checkbox', { name: 'Mark "Lab" as done' }));
     await waitFor(() => expect(screen.getByPlaceholderText('Add a task…')).toHaveFocus());
+  });
+
+  it('a save whose fallback reload works also clears an earlier failed load', async () => {
+    let fail = true;
+    const api = setup([task(1, 'Essay')], {
+      list: () => (fail ? Promise.reject(new Error('boom')) : Promise.resolve([task(1, 'Essay')])),
+    });
+    expect(await screen.findByText('Couldn’t load your tasks.')).toBeInTheDocument();
+    fail = false;
+    vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
+    await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
+    expect(
+      await screen.findByText('Couldn’t save that just now. Your list has been refreshed.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Couldn’t load your tasks.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Essay' })).toBeInTheDocument();
+  });
+
+  it('a slow tick does not pull focus back from wherever it has gone since', async () => {
+    const api = setup([task(1, 'Essay'), task(2, 'Lab')]);
+    await screen.findByRole('button', { name: 'Essay' });
+    let land: (list: Task[]) => void = () => undefined;
+    vi.mocked(api.tasks.update).mockImplementationOnce(() => new Promise<Task[]>((r) => (land = r)));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mark "Essay" as done' }));
+    const add = screen.getByPlaceholderText('Add a task…');
+    await userEvent.click(add);
+    await act(async () => land([task(1, 'Essay', { done: true, doneAt: 1 }), task(2, 'Lab')]));
+    expect(screen.queryByRole('checkbox', { name: 'Mark "Essay" as done' })).not.toBeInTheDocument();
+    expect(add).toHaveFocus();
+  });
+
+  it('un-ticking keeps focus on the note, now back in the open list', async () => {
+    setup([task(1, 'Old', { done: true, doneAt: 5 }), task(2, 'Two')]);
+    await userEvent.click(await screen.findByRole('button', { name: /Done \(1\)/ }));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mark "Old" as not done' }));
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Mark "Old" as done' })).toHaveFocus());
   });
 
   it('un-ticking puts the note at the end of the open list', async () => {

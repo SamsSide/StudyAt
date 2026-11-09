@@ -1,12 +1,8 @@
 // Runs `fn` now and then every `ms`, but only while `enabled` and the window is visible
 // (spec §3.10: Spotify polls only while the widget is open and the window shown).
-import { useEffect, useRef } from "react";
+import { useEffect, useRef } from 'react';
 
-export function usePolling(
-  fn: () => void | Promise<void>,
-  ms: number,
-  enabled: boolean,
-): void {
+export function usePolling(fn: () => void | Promise<void>, ms: number, enabled: boolean): void {
   const latest = useRef(fn);
   useEffect(() => {
     latest.current = fn;
@@ -31,9 +27,9 @@ export function usePolling(
     const onVisibility = () => (document.hidden ? stop() : start());
 
     if (!document.hidden) start();
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener('visibilitychange', onVisibility);
       stop();
     };
   }, [ms, enabled]);

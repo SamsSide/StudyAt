@@ -1,4 +1,5 @@
 // Per-space options (spec §3.8): audio, volume, speed, dim, blur. Saves through spaces.update.
+import type { CSSProperties } from 'react';
 import type { Space, SpaceOpts } from '../../shared/types';
 import styles from './spaces.module.css';
 import { useSpacesStore } from './spacesStore';
@@ -18,6 +19,10 @@ const SLIDERS: Slider[] = [
   { key: 'blur', label: 'Blur', min: 0, max: 12, step: 1 },
 ];
 
+/** How far along its track a slider is, for the accent fill. */
+const fill = (value: number, min: number, max: number): CSSProperties =>
+  ({ '--fill': `${((value - min) / (max - min)) * 100}%` }) as CSSProperties;
+
 export function SpaceSettings({ space, onClose }: { space: Space; onClose: () => void }) {
   const update = useSpacesStore((s) => s.update);
   const save = (opts: Partial<SpaceOpts>) => void update(space.id, { opts });
@@ -26,8 +31,15 @@ export function SpaceSettings({ space, onClose }: { space: Space; onClose: () =>
     <section aria-label={`Settings for ${space.name}`} className={styles.settings}>
       <h3>{space.name}</h3>
       {hasAudio && (
-        <label className={styles.field}>
-          <input type="checkbox" checked={space.opts.audio} onChange={(e) => save({ audio: e.target.checked })} /> Audio
+        <label className={styles.switchField}>
+          Audio
+          <input
+            type="checkbox"
+            role="switch"
+            className={styles.switch}
+            checked={space.opts.audio}
+            onChange={(e) => save({ audio: e.target.checked })}
+          />
         </label>
       )}
       {SLIDERS.filter((s) => hasAudio || s.key === 'dim' || s.key === 'blur').map((s) => (
@@ -35,6 +47,8 @@ export function SpaceSettings({ space, onClose }: { space: Space; onClose: () =>
           {s.label}
           <input
             type="range"
+            className={styles.range}
+            style={fill(space.opts[s.key], s.min, s.max)}
             min={s.min}
             max={s.max}
             step={s.step}

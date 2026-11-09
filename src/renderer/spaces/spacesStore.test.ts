@@ -4,7 +4,7 @@ import { installMockApi, mockApi } from '../test/mockApi';
 import { makeSpace } from './fixtures';
 import { resetSpacesStore, useSpacesStore } from './spacesStore';
 
-const deferred = <T,>() => {
+const deferred = <T>() => {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((res) => {
     resolve = res;
@@ -12,7 +12,8 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
-const withDim = (dim: number): Space => makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim, blur: 0 } });
+const withDim = (dim: number): Space =>
+  makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim, blur: 0 } });
 
 beforeEach(() => resetSpacesStore());
 
@@ -55,7 +56,12 @@ describe('spacesStore.setActive', () => {
 
   it('clears a "can\'t be played" mark so the space retries, but keeps an embed block', async () => {
     installMockApi(mockApi());
-    useSpacesStore.setState({ spaces: [withDim(0.1)], activeId: null, loaded: true, embedErrors: { 1: 'play', 2: 'embed' } });
+    useSpacesStore.setState({
+      spaces: [withDim(0.1)],
+      activeId: null,
+      loaded: true,
+      embedErrors: { 1: 'play', 2: 'embed' },
+    });
     await useSpacesStore.getState().setActive(1);
     await useSpacesStore.getState().setActive(2);
     expect(useSpacesStore.getState().embedErrors).toEqual({ 2: 'embed' });
