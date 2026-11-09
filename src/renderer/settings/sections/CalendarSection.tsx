@@ -3,13 +3,14 @@
 // keeps them encrypted and never sends them back, so the fields only ever hold what is being added,
 // and they are emptied once saved. Saving replaces the stored list and clears main's cached agenda,
 // so it happens only on an explicit Save, and only when the list differs from the last one saved here.
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { CalendarStatus } from '../../../shared/widgets';
 import { ipcErrorMessage } from '../../lib/ipcError';
 import { Row } from '../controls';
 import styles from '../settings.module.css';
 
 const MAX_CALENDARS = 5;
+const MAX_URL_LENGTH = 2000;
 const PRIVACY_NOTE = 'This link is private — StudyAt keeps it encrypted on this PC.';
 const SAVE_FAILED = "Couldn't save your calendars. Please try again.";
 
@@ -25,6 +26,13 @@ export function CalendarSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // Cancel is the safe default, so it takes focus when the question appears.
+  useEffect(() => {
+    if (confirmingRemove) cancelRef.current?.focus();
+  }, [confirmingRemove]);
 
   useEffect(() => {
     let live = true;
@@ -83,11 +91,40 @@ export function CalendarSection() {
       </ol>
 
       <Row label="Calendars" hint={connected.length > 0 ? 'Shown in the Calendar widget' : 'Not set up'}>
-        {connected.length > 0 && (
-          <button type="button" className={styles.button} disabled={busy} onClick={() => void send([])}>
-            Remove all calendars
-          </button>
-        )}
+        {connected.length > 0 &&
+          (confirmingRemove ? (
+            <span className={styles.actions} role="group" aria-label="Remove all calendars?">
+              <span>Remove all calendars?</span>
+              <button
+                ref={cancelRef}
+                type="button"
+                className={styles.button}
+                onClick={() => setConfirmingRemove(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.button}
+                disabled={busy}
+                onClick={() => {
+                  setConfirmingRemove(false);
+                  void send([]);
+                }}
+              >
+                Remove
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy}
+              onClick={() => setConfirmingRemove(true)}
+            >
+              Remove all calendars
+            </button>
+          ))}
       </Row>
       {connected.length > 0 && (
         <ul className={styles.list} aria-label="Connected calendars">
@@ -115,6 +152,7 @@ export function CalendarSection() {
                 className={`${styles.input} ${styles.grow}`}
                 value={url}
                 placeholder="https://calendar.google.com/calendar/ical/…"
+                maxLength={MAX_URL_LENGTH}
                 spellCheck={false}
                 autoComplete="off"
                 onChange={(e) => edit(i, e.target.value)}

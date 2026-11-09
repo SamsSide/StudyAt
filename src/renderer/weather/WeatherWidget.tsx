@@ -29,14 +29,17 @@ export function WeatherWidget() {
   const place = useStudyStore((s) => s.settings?.weatherPlace ?? null);
   const placeKey = place ? `${place.latitude},${place.longitude}` : '';
 
+  const seq = useRef(0);
+
   const poll = useCallback(async () => {
+    const mine = ++seq.current;
     let next: WeatherReport;
     try {
       next = await window.studyat.weather.current();
     } catch {
       next = UNAVAILABLE; // main never rejects; treat a broken bridge as unavailable
     }
-    setReport(next);
+    if (mine === seq.current) setReport(next); // an older answer must not overwrite a newer one
   }, []);
 
   usePolling(poll, POLL_MS, true);
@@ -65,7 +68,7 @@ export function WeatherWidget() {
         <button
           type="button"
           className={styles.textButton}
-          onClick={() => useStudyStore.getState().setOverlay('settings')}
+          onClick={() => useStudyStore.getState().openSettings('Weather')}
         >
           Open settings
         </button>
@@ -102,7 +105,8 @@ export function WeatherWidget() {
           <p className={styles.temp}>{deg(current.tempC)}</p>
         </div>
         <div className={styles.summary}>
-          <WeatherIcon className={styles.bigIcon} icon={condition.icon} label={condition.label} />
+          {/* Decorative: the condition is said in words just below. */}
+          <WeatherIcon className={styles.bigIcon} icon={condition.icon} />
           <p className={styles.condition}>{condition.label}</p>
           {today && (
             <p className={styles.highLow}>
@@ -131,9 +135,9 @@ export function WeatherWidget() {
       )}
 
       <footer className={styles.footer}>
-        {stale && report.fetchedAt !== null && (
+        {stale && (
           <span className={styles.updated} role="status">
-            Updated {clockTime(report.fetchedAt)}
+            {report.fetchedAt !== null ? `Updated ${clockTime(report.fetchedAt)}` : "Couldn't refresh"}
           </span>
         )}
         <span>Weather data by Open-Meteo.com</span>

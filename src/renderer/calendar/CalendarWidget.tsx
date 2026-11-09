@@ -10,6 +10,7 @@ import { usePolling } from '../spotify/usePolling';
 import styles from './CalendarWidget.module.css';
 
 const POLL_MS = 5 * 60_000;
+const TICK_MS = 60_000;
 const MAX_ITEMS = 6;
 const DAY_MS = 86_400_000;
 
@@ -98,18 +99,21 @@ export function CalendarWidget() {
   const [now, setNow] = useState(() => Date.now());
 
   const poll = useCallback(async () => {
-    let next: CalendarAgenda;
     try {
-      next = await window.studyat.calendar.agenda();
+      const next = await window.studyat.calendar.agenda();
+      setNow(Date.now());
+      setAgenda(next); // main's word stands, an error with no events included
     } catch {
-      next = UNAVAILABLE; // main never rejects; treat a broken bridge as unavailable
+      // Main never rejects, so this is a broken bridge: keep what was on screen, marked stale.
+      setNow(Date.now());
+      setAgenda((prev) => (prev && prev.events.length > 0 ? { ...prev, state: 'stale' } : UNAVAILABLE));
     }
-    setNow(Date.now());
-    setAgenda((prev) =>
-      next.state === 'error' && next.events.length === 0 && prev && prev.events.length > 0
-        ? { ...prev, state: 'stale' }
-        : next,
-    );
+  }, []);
+
+  // Local clock only (no IPC): keeps the header date and which events have ended current.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), TICK_MS);
+    return () => clearInterval(id);
   }, []);
 
   usePolling(poll, POLL_MS, true);
@@ -129,7 +133,7 @@ export function CalendarWidget() {
         <button
           type="button"
           className={styles.textButton}
-          onClick={() => useStudyStore.getState().setOverlay('settings')}
+          onClick={() => useStudyStore.getState().openSettings('Calendar')}
         >
           Open settings
         </button>

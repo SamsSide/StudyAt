@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CalendarAgenda, CalendarEvent } from '../../shared/widgets';
 import { useStudyStore } from '../shell/store';
@@ -198,5 +198,107 @@ describe('CalendarWidget', () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(api.calendar.agenda).toHaveBeenCalledTimes(2);
+  });
+  it('a bridge call that rejects after a good answer keeps the earlier list, marked stale', async () => {
+    const answers: (() => Promise<CalendarAgenda>)[] = [
+      () =>
+        Promise.resolve(
+          agenda({ events: [event({ title: 'Maths lecture', start: at(9, 11), end: at(9, 12) })] }),
+        ),
+      () => Promise.reject(new Error('gone')),
+    ];
+    let call = 0;
+    setup(() => answers[Math.min(call++, 1)]!());
+    await show();
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Maths lecture')).toBeInTheDocument();
+    expect(screen.getByText("Couldn't refresh — showing earlier events")).toBeInTheDocument();
+  });
+
+  it('trusts main when it later says error with no events: no earlier list is kept', async () => {
+    const answers = [
+      agenda({ events: [event({ title: 'Maths lecture', start: at(9, 11), end: at(9, 12) })] }),
+      agenda({ state: 'error', fetchedAt: null, events: [] }),
+    ];
+    let call = 0;
+    setup(() => Promise.resolve(answers[Math.min(call++, 1)]!));
+    await show();
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Calendar unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Maths lecture')).toBeNull();
+  });
+
+  it('an event that began before today shows under today', async () => {
+    setup(agenda({ events: [event({ title: 'Conference', start: at(7, 9), end: at(10, 17) })] }));
+    await show();
+    const list = screen.getByRole('list', { name: 'Today' });
+    expect(within(list).getByText('Conference')).toBeInTheDocument();
+  });
+
+  it('labels the next day "Tomorrow" across the clocks changing on 25 October 2026', async () => {
+    vi.setSystemTime(new Date(2026, 9, 24, 10, 0).getTime());
+    setup(
+      agenda({
+        events: [
+          event({
+            title: 'Sunday lab',
+            start: new Date(2026, 9, 25, 12).getTime(),
+            end: new Date(2026, 9, 25, 13).getTime(),
+          }),
+        ],
+      }),
+    );
+    await show();
+    expect(screen.getByRole('list', { name: 'Tomorrow' })).toBeInTheDocument();
+    cleanup();
+    vi.setSystemTime(new Date(2026, 9, 25, 10, 0).getTime());
+    setup(
+      agenda({
+        events: [
+          event({
+            title: 'Monday lab',
+            start: new Date(2026, 9, 26, 12).getTime(),
+            end: new Date(2026, 9, 26, 13).getTime(),
+          }),
+        ],
+      }),
+    );
+    await show();
+    expect(screen.getByRole('list', { name: 'Tomorrow' })).toBeInTheDocument();
+  });
+
+  it('re-renders every minute without asking main: ended events go and the date rolls over', async () => {
+    vi.setSystemTime(new Date(2026, 10, 9, 23, 59, 30).getTime());
+    const api = setup(
+      agenda({
+        events: [
+          event({
+            title: 'Late call',
+            start: at(9, 23, 0),
+            end: new Date(2026, 10, 9, 23, 59, 45).getTime(),
+          }),
+        ],
+      }),
+    );
+    await show();
+    expect(screen.getByText('Late call')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Monday 9 November' })).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(screen.queryByText('Late call')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Tuesday 10 November' })).toBeInTheDocument();
+    expect(api.calendar.agenda).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Open settings" opens Settings on the Calendar section', async () => {
+    setup(agenda({ state: 'unconfigured', fetchedAt: null }));
+    await show();
+    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(useStudyStore.getState().settingsSection).toBe('Calendar');
   });
 });

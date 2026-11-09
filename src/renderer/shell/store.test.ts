@@ -40,6 +40,19 @@ describe('useStudyStore', () => {
     stop();
   });
 
+  it('openSettings opens Settings, optionally on a section, and closes the Widgets popover', () => {
+    useStudyStore.setState({ widgetsPopover: true });
+    useStudyStore.getState().openSettings('Weather');
+    let s = useStudyStore.getState();
+    expect(s.overlay).toBe('settings');
+    expect(s.settingsSection).toBe('Weather');
+    expect(s.widgetsPopover).toBe(false);
+    s.openSettings();
+    s = useStudyStore.getState();
+    expect(s.overlay).toBe('settings');
+    expect(s.settingsSection).toBeNull();
+  });
+
   it('follows app.onFullscreen', async () => {
     const api = mockApi();
     installMockApi(api);

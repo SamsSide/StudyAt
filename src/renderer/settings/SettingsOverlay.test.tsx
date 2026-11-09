@@ -52,6 +52,21 @@ describe('SettingsOverlay', () => {
     ]);
   });
 
+  it('starts on the section a deep link asked for, then clears the request', async () => {
+    useStudyStore.setState({ settingsSection: 'Weather' });
+    setup();
+    expect(screen.getByRole('tab', { name: 'Weather' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'Weather' })).toBeInTheDocument();
+    expect(useStudyStore.getState().settingsSection).toBeNull();
+  });
+
+  it('ignores an unknown deep-link section', () => {
+    useStudyStore.setState({ settingsSection: 'Nonsense' });
+    setup();
+    expect(screen.getByRole('tab', { name: 'Timer' })).toHaveAttribute('aria-selected', 'true');
+    expect(useStudyStore.getState().settingsSection).toBeNull();
+  });
+
   it('timer minutes input clamps to 1..180 and saves', async () => {
     const api = setup();
     const input = screen.getByLabelText('Focus length');
@@ -601,8 +616,38 @@ describe('SettingsOverlay', () => {
       const list = await screen.findByRole('list', { name: 'Connected calendars' });
       expect(within(list).getByText('Lectures')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: 'Remove all calendars' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
       expect(api.calendar.setUrls).toHaveBeenCalledWith([]);
       await waitFor(() => expect(screen.queryByRole('list', { name: 'Connected calendars' })).toBeNull());
+    });
+    it('"Remove all calendars" asks first, with Cancel focused, and only then removes', async () => {
+      const api = mockApi({ calendar: { status: vi.fn(() => Promise.resolve(linked)) } });
+      setup(api);
+      await openSection('Calendar');
+      await userEvent.click(await screen.findByRole('button', { name: 'Remove all calendars' }));
+      expect(api.calendar.setUrls).not.toHaveBeenCalled();
+      expect(screen.getByText('Remove all calendars?')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(api.calendar.setUrls).not.toHaveBeenCalled();
+      expect(screen.queryByText('Remove all calendars?')).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Remove all calendars' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+      expect(api.calendar.setUrls).toHaveBeenCalledWith([]);
+    });
+
+    it('caps each address field at 2000 characters', async () => {
+      setup();
+      await openSection('Calendar');
+      expect(screen.getByLabelText('Calendar address 1')).toHaveAttribute('maxlength', '2000');
+    });
+
+    it('Enter in an address field saves', async () => {
+      const api = mockApi({ calendar: { setUrls: vi.fn(() => Promise.resolve(linked)) } });
+      setup(api);
+      await openSection('Calendar');
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), `${ICS}{Enter}`);
+      expect(api.calendar.setUrls).toHaveBeenCalledWith([ICS]);
     });
   });
 
@@ -691,6 +736,24 @@ describe('SettingsOverlay', () => {
       expect(within(group).getByRole('button', { name: 'Celsius' })).toHaveAttribute('aria-pressed', 'true');
       await userEvent.click(within(group).getByRole('button', { name: 'Fahrenheit' }));
       expect(api.settings.set).toHaveBeenCalledWith({ weatherUnits: 'fahrenheit' });
+    });
+    it('ignores a search answer that arrives after a newer search', async () => {
+      let releaseOld: (p: (typeof DURHAM)[]) => void = () => undefined;
+      const YORK = { ...DURHAM, name: 'York', latitude: 53.96 };
+      const searchPlaces = vi
+        .fn()
+        .mockImplementationOnce(() => new Promise((res) => (releaseOld = res)))
+        .mockResolvedValueOnce([YORK]);
+      setup(mockApi({ weather: { searchPlaces } }));
+      await openSection('Weather');
+      const box = screen.getByLabelText('Search for a place');
+      fireEvent.change(box, { target: { value: 'Dur' } });
+      await waitFor(() => expect(searchPlaces).toHaveBeenCalledTimes(1));
+      fireEvent.change(box, { target: { value: 'Yor' } });
+      await screen.findByRole('button', { name: 'York, England, United Kingdom' });
+      await act(async () => releaseOld([DURHAM]));
+      expect(screen.getByRole('button', { name: 'York, England, United Kingdom' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Durham, England, United Kingdom' })).toBeNull();
     });
   });
 });

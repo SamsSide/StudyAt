@@ -1,7 +1,7 @@
 // The settings overlay body (spec §3.11): a section list and one section at a time. The shell's
 // Overlay supplies the title, close button and focus trap. Every change saves at once through the
 // store; main sanitises and returns the merged settings.
-import { type KeyboardEvent, type ReactNode, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useState } from 'react';
 import type { SettingsPatch } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { CalendarSection } from './sections/CalendarSection';
@@ -56,12 +56,21 @@ const render = (name: SectionName, props: SectionProps): ReactNode => {
   }
 };
 
+const asSection = (name: string | null): SectionName | null => SECTIONS.find((s) => s === name) ?? null;
+
 const tabId = (name: SectionName): string => `settings-tab-${name.replace(/\W+/g, '-').toLowerCase()}`;
 
 export function SettingsOverlay() {
   const settings = useStudyStore((s) => s.settings);
   const updateSettings = useStudyStore((s) => s.updateSettings);
-  const [active, setActive] = useState<SectionName>('Timer');
+  // A deep link ("Open settings" in a widget) names the section to start on; the overlay is
+  // mounted fresh when it opens, so reading it once here is enough, and then it is spent.
+  const [active, setActive] = useState<SectionName>(
+    () => asSection(useStudyStore.getState().settingsSection) ?? 'Timer',
+  );
+  useEffect(() => {
+    useStudyStore.setState({ settingsSection: null });
+  }, []);
 
   if (!settings) return null;
 

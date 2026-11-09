@@ -29,6 +29,8 @@ export interface StudyState {
   miniShown: boolean;
   /** The dock's Widgets popover (widgets addendum §1). */
   widgetsPopover: boolean;
+  /** A Settings section a deep link asked for; the Settings overlay takes it and clears it. */
+  settingsSection: string | null;
 
   setPanel(panel: PanelId | null): void;
   /** Opens `panel`, or closes it if it is already open. */
@@ -36,6 +38,8 @@ export interface StudyState {
   setOverlay(overlay: OverlayId | null): void;
   /** Opens `overlay`, or closes it if it is already on top. Opening one closes the Widgets popover. */
   toggleOverlay(overlay: OverlayId): void;
+  /** Opens Settings, on `section` (a section name, e.g. 'Calendar') when given. */
+  openSettings(section?: string): void;
   setWidgetsPopover(open: boolean): void;
   toggleWidgetsPopover(): void;
   refreshOverview(): Promise<void>;
@@ -73,6 +77,7 @@ const initialData = () => ({
   fullscreen: false,
   miniShown: false,
   widgetsPopover: false,
+  settingsSection: null,
 });
 
 const api = () => window.studyat;
@@ -86,6 +91,8 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
   setOverlay: (overlay) => set(overlay ? { overlay, widgetsPopover: false } : { overlay }),
   toggleOverlay: (overlay) =>
     set((s) => (s.overlay === overlay ? { overlay: null } : { overlay, widgetsPopover: false })),
+  openSettings: (section) =>
+    set({ overlay: 'settings', widgetsPopover: false, settingsSection: section ?? null }),
   setWidgetsPopover: (widgetsPopover) => set({ widgetsPopover }),
   toggleWidgetsPopover: () => set((s) => ({ widgetsPopover: !s.widgetsPopover })),
 

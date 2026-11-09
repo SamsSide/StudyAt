@@ -136,7 +136,7 @@ describe('WeatherWidget', () => {
     await show();
     expect(screen.getByText('50°', { selector: 'p' })).toBeInTheDocument();
     expect(screen.getByText('H:53° L:40°')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Clear' })).toBeInTheDocument();
+    expect(screen.getByText('Clear', { selector: 'p' })).toBeInTheDocument();
   });
 
   it('stale: keeps the last report and says when it was updated', async () => {
@@ -190,5 +190,48 @@ describe('WeatherWidget', () => {
     });
     await act(() => vi.advanceTimersByTimeAsync(1_800_000));
     expect(api.weather.current).toHaveBeenCalledTimes(1);
+  });
+  it('ignores an answer that arrives after a newer one', async () => {
+    let releaseOld: (r: WeatherReport) => void = () => undefined;
+    const answers: (() => Promise<WeatherReport>)[] = [
+      () => new Promise<WeatherReport>((res) => (releaseOld = res)),
+      () => Promise.resolve(report({ current: { tempC: 20, code: 0, isDay: true } })),
+    ];
+    let call = 0;
+    setup(() => answers[Math.min(call++, 1)]!());
+    render(<WeatherWidget />);
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('20°', { selector: 'p' })).toBeInTheDocument();
+    await act(async () => {
+      releaseOld(report({ current: { tempC: 1, code: 0, isDay: true } }));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('20°', { selector: 'p' })).toBeInTheDocument();
+  });
+
+  it('a stale report with no fetch time still says it could not refresh', async () => {
+    setup(report({ state: 'stale', fetchedAt: null }));
+    await show();
+    expect(screen.getByText("Couldn't refresh")).toBeInTheDocument();
+    expect(screen.queryByText(/^Updated/)).toBeNull();
+  });
+
+  it('the big condition icon is decorative; only the five-day icons are labelled', async () => {
+    setup(report());
+    await show();
+    // Day one is also "Partly cloudy": exactly one labelled image, the one in the forecast row.
+    const imgs = screen.getAllByRole('img', { name: 'Partly cloudy' });
+    expect(imgs).toHaveLength(1);
+    expect(screen.getByRole('list', { name: 'Five-day forecast' })).toContainElement(imgs[0]!);
+  });
+
+  it('"Open settings" opens Settings on the Weather section', async () => {
+    setup({ state: 'unconfigured', place: null, fetchedAt: null });
+    await show();
+    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(useStudyStore.getState().settingsSection).toBe('Weather');
   });
 });
