@@ -1,5 +1,6 @@
 // The top bar (spec §4): left, the streak (opens Stats), today's focus time and the goal ring;
-// right, the mini-timer toggle, full screen and settings. Every number comes from main.
+// right, hide the interface (focus view, v1.1 spec §3.4), the mini-timer toggle, full screen and
+// settings. Every number comes from main.
 import { formatHm, goalTooltip } from './format';
 import { GoalRing } from './GoalRing';
 import { Icon } from './icons';
@@ -13,6 +14,7 @@ export function TopBar() {
   const miniShown = useStudyStore((s) => s.miniShown);
   const setOverlay = useStudyStore((s) => s.setOverlay);
   const toggleMini = useStudyStore((s) => s.toggleMini);
+  const setFocusView = useStudyStore((s) => s.setFocusView);
 
   const streak = overview?.currentStreak ?? 0;
 
@@ -39,6 +41,15 @@ export function TopBar() {
         )}
       </div>
       <div className={`${styles.topGroup} ${styles.frosted}`}>
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={() => setFocusView(true)}
+          aria-label="Hide interface"
+          title="Hide interface (H)"
+        >
+          <Icon name="eyeOff" />
+        </button>
         <button
           type="button"
           className={styles.iconButton}

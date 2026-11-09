@@ -8,7 +8,8 @@
   color: var(--text);
 }
 
-.shell[data-chrome='hidden'][data-overlay='none'] {
+/* The pointer hides only when it is idle, so in focus view it stays to find the corner. */
+.shell[data-pointer='idle'][data-overlay='none'] {
   cursor: none;
 }
 
@@ -36,6 +37,35 @@
 
 .shell[data-chrome='hidden'] .fades {
   opacity: 0;
+}
+
+/* Focus view (spec §3.4): once faded, the chrome is gone for the keyboard and pointer too. */
+.shell[data-chrome='hidden'][data-focus-view='on'] .fades {
+  visibility: hidden;
+  transition:
+    opacity var(--duration-fade) var(--ease),
+    visibility 0s linear var(--duration-fade);
+}
+
+/* Focus view's way back: a capsule in the top-left corner, faded in while the pointer is there. */
+.showInterface {
+  position: absolute;
+  z-index: var(--z-chrome);
+  top: var(--space-3);
+  left: var(--space-3);
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  animation: fadeIn var(--duration-fade) var(--ease);
+}
+
+.showInterface:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .iconButton {

@@ -185,4 +185,17 @@ describe('useStudyStore', () => {
     useStudyStore.getState().setOverlay('help');
     expect(useStudyStore.getState()).toMatchObject({ openPanel: 'spaces', overlay: 'help' });
   });
+
+  it('focus view starts off, toggles and is off again after a reset', () => {
+    const store = useStudyStore.getState();
+    expect(store.focusView).toBe(false);
+    store.toggleFocusView();
+    expect(useStudyStore.getState().focusView).toBe(true);
+    store.toggleFocusView();
+    expect(useStudyStore.getState().focusView).toBe(false);
+    store.setFocusView(true);
+    expect(useStudyStore.getState().focusView).toBe(true);
+    resetStudyStore();
+    expect(useStudyStore.getState().focusView).toBe(false);
+  });
 });

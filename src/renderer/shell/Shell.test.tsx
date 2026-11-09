@@ -199,8 +199,26 @@ describe('Shell', () => {
     const keys = within(help)
       .getAllByRole('term')
       .map((k) => k.textContent);
-    expect(keys).toEqual(['Space', 'R', 'N', '1 / 2 / 3', 'S', 'T', 'W', 'K', 'G', 'M', 'F', 'Esc', '?']);
-    expect(SHORTCUTS).toHaveLength(13);
+    expect(keys).toEqual([
+      'Space',
+      'R',
+      'N',
+      '1 / 2 / 3',
+      '4',
+      'S',
+      'T',
+      'W',
+      'K',
+      'G',
+      'M',
+      'F',
+      'H',
+      'Esc',
+      '?',
+    ]);
+    expect(SHORTCUTS).toHaveLength(15);
+    expect(SHORTCUTS.find((k) => k.keys === 'H')?.action).toBe('Hide or show the interface');
+    expect(SHORTCUTS.find((k) => k.keys === '4')?.action).toBe('Countdown');
     expect(SHORTCUTS.find((k) => k.keys === 'W')?.action).toBe('Widgets');
   });
 
@@ -358,6 +376,113 @@ describe('Shell', () => {
       await user.keyboard('s');
       expect(screen.getByRole('dialog', { name: 'Stats' })).toBeInTheDocument();
       expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Focus view', () => {
+    const shell = () => screen.getByTestId('shell');
+    const fadesClass = () => {
+      const nav = screen.getByRole('navigation', { name: 'Dock' });
+      return [...nav.classList].find((c) => /fades/.test(c))!;
+    };
+
+    it('H hides the interface and a mouse move keeps it hidden; H again shows it', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+      await user.keyboard('h');
+      expect(useStudyStore.getState().focusView).toBe(true);
+      expect(shell()).toHaveAttribute('data-chrome', 'hidden');
+      fireEvent.mouseMove(window);
+      await user.keyboard('r');
+      expect(shell()).toHaveAttribute('data-chrome', 'hidden');
+      await user.keyboard('h');
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+    });
+
+    it('Esc with nothing open leaves focus view', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.keyboard('h');
+      await user.keyboard('{Escape}');
+      expect(useStudyStore.getState().focusView).toBe(false);
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+    });
+
+    it('Stats opens over focus view, and Esc closes Stats but stays in focus view', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.keyboard('h');
+      await user.keyboard('s');
+      expect(screen.getByRole('dialog', { name: 'Stats' })).toBeInTheDocument();
+      expect(shell()).toHaveAttribute('data-overlay', 'stats');
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog', { name: 'Stats' })).not.toBeInTheDocument();
+      expect(useStudyStore.getState().focusView).toBe(true);
+      expect(shell()).toHaveAttribute('data-chrome', 'hidden');
+    });
+
+    it('Esc closes a panel before it leaves focus view', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.keyboard('g');
+      await user.keyboard('h');
+      await user.keyboard('{Escape}');
+      expect(useStudyStore.getState().openPanel).toBeNull();
+      expect(useStudyStore.getState().focusView).toBe(true);
+      await user.keyboard('{Escape}');
+      expect(useStudyStore.getState().focusView).toBe(false);
+    });
+
+    it('the Show interface capsule appears only with the pointer in the top-left corner', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      const capsule = () => screen.queryByRole('button', { name: 'Show interface' });
+      fireEvent.pointerMove(window, { clientX: 10, clientY: 10 });
+      expect(capsule()).not.toBeInTheDocument();
+      await user.keyboard('h');
+      fireEvent.pointerMove(window, { clientX: 400, clientY: 300 });
+      expect(capsule()).not.toBeInTheDocument();
+      fireEvent.pointerMove(window, { clientX: 64, clientY: 20 });
+      expect(capsule()).not.toBeInTheDocument();
+      fireEvent.pointerMove(window, { clientX: 63, clientY: 63 });
+      expect(capsule()).toBeInTheDocument();
+      fireEvent.pointerMove(window, { clientX: 400, clientY: 300 });
+      expect(capsule()).not.toBeInTheDocument();
+      fireEvent.pointerMove(window, { clientX: 20, clientY: 20 });
+      fireEvent.click(capsule()!);
+      expect(useStudyStore.getState().focusView).toBe(false);
+      expect(shell()).toHaveAttribute('data-chrome', 'shown');
+      expect(capsule()).not.toBeInTheDocument();
+    });
+
+    it('hides auto-hide widgets and leaves the others', async () => {
+      const user = userEvent.setup();
+      const settings = onboarded();
+      settings.widgets.tasks = { ...settings.widgets.tasks, open: true, autoHide: true };
+      await renderShell(mockApi({ settings: { get: vi.fn(() => Promise.resolve(settings)) } }));
+      await user.keyboard('h');
+      const fades = fadesClass();
+      expect(shell()).toHaveAttribute('data-chrome', 'hidden');
+      expect(shell()).toHaveAttribute('data-focus-view', 'on');
+      expect(screen.getByRole('group', { name: 'Tasks' })).toHaveClass(fades);
+      expect(screen.getByRole('group', { name: 'Timer' })).not.toHaveClass(fades);
+    });
+
+    it('4 switches the timer to Countdown', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      await user.keyboard('4');
+      expect(api.timer.setMode).toHaveBeenCalledWith('countdown');
+    });
+
+    it('is off after a reset', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.keyboard('h');
+      act(() => resetStudyStore());
+      expect(useStudyStore.getState().focusView).toBe(false);
     });
   });
 });

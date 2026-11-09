@@ -76,6 +76,14 @@ describe('TopBar', () => {
     await user.click(screen.getByRole('button', { name: 'Settings' }));
     expect(useStudyStore.getState().overlay).toBe('settings');
   });
+
+  it('the Hide interface button turns focus view on', async () => {
+    const user = userEvent.setup();
+    installMockApi(mockApi());
+    render(<TopBar />);
+    await user.click(screen.getByRole('button', { name: 'Hide interface' }));
+    expect(useStudyStore.getState().focusView).toBe(true);
+  });
 });
 
 describe('GoalRing', () => {

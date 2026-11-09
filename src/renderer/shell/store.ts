@@ -34,6 +34,9 @@ export interface StudyState {
   settingsSection: string | null;
   /** Settings couldn't be loaded at launch, even after retrying; the shell offers "Try again". */
   settingsFailed: boolean;
+  /** Focus view (spec §3.4): the dock, top bar, side panel and auto-hide widgets stay hidden until
+   *  asked for. Not persisted, so every launch starts with the interface shown. */
+  focusView: boolean;
 
   setPanel(panel: PanelId | null): void;
   /** Opens `panel`, or closes it if it is already open. */
@@ -45,6 +48,8 @@ export interface StudyState {
   openSettings(section?: string): void;
   setWidgetsPopover(open: boolean): void;
   toggleWidgetsPopover(): void;
+  setFocusView(on: boolean): void;
+  toggleFocusView(): void;
   refreshOverview(): Promise<void>;
   refreshSettings(): Promise<void>;
   refreshSubjects(): Promise<void>;
@@ -87,6 +92,7 @@ const initialData = () => ({
   widgetsPopover: false,
   settingsSection: null,
   settingsFailed: false,
+  focusView: false,
 });
 
 /** Waits before the second and third tries at loading settings on launch. */
@@ -112,6 +118,9 @@ export const useStudyStore = create<StudyState>()((set, get) => ({
     set({ overlay: 'settings', widgetsPopover: false, settingsSection: section ?? null }),
   setWidgetsPopover: (widgetsPopover) => set({ widgetsPopover }),
   toggleWidgetsPopover: () => set((s) => ({ widgetsPopover: !s.widgetsPopover })),
+  // The Widgets popover hangs off the dock, so it goes with it.
+  setFocusView: (focusView) => set(focusView ? { focusView, widgetsPopover: false } : { focusView }),
+  toggleFocusView: () => get().setFocusView(!get().focusView),
 
   refreshOverview: async () => set({ overview: await api().stats.overview() }),
   refreshSettings: async () => set({ settings: await api().settings.get() }),

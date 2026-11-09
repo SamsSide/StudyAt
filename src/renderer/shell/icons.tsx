@@ -14,6 +14,7 @@ export type IconName =
   | 'mini'
   | 'fullscreen'
   | 'exitFullscreen'
+  | 'eyeOff'
   | 'close'
   | 'chevronLeft'
   | 'chevronRight'
@@ -72,6 +73,14 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   fullscreen: <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />,
   exitFullscreen: <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5" />,
+  // An eye with a stroke through it: hide the interface (focus view, spec §3.4).
+  eyeOff: (
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="m4 4 16 16" />
+    </>
+  ),
   close: <path d="M6 6l12 12M18 6 6 18" />,
   chevronLeft: <path d="m14.5 6-6 6 6 6" />,
   chevronRight: <path d="m9.5 6 6 6-6 6" />,

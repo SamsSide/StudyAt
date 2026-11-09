@@ -1,7 +1,7 @@
 // The renderer shell (spec §4): the space behind everything, the top bar, the dock, one side
 // panel, the open widgets in their frames, full-window overlays, the shortcut help and the
 // first-run welcome. Later tasks plug their parts in through `Registry`.
-import { type ComponentType, useEffect } from 'react';
+import { type ComponentType, useEffect, useState } from 'react';
 import type { WidgetId } from '../../shared/types';
 import '../styles/tokens.css';
 import { Dock } from './Dock';
@@ -46,6 +46,34 @@ const WIDGET_ORDER: readonly WidgetId[] = [
 const OVERLAY_TITLES = { stats: 'Stats', settings: 'Settings', help: 'Keyboard shortcuts' } as const;
 
 const DEFAULT_AUTO_HIDE_SECONDS = 5;
+/** The top-left corner, in px, where the pointer brings up "Show interface" in focus view (spec §3.4). */
+const CORNER_PX = 64;
+
+/** Focus view's way back for the mouse: a small capsule that is there only while the pointer is in
+ *  the top-left corner (or while it has focus, so a keyboard user doesn't lose it mid-press). */
+function ShowInterface({ onShow }: { onShow: () => void }) {
+  const [inCorner, setInCorner] = useState(false);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent): void => setInCorner(e.clientX < CORNER_PX && e.clientY < CORNER_PX);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
+
+  if (!inCorner && !focused) return null;
+  return (
+    <button
+      type="button"
+      className={`${styles.showInterface} ${styles.frosted}`}
+      onClick={onShow}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+    >
+      Show interface
+    </button>
+  );
+}
 
 export function Shell({ registry }: { registry: Registry }) {
   const settings = useStudyStore((s) => s.settings);
@@ -53,10 +81,15 @@ export function Shell({ registry }: { registry: Registry }) {
   const openPanel = useStudyStore((s) => s.openPanel);
   const overlay = useStudyStore((s) => s.overlay);
   const setOverlay = useStudyStore((s) => s.setOverlay);
+  const focusView = useStudyStore((s) => s.focusView);
+  const setFocusView = useStudyStore((s) => s.setFocusView);
 
   useEffect(() => initStudyStore(), []);
   useShortcuts();
   const visible = useAutoHide(settings?.autoHideSeconds ?? DEFAULT_AUTO_HIDE_SECONDS);
+  // An overlay always shows over everything; focus view keeps the chrome hidden whatever the mouse
+  // does (spec §3.4); otherwise auto-hide decides.
+  const chrome = overlay ? 'shown' : focusView ? 'hidden' : visible ? 'shown' : 'hidden';
 
   const Background = registry.background;
   const Panel = openPanel ? registry.panels[openPanel] : null;
@@ -66,7 +99,9 @@ export function Shell({ registry }: { registry: Registry }) {
     <div
       className={styles.shell}
       data-testid="shell"
-      data-chrome={visible || overlay ? 'shown' : 'hidden'}
+      data-chrome={chrome}
+      data-focus-view={focusView ? 'on' : 'off'}
+      data-pointer={visible ? 'active' : 'idle'}
       data-overlay={overlay ?? 'none'}
     >
       <div className={styles.background}>
@@ -91,6 +126,8 @@ export function Shell({ registry }: { registry: Registry }) {
           <Panel />
         </SidePanel>
       )}
+
+      {focusView && !overlay && <ShowInterface onShow={() => setFocusView(false)} />}
 
       {settings && !settings.onboarded && <Welcome />}
       {!settings && settingsFailed && <LoadFailed />}
