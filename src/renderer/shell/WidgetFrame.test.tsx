@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
@@ -329,6 +329,91 @@ describe('WidgetFrame scale (spec §3.5)', () => {
     await user.dblClick(screen.getByRole('button', { name: 'Resize Tasks' }));
     expect(savedTasks()?.scale).toBe(1);
   });
+
+  // Stored JSON reaches the frame unchecked, so a bad scale must still render a usable widget.
+  it('renders a missing or non-number scale at 1', () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5, null as unknown as number) });
+    renderTasks();
+    expect(frame().style.transform).toBe('scale(1)');
+    expect(frame().style.left).toBe('860px');
+  });
+
+  it('holds a stored scale out of range to 0.5–2', () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5, -3) });
+    const { unmount } = renderTasks();
+    expect(frame().style.transform).toBe('scale(0.5)');
+    unmount();
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5, 0.2) });
+    renderTasks();
+    expect(frame().style.transform).toBe('scale(0.5)');
+  });
+
+  it('renders a stored scale of 5 at no more than 2 × layoutScale, then fitted', () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5, 5) });
+    renderTasks();
+    expect(frame().style.transform).toBe('scale(2)');
+    cleanup();
+    setWindow(960, 540);
+    renderTasks();
+    expect(frame().style.transform).toBe('scale(1)');
+    cleanup();
+    setWindow(1920, 1080);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(1200);
+    renderTasks();
+    expect(parseFloat(frame().style.transform.replace('scale(', ''))).toBeCloseTo(992 / 1200, 5);
+  });
+
+  it('steps from 1 when the stored scale is a string, and saves a number', async () => {
+    const user = userEvent.setup();
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5, '1.5' as unknown as number) });
+    renderTasks();
+    expect(frame().style.transform).toBe('scale(1)');
+    screen.getByRole('button', { name: 'Resize Tasks' }).focus();
+    await user.keyboard('+');
+    expect(savedTasks()?.scale).toBe(1.1);
+  });
+
+  it('a drag clamps against the window as it is now, after a resize mid-drag', () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    renderTasks();
+    const handle = screen.getByRole('button', { name: 'Move Tasks' });
+    fireEvent.pointerDown(handle, { clientX: 500, clientY: 420, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 3000, clientY: 420, pointerId: 1 });
+    expect(frame().style.left).toBe('1708px');
+    act(() => {
+      setWindow(960, 540);
+      window.dispatchEvent(new Event('resize'));
+    });
+    fireEvent.pointerMove(window, { clientX: 3001, clientY: 420, pointerId: 1 });
+    // The box is 100 × 50 at layoutScale 0.5: 960 - 12 - 100 and 540 - 12 - 50.
+    expect(frame().style.transform).toBe('scale(0.5)');
+    expect(frame().style.left).toBe('848px');
+    expect(frame().style.top).toBe('478px');
+    fireEvent.pointerUp(window, { clientX: 3001, clientY: 420, pointerId: 1 });
+  });
+
+  it('a corner drag measures against the box as it is now, after a resize mid-drag', () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    renderTasks();
+    const corner = screen.getByRole('button', { name: 'Resize Tasks' });
+    fireEvent.pointerDown(corner, { clientX: 1060, clientY: 640, button: 0, pointerId: 1 });
+    act(() => {
+      setWindow(960, 540);
+      window.dispatchEvent(new Event('resize'));
+    });
+    // The box is now 100 × 50, so moving the corner one whole diagonal doubles it: scale 2,
+    // rendered at 2 × 0.5.
+    fireEvent.pointerMove(window, { clientX: 1160, clientY: 690, pointerId: 1 });
+    expect(frame().style.transform).toBe('scale(1)');
+    fireEvent.pointerUp(window, { clientX: 1160, clientY: 690, pointerId: 1 });
+    expect(savedTasks()?.scale).toBe(2);
+  });
 });
 
 describe('WidgetFrame outside settings (image widgets, spec §3.6)', () => {
@@ -362,6 +447,16 @@ describe('WidgetFrame outside settings (image widgets, spec §3.6)', () => {
     await user.click(screen.getByRole('button', { name: 'Close Image' }));
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(api.settings.set).not.toHaveBeenCalled();
+  });
+
+  it('renders an unchecked pos with a null scale at 1', () => {
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Image" pos={{ ...imagePos, scale: null as unknown as number }}>
+        <p>body</p>
+      </WidgetFrame>,
+    );
+    expect(screen.getByRole('group', { name: 'Image' }).style.transform).toBe('scale(1)');
   });
 
   it('bare hides the header and the glass; the body is the drag handle', () => {

@@ -6,7 +6,8 @@
 // on drag end (a click without a move saves nothing); arrow keys on the header move it too. A widget with `autoHide` fades with the
 // chrome (spec §3.7); the others stay.
 //
-// Scale (spec §3.5): the frame renders at `layoutScale × pos.scale` through `transform: scale(s)`
+// Scale (spec §3.5): the frame renders at `layoutScale × scale` (a bad stored scale reads as 1,
+// and the rest is held to 0.5–2) through `transform: scale(s)`
 // from its top-left, shrunk for display when that box wouldn't fit the free area. The clamp, the
 // placement and the drag maths all use the scaled box. The bottom-right corner resizes: dragging
 // it along the diagonal sets `scale` (0.5–2, to 0.01) on pointer up, keeping the top-left corner
@@ -36,6 +37,13 @@ const SCALE_STEP = 0.1;
 const clamp = (n: number, min: number, max: number): number => Math.min(Math.max(n, min), Math.max(min, max));
 const round = (n: number): number => Math.round(n * 10_000) / 10_000;
 const roundScale = (n: number): number => clamp(Math.round(n * 100) / 100, MIN_SCALE, MAX_SCALE);
+
+/**
+ * A stored scale fit to use: stored JSON (and an image widget's `pos`) reaches the frame
+ * unchecked, so anything but a finite number is 1 and the rest is held to 0.5–2.
+ */
+const usableScale = (n: unknown): number =>
+  typeof n === 'number' && Number.isFinite(n) ? clamp(n, MIN_SCALE, MAX_SCALE) : 1;
 
 interface Box {
   w: number;
@@ -72,7 +80,7 @@ function freeArea(win: Box): { left: number; top: number; right: number; bottom:
   };
 }
 
-/** The scale a frame of unscaled size `frame` renders at for a stored `scale` in this window. */
+/** The scale a frame of unscaled size `frame` renders at for a usable `scale` in this window. */
 function renderedScale(frame: Box, scale: number, win: Box): number {
   const area = freeArea(win);
   return fitScale(frame, layoutScale(win.w, win.h) * scale, {
@@ -172,10 +180,17 @@ export function WidgetFrame({
     else if (id) void patchWidget(id, { open: false });
   };
 
-  const current: Placed = preview?.at ?? pos;
+  // The one scale every path below uses; `pos.scale` itself is never read again.
+  const stored = usableScale(pos.scale);
+  const current: Placed = preview?.at ?? { x: pos.x, y: pos.y, scale: stored };
   const s = renderedScale(frame, current.scale, win);
   const box: Box = { w: frame.w * s, h: frame.h * s };
   const { left, top } = place(current.x, current.y, box, win);
+  /** The scaled box at the stored scale in window `w`; drags measure against the window as it is now. */
+  const boxIn = (w: Box): Box => {
+    const r = renderedScale(frame, stored, w);
+    return { w: frame.w * r, h: frame.h * r };
+  };
 
   /** The stored fields for `scale`, keeping the frame's top-left where it is now. */
   const rescaled = (scale: number, from: { left: number; top: number }, w: Box): Placed => {
@@ -223,13 +238,14 @@ export function WidgetFrame({
     if (e.button !== 0) return;
     e.preventDefault();
     const from = { left, top };
-    let last: Placed = { ...fractions(left, top, box, win), scale: pos.scale };
+    let last: Placed = { ...fractions(left, top, box, win), scale: stored };
     track(
       e,
       (dx, dy) => {
         const w = windowBox();
-        const next = clampBox(from.left + dx, from.top + dy, box, w);
-        last = { ...fractions(next.left, next.top, box, w), scale: pos.scale };
+        const b = boxIn(w);
+        const next = clampBox(from.left + dx, from.top + dy, b, w);
+        last = { ...fractions(next.left, next.top, b, w), scale: stored };
         setPreview({ kind: 'move', at: last });
       },
       (moved) => {
@@ -252,16 +268,18 @@ export function WidgetFrame({
     if (e.button !== 0) return;
     e.preventDefault();
     const from = { left, top };
-    const startScale = pos.scale;
     // Movement counts along the scaled box's diagonal: scale × (diag + Δ) / diag.
-    const diag = Math.hypot(box.w, box.h);
-    if (diag === 0) return;
+    if (Math.hypot(box.w, box.h) === 0) return;
     let last: Placed | null = null;
     track(
       e,
       (dx, dy) => {
-        const along = (dx * box.w + dy * box.h) / diag;
-        last = rescaled(roundScale((startScale * (diag + along)) / diag), from, windowBox());
+        const w = windowBox();
+        const b = boxIn(w);
+        const diag = Math.hypot(b.w, b.h);
+        if (diag === 0) return;
+        const along = (dx * b.w + dy * b.h) / diag;
+        last = rescaled(roundScale((stored * (diag + along)) / diag), from, w);
         setPreview({ kind: 'resize', at: last });
       },
       (moved) => {
@@ -272,6 +290,7 @@ export function WidgetFrame({
 
   const setScale = (scale: number): void => {
     const next = roundScale(scale);
+    // Against the raw value, so a step or a reset repairs a bad stored scale.
     if (next !== pos.scale) save(rescaled(next, { left, top }, win));
   };
 
@@ -279,7 +298,7 @@ export function WidgetFrame({
     const step = e.key === '+' || e.key === '=' ? SCALE_STEP : e.key === '-' ? -SCALE_STEP : 0;
     if (step === 0 && e.key !== '0') return;
     e.preventDefault();
-    setScale(step === 0 ? 1 : pos.scale + step);
+    setScale(step === 0 ? 1 : stored + step);
   };
 
   const bare = chrome === 'bare';
