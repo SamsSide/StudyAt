@@ -3,7 +3,7 @@
 Plan: [2026-11-08-app-v1.md](2026-11-08-app-v1.md) · Spec:
 [2026-11-08-app-v1-design.md](../specs/2026-11-08-app-v1-design.md) · Addendum:
 [2026-11-09-widgets-addendum.md](../specs/2026-11-09-widgets-addendum.md) · Branch `feat/app-v1`,
-verified at **25fd128** (67 commits on `main`, not merged yet, nothing pushed).
+verified at **25fd128** (merged into `main` 2026-11-09; released as v1.0.0 on GitHub, SamsSide/StudyAt).
 
 Short version: every automated gate is green, all 18 end-to-end tests pass on Windows, and the
 installer is in your Downloads folder. What's left is your hand-walk (§6) and a read of the
