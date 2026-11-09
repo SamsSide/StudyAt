@@ -93,4 +93,32 @@ describe('preload api', () => {
     emit(CHANNELS.events.appVisibility, true);
     expect(vis.mock.calls).toEqual([[false], [true]]);
   });
+
+  it('runs every onFlush callback on app:flush, then acks with app.flushed', async () => {
+    const { ipc, emit } = fakeIpc();
+    const api = buildApi(ipc);
+    const order: string[] = [];
+    let release!: () => void;
+    api.app.onFlush(() => new Promise<void>((r) => (release = () => (order.push('slow'), r()))));
+    const off = api.app.onFlush(() => void order.push('gone'));
+    api.app.onFlush(() => {
+      throw new Error('a failing listener still acks');
+    });
+    off();
+    emit(CHANNELS.events.appFlush, undefined);
+    await Promise.resolve();
+    expect(ipc.invoke).not.toHaveBeenCalledWith(CHANNELS.app.flushed);
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual(['slow']);
+    expect(ipc.invoke).toHaveBeenCalledWith(CHANNELS.app.flushed);
+  });
+
+  it('acks app:flush at once with no onFlush listener', async () => {
+    const { ipc, emit } = fakeIpc();
+    buildApi(ipc);
+    emit(CHANNELS.events.appFlush, undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(ipc.invoke).toHaveBeenCalledWith(CHANNELS.app.flushed);
+  });
 });

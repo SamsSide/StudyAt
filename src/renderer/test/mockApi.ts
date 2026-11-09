@@ -26,6 +26,8 @@ export type MockApi = StudyAtApi & {
   emitMini(shown: boolean): void;
   emitVisibility(visible: boolean): void;
   emitSettings(settings: PublicSettings): void;
+  /** As the preload does on `app:flush`: runs every `app.onFlush` callback and awaits them. */
+  emitFlush(): Promise<void>;
 };
 
 const MINUTE = 60_000;
@@ -109,6 +111,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
   const mini = channel<boolean>();
   const visibility = channel<boolean>();
   const settingsChanged = channel<PublicSettings>();
+  const flushers = new Set<() => Promise<void> | void>();
   const timer = (): Promise<TimerState> => Promise.resolve(idleTimerState());
   const resolves = <T>(value: T) => vi.fn(() => Promise.resolve(value));
 
@@ -225,6 +228,11 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       onFullscreen: vi.fn(fullscreen.subscribe),
       onMini: vi.fn(mini.subscribe),
       onVisibility: vi.fn(visibility.subscribe),
+      onFlush: vi.fn((cb: () => Promise<void> | void): Unsubscribe => {
+        flushers.add(cb);
+        return () => flushers.delete(cb);
+      }),
+      flushed: resolves(undefined),
     },
   };
 
@@ -254,6 +262,9 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     emitMini: mini.emit,
     emitVisibility: visibility.emit,
     emitSettings: settingsChanged.emit,
+    emitFlush: async (): Promise<void> => {
+      await Promise.allSettled([...flushers].map((cb) => Promise.resolve().then(cb)));
+    },
   });
 }
 

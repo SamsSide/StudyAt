@@ -168,6 +168,17 @@ describe('registerIpc', () => {
     expect([...handlers.keys()].sort()).toEqual(expected.sort());
   });
 
+  it('app:flushed hands the sending webContents to onFlushed', async () => {
+    const onFlushed = vi.fn();
+    const ev = { senderFrame: null, sender: { id: 7 } } as unknown as IpcMainInvokeEvent;
+    const { handlers } = setup({ onFlushed });
+    await handlers.get(CHANNELS.app.flushed)!(ev);
+    expect(onFlushed).toHaveBeenCalledWith(ev.sender);
+    const untrusted = setup({ onFlushed, isTrustedSender: () => false });
+    expect(() => untrusted.handlers.get(CHANNELS.app.flushed)!(ev)).toThrow('Untrusted sender');
+    expect(onFlushed).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects non-integer subject id', async () => {
     const { invoke } = setup();
     await expect(invoke(CHANNELS.subjects.update, 1.5, { name: 'x' })).rejects.toThrow(IpcValidationError);
@@ -306,6 +317,18 @@ describe('createBroadcaster', () => {
     remove();
     expect(live.send).toHaveBeenCalledTimes(2);
     expect(dying.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists the live targets', () => {
+    const b = createBroadcaster<{ id: number; isDestroyed(): boolean; send(): void }>();
+    let dead = false;
+    const a = { id: 1, isDestroyed: () => false, send: vi.fn() };
+    const d = { id: 2, isDestroyed: () => dead, send: vi.fn() };
+    b.add(a);
+    b.add(d);
+    expect(b.live()).toEqual([a, d]);
+    dead = true;
+    expect(b.live()).toEqual([a]);
   });
 
   it('weather: validates the query and the place, and never returns the cache', async () => {

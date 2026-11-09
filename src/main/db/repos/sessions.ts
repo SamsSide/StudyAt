@@ -30,6 +30,8 @@ export interface SessionsRepo {
   close(id: number, endedAt: number, focusMs: number, discardedMs: number): void;
   /** Deletes a done row with `focusMs < minMs`; true if it was deleted. Running rows are never touched. */
   deleteIfShort(id: number, minMs?: number): boolean;
+  /** One row by id, or null if there is none. */
+  get(id: number): Session | null;
   listRunning(): Session[];
   /** By inclusive day-key range; `subjectId: null` means untagged only. Oldest first. */
   list(filter: SessionFilter): Session[];
@@ -95,6 +97,10 @@ export function sessionsRepo(db: Db): SessionsRepo {
         0;
       if (deleted) db.markDirty();
       return deleted;
+    },
+    get(id) {
+      const r = one(db.raw, 'SELECT * FROM sessions WHERE id = ?', [id]);
+      return r ? toSession(r) : null;
     },
     listRunning: () => all(db.raw, `SELECT * FROM sessions WHERE status = 'running' ${ORDER}`).map(toSession),
     list(filter) {

@@ -1,7 +1,7 @@
 // App bootstrap (Task 10, Task 13). Order: userData override → media scheme → single instance →
 // ready → database (migrate, seed; the corrupt dialog, spec §3.3) → daily backup → timer and orphan
-// recovery → pending recaps → media protocol → IPC → power → main window → tray → hotkey and login
-// item. Closing the window hides to the tray (appplan §4.4); only Quit ends the app, saving first.
+// recovery → pending recaps → media protocol → IPC → power and the date watch → main window → tray →
+// hotkey and login item. Closing the window hides to the tray (appplan §4.4); only Quit ends the app, saving first.
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -22,17 +22,20 @@ import {
   Tray,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { dailyBackup, fileStamp, latestBackupBefore } from './db/backup';
+import { todayKey } from '../core/stats/totals';
+import { watchDateChange } from './date-watch';
+import { dailyBackup, fileStamp, latestBackupBefore, localDateKey } from './db/backup';
 import { corruptState, markCorruptRestoreAttempt, resolveCorrupt } from './db/corrupt';
 import { NewerSchemaError, isReadableDatabase, openDatabase, type Db } from './db/db';
 import { settingsRepo } from './db/repos/settings';
 import { GlobalHotkey, guardHotkeySetting } from './hotkey';
+import { createRendererFlush } from './flush';
 import { createBroadcaster, registerIpc, type Dialogs } from './ipc';
 import { MiniWindow } from './mini';
 import { createNotifier } from './notify';
 import { applyUserDataOverride } from './paths';
 import { installMediaProtocol, registerMediaScheme } from './protocol';
-import { CSP, DEV_CSP, hardenWebContents, shouldApplyCsp } from './security';
+import { CSP, DEV_CSP, hardenWebContents, installPermissionHandlers, shouldApplyCsp } from './security';
 import { startRendererServer } from './server';
 import { createCalendarService } from './services/calendar';
 import { dataService } from './services/data';
@@ -69,7 +72,7 @@ let tray: AppTray | null = null;
 let mini: MiniWindow | null = null;
 
 /** Every live renderer window gets main's pushes: the main window and the mini window. */
-export const broadcaster = createBroadcaster();
+export const broadcaster = createBroadcaster<Electron.WebContents>();
 
 /**
  * Bundled files: `assets/` and sql.js's wasm sit in the project in development; packaged, assets
@@ -236,6 +239,8 @@ async function boot(): Promise<void> {
     }
     callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp] } });
   });
+  // Only notifications and fullscreen, and only for the app's own pages (study-dev rule 5).
+  installPermissionHandlers(session.defaultSession, rendererOrigin);
 
   const paths = resourcePaths();
   const icon = join(paths.assets, 'icons', 'icon.png');
@@ -244,8 +249,13 @@ async function boot(): Promise<void> {
   if (!db) return;
   if (db.recovered === 'corrupt' && !(await recoverCorruptDb(db, paths.wasm))) return;
   // After a corrupt launch the file is a fresh database: it must not become today's daily (R16).
-  await dailyBackup(userData, Date.now(), { skip: db.recovered === 'corrupt' }).catch((err: unknown) =>
-    console.error('StudyAt: daily backup failed', err),
+  const launchedAt = Date.now();
+  const launchBackupDay = await dailyBackup(userData, launchedAt, { skip: db.recovered === 'corrupt' }).then(
+    () => localDateKey(launchedAt),
+    (err: unknown) => {
+      console.error('StudyAt: daily backup failed', err);
+      return null;
+    },
   );
 
   const settingsStore = settingsRepo(db);
@@ -307,13 +317,23 @@ async function boot(): Promise<void> {
   // exactly once; the app quits whatever fails on the way, within QUIT_LIMIT_MS. A failed step
   // never skips timer.quit(): quitting while away discards the away time (Sam's A1).
   // A failed attempt is retried by the next quit or restore rather than remembered.
+  const quitTimers = {
+    setTimeout: (fn: () => void, ms: number): unknown => setTimeout(fn, ms),
+    clearTimeout: (h: unknown): void => clearTimeout(h as NodeJS.Timeout),
+  };
   const stopTimerAndDb = onceUntilFailure(async () => {
     await timer.quit();
     await db.close();
   });
+  // Every window first saves what it still holds (note text), within FLUSH_LIMIT_MS of QUIT_LIMIT_MS.
+  const renderers = createRendererFlush({ targets: () => broadcaster.live(), ...quitTimers });
   const quitting = installQuit(
     app,
-    () => runShutdown([() => main?.flush(), () => mini?.flush(), () => hotkey.dispose()], stopTimerAndDb),
+    () =>
+      runShutdown([() => main?.flush(), () => mini?.flush(), () => hotkey.dispose()], async () => {
+        await renderers.flush().catch((err: unknown) => console.error('StudyAt: window flush failed', err));
+        await stopTimerAndDb();
+      }),
     async () => {
       tray?.destroy();
       await rendererServer?.close();
@@ -353,6 +373,7 @@ async function boot(): Promise<void> {
       mini?.hide();
       main?.reveal();
     },
+    onFlushed: (sender) => renderers.ack(sender),
   });
   // Spec §3.5: every finished week is recapped on launch; the renderer asks for the pending one.
   services.recaps.computePending(Date.now());
@@ -363,12 +384,23 @@ async function boot(): Promise<void> {
   });
   // suspend/lock pause the timer; resume/unlock route to onResume/onUnlock (spec §3.4 rules 3–4).
   wirePower(powerMonitor, timer);
+  // The app lives in the tray for days: the daily backup and a finished week's recap follow the
+  // date, not the launch (study-dev rule 2, spec §3.5).
+  watchDateChange({
+    now: Date.now,
+    setInterval,
+    clearInterval,
+    power: powerMonitor,
+    lastBackupDay: launchBackupDay,
+    studyDay: (now) => todayKey(services.stats.contextAt(now)),
+    // While the corrupt dialog is unresolved the file is the fresh one, never a daily (R16, R32).
+    backup: (now) => dailyBackup(userData, now, { skip: corruptState(db.raw).pendingAt !== null }),
+    recaps: (now) => void services.recaps.computePending(now),
+    log: (msg, err) => console.error(msg, err),
+  });
 
   const workAreas = (): Electron.Rectangle[] => screen.getAllDisplays().map((d) => d.workArea);
-  const timeouts = {
-    setTimeout: (fn: () => void, ms: number): unknown => setTimeout(fn, ms),
-    clearTimeout: (h: unknown): void => clearTimeout(h as NodeJS.Timeout),
-  };
+  const timeouts = quitTimers;
 
   mini = new MiniWindow({
     create: (opts) => new BrowserWindow(opts),

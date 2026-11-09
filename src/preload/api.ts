@@ -17,6 +17,7 @@ export const EVENT_METHODS = {
   'app.onFullscreen': CHANNELS.events.appFullscreen,
   'app.onMini': CHANNELS.events.appMini,
   'app.onVisibility': CHANNELS.events.appVisibility,
+  'app.onFlush': CHANNELS.events.appFlush,
   'settings.onChanged': CHANNELS.events.settingsChanged,
 } as const;
 
@@ -41,6 +42,19 @@ export function buildApi(ipc: IpcRendererLike): StudyAtApi {
       return () => ipc.removeListener(channel, listener);
     };
   }
+  // app:flush is answered here, always: every onFlush callback settles, then main gets its ack, so
+  // a window with no listener (or a failing one) never holds the quit up.
+  const flushers = new Set<() => Promise<void> | void>();
+  ipc.on(CHANNELS.events.appFlush, () => {
+    void Promise.allSettled([...flushers].map((cb) => Promise.resolve().then(cb))).then(() =>
+      ipc.invoke(CHANNELS.app.flushed).catch(() => undefined),
+    );
+  });
+  (api.app ??= {}).onFlush = (cb: unknown): Unsubscribe => {
+    const fn = cb as () => Promise<void> | void;
+    flushers.add(fn);
+    return () => flushers.delete(fn);
+  };
   // The shape is CHANNELS plus EVENT_METHODS; api.test.ts checks it names every StudyAtApi method.
   return api as unknown as StudyAtApi;
 }

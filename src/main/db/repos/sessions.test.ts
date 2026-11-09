@@ -101,6 +101,12 @@ describe('sessionsRepo', () => {
     expect(repo.all().map((s) => s.id)).toEqual([long.id]);
   });
 
+  it('gets one row by id, or null', () => {
+    const a = start();
+    expect(sessionsRepo(db).get(a.id)).toEqual(a);
+    expect(sessionsRepo(db).get(a.id + 99)).toBeNull();
+  });
+
   it('deleteIfShort never deletes a running row', () => {
     const repo = sessionsRepo(db);
     const s = start();

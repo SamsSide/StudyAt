@@ -58,6 +58,19 @@ describe('mockApi', () => {
     expect(vis).toHaveBeenCalledWith(false);
   });
 
+  it('emitFlush runs and awaits every onFlush callback', async () => {
+    const api = mockApi();
+    let done = false;
+    const off = api.app.onFlush(() => Promise.resolve().then(() => void (done = true)));
+    await api.emitFlush();
+    expect(done).toBe(true);
+    off();
+    done = false;
+    await api.emitFlush();
+    expect(done).toBe(false);
+    await expect(api.app.flushed()).resolves.toBeUndefined();
+  });
+
   it('emitSettings drives settings.onChanged', async () => {
     const api = mockApi();
     const cb = vi.fn();

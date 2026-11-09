@@ -16,6 +16,7 @@ import type { AwayPrompt, Mode, SegmentEnd, TimerState } from '../../shared/type
 import type { Db } from '../db/db';
 import { sessionsRepo, type SessionsRepo } from '../db/repos/sessions';
 import { settingsRepo, type SettingsRepo } from '../db/repos/settings';
+import { clearAwayMarker, readAwayMarker, writeAwayMarker } from './away-marker';
 import { AWAY_AUTO_DISCARD_MS, FocusLedger, IDLE_POLL_MS, IdleWatch } from './idle';
 
 export const TICK_MS = 250;
@@ -94,6 +95,8 @@ export class TimerController {
   private readonly ledger = new FocusLedger();
   private readonly idle = new IdleWatch();
   private pending: Pending | null = null;
+  /** This run has an away marker in `meta` (R39) that resolving the period must clear. */
+  private markerOpen = false;
   private lastCheckpointAt = 0;
   private lastEmitted: Emitted | null = null;
   private dirty = false;
@@ -115,13 +118,41 @@ export class TimerController {
     this.machine = initialState(this.cfg);
   }
 
-  /** Spec §3.4 rule 7: closes every `running` row at its last checkpoint, then rule 6 applies. */
+  /**
+   * Spec §3.4 rule 7: closes every `running` row at its last checkpoint, then rule 6 applies. A row
+   * named by an away marker left by a crash loses the focus it accrued after the away period began,
+   * which becomes discarded time, running or already closed (R39: an unanswered period is discarded).
+   */
   recoverOrphans(): void {
     if (this.disposed) return;
+    const marker = this.markerOpen ? null : readAwayMarker(this.deps.db);
+    const atSince = new Map(marker?.rows.map((r) => [r.rowId, r.focusMsAtSince]));
+    const capped = (focusMs: number, discardedMs: number, id: number): [number, number] => {
+      const cap = atSince.get(id);
+      return cap === undefined || focusMs <= cap
+        ? [focusMs, discardedMs]
+        : [cap, discardedMs + focusMs - cap];
+    };
     for (const row of this.sessions.listRunning()) {
       if (row.id === this.open?.id) continue;
-      this.sessions.close(row.id, row.checkpointAt, row.focusMs, row.discardedMs);
+      const [focusMs, discardedMs] = capped(row.focusMs, row.discardedMs, row.id);
+      this.sessions.close(row.id, row.checkpointAt, focusMs, discardedMs);
       this.sessions.deleteIfShort(row.id);
+      atSince.delete(row.id);
+      this.dirty = true;
+    }
+    // Rows that closed during the away period (a segment end or a subject split) before the crash.
+    for (const id of atSince.keys()) {
+      const row = this.sessions.get(id);
+      if (!row || row.status !== 'done') continue;
+      const [focusMs, discardedMs] = capped(row.focusMs, row.discardedMs, id);
+      if (focusMs === row.focusMs) continue;
+      this.sessions.close(id, row.endedAt ?? row.checkpointAt, focusMs, discardedMs);
+      this.sessions.deleteIfShort(id);
+      this.dirty = true;
+    }
+    if (marker) {
+      clearAwayMarker(this.deps.db);
       this.dirty = true;
     }
     this.settle(this.deps.now());
@@ -451,6 +482,8 @@ export class TimerController {
       this.recentPomodoros = [...this.recentPomodoros, pomodoroId].slice(-2);
     this.lastCheckpointAt = now;
     this.dirty = true;
+    // A row opened during an away period (a split or an auto-started focus) joins its marker.
+    if (this.idle.since !== null) this.writeMarker(this.idle.since, now);
   }
 
   private checkpoint(now: number): void {
@@ -492,13 +525,42 @@ export class TimerController {
       this.machine.status === 'running',
       this.idleThresholdMs,
     );
-    if (result.kind === 'back') {
+    if (result.kind === 'away') {
+      // R39: the row and the marker reach the disk now, so a crash from here on never credits
+      // the away time.
+      this.tick(now);
+      this.checkpoint(now);
+      this.writeMarker(result.since, now);
+      this.settle(now);
+    } else if (result.kind === 'back') {
       this.tick(now);
       this.raiseAway(result.since, now);
+      // Nothing ran while away, so there is no prompt and nothing left to discard on a crash.
+      if (!this.pending) this.clearMarker();
       this.settle(now, true);
     } else {
       this.syncTimers();
     }
+  }
+
+  /** Each row the away period since `since` can charge, with its focus at `since` (R39). */
+  private writeMarker(since: number, now: number): void {
+    const charged = new Map(this.ledger.covered(since, now).map((c) => [c.rowId, c.ms]));
+    const rows: Array<{ rowId: number; focusMsAtSince: number }> = [];
+    for (const row of this.rows.values()) {
+      if (row.deleted || (row !== this.open && !charged.has(row.id))) continue;
+      rows.push({ rowId: row.id, focusMsAtSince: Math.max(0, row.focusMs - (charged.get(row.id) ?? 0)) });
+    }
+    writeAwayMarker(this.deps.db, { since, rows });
+    this.markerOpen = true;
+    this.dirty = true;
+  }
+
+  private clearMarker(): void {
+    if (!this.markerOpen) return;
+    clearAwayMarker(this.deps.db);
+    this.markerOpen = false;
+    this.dirty = true;
   }
 
   /**
@@ -529,6 +591,7 @@ export class TimerController {
     if (!pending) return;
     this.pending = null;
     if (answer === 'discard') this.discard(pending.charges, now);
+    this.clearMarker();
     this.deps.emit.away(null);
   }
 

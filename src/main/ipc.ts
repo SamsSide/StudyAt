@@ -144,6 +144,8 @@ export interface IpcDeps {
   pushSettings?(settings: PublicSettings): void;
   /** `app:showMini` (Task 13's mini window). */
   showMini?(show: boolean): void;
+  /** `app:flushed`: the sending window has saved what it held after an `app:flush`. */
+  onFlushed?(sender: { id: number }): void;
   exists?: (path: string) => boolean;
   /**
    * False rejects the call before any payload is read (study-dev rule 5): Task 13 checks the
@@ -170,13 +172,17 @@ export interface PushTarget {
  * Main-to-renderer pushes on `CHANNELS.events` to every live renderer window. The main window is
  * added at creation; Task 13 adds the mini window. Destroyed targets are dropped.
  */
-export function createBroadcaster() {
-  const targets = new Set<PushTarget>();
+export function createBroadcaster<T extends PushTarget = PushTarget>() {
+  const targets = new Set<T>();
   return {
     /** Returns a function that removes the target again. */
-    add(target: PushTarget): () => void {
+    add(target: T): () => void {
       targets.add(target);
       return () => targets.delete(target);
+    },
+    /** The live targets (the app:flush on quit asks each of them). */
+    live(): T[] {
+      return [...targets].filter((t) => !t.isDestroyed());
     },
     send(channel: string, payload: unknown): void {
       for (const t of targets) {
@@ -549,6 +555,11 @@ export function registerIpc(deps: IpcDeps) {
   });
   handle(C.app.showMini, (show) => {
     deps.showMini?.(assertBool(show, 'show'));
+  });
+  // No payload: the ack names its window by the invoke event's sender.
+  deps.ipc.handle(C.app.flushed, (event) => {
+    if (deps.isTrustedSender && !deps.isTrustedSender(event)) throw new Error('Untrusted sender');
+    deps.onFlushed?.(event.sender);
   });
 
   return { stats, recaps, spaces, sounds, data, resolveMedia: createMediaResolver(spaces, sounds) };

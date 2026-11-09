@@ -1,12 +1,15 @@
 // Content-Security-Policy and navigation blocking (spec §3.2, study-dev rule 5).
 import { shell } from 'electron';
 
-/** Self, YouTube (embeds), i.ytimg.com (thumbs), i.scdn.co (album art), the media protocol, data and blob. */
+/**
+ * Self, YouTube (embeds), i.ytimg.com (thumbs), Spotify album art (i.scdn.co, its CDNs and
+ * mosaic.scdn.co for playlist covers, R40), the media protocol, data and blob.
+ */
 export const CSP = [
   "default-src 'self'",
   "script-src 'self' https://www.youtube.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' https://i.ytimg.com https://i.scdn.co studyat-media: data: blob:",
+  "img-src 'self' https://i.ytimg.com https://i.scdn.co https://*.spotifycdn.com https://mosaic.scdn.co studyat-media: data: blob:",
   "media-src 'self' studyat-media: blob: data:",
   "connect-src 'self' studyat-media: data: blob:",
   "font-src 'self' data:",
@@ -50,4 +53,23 @@ export function hardenWebContents(wc: Electron.WebContents): void {
     const here = originOf(wc.getURL());
     if (here === null || originOf(url) !== here) event.preventDefault();
   });
+}
+
+/** The only permissions a page may hold, and only on the app's own origin (study-dev rule 5). */
+const ALLOWED_PERMISSIONS = new Set(['notifications', 'fullscreen']);
+
+export function permissionAllowed(permission: string, url: string, appOrigin: string | null): boolean {
+  return appOrigin !== null && ALLOWED_PERMISSIONS.has(permission) && originOf(url) === appOrigin;
+}
+
+type PermissionSession = Pick<Electron.Session, 'setPermissionRequestHandler' | 'setPermissionCheckHandler'>;
+
+/** Every permission request and check is denied unless `permissionAllowed` says otherwise. */
+export function installPermissionHandlers(ses: PermissionSession, appOrigin: () => string | null): void {
+  ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    callback(permissionAllowed(permission, details.requestingUrl, appOrigin()));
+  });
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) =>
+    permissionAllowed(permission, requestingOrigin, appOrigin()),
+  );
 }

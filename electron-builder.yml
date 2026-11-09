@@ -16,10 +16,12 @@ win:
   target:
     - nsis
   icon: assets/icons/icon.ico
+# Per-user only: installs to %LOCALAPPDATA% with no admin prompt, and never runs elevated after.
 nsis:
-  oneClick: false
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  shortcutName: StudyAt
+  runAfterFinish: false
   artifactName: StudyAt Setup ${version}.exe

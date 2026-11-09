@@ -195,6 +195,14 @@ export interface StudyAtApi {
     onMini(cb: (shown: boolean) => void): Unsubscribe;
     /** The main window became visible (shown, restored) or not (hidden to the tray, minimised). */
     onVisibility(cb: (visible: boolean) => void): Unsubscribe;
+    /**
+     * Quitting (or Windows signing out) asks every window to save what it still holds, such as
+     * note text, before the database closes. Each callback may return a promise; once all have
+     * settled the preload acks with `flushed()` itself. Main waits about 1 s at most.
+     */
+    onFlush(cb: () => Promise<void> | void): Unsubscribe;
+    /** The ack of an `app:flush`; sent by the preload, so the renderer never needs to call it. */
+    flushed(): Promise<void>;
   };
 }
 
@@ -279,7 +287,7 @@ export const CHANNELS = {
   weather: { searchPlaces: 'weather:searchPlaces', setPlace: 'weather:setPlace', current: 'weather:current' },
   calendar: { status: 'calendar:status', setUrls: 'calendar:setUrls', agenda: 'calendar:agenda' },
   notes: { list: 'notes:list', create: 'notes:create', update: 'notes:update', remove: 'notes:remove' },
-  app: { toggleFullscreen: 'app:toggleFullscreen', showMini: 'app:showMini' },
+  app: { toggleFullscreen: 'app:toggleFullscreen', showMini: 'app:showMini', flushed: 'app:flushed' },
   events: {
     timerState: 'timer:state',
     timerAway: 'timer:away',
@@ -287,6 +295,7 @@ export const CHANNELS = {
     appFullscreen: 'app:fullscreen',
     appMini: 'app:mini',
     appVisibility: 'app:visibility',
+    appFlush: 'app:flush',
     settingsChanged: 'settings:changed',
   },
 } as const;

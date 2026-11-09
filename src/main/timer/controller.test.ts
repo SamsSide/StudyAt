@@ -4,6 +4,8 @@ import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
+import { one } from '../db/sql';
+import { AWAY_MARKER_KEY } from './away-marker';
 import { SLEEP_GAP_MS, TimerController } from './controller';
 import { FakeClock } from './test-clock';
 
@@ -646,5 +648,128 @@ describe('TimerController', () => {
     lastInput = clock.time;
     c.applySettings();
     expect((Reflect.get(c, 'rows') as Map<number, unknown>).size).toBe(2);
+  });
+  // ── Ruling R39: a crash during an unanswered away period never credits the away time ──
+
+  const marker = () => one(db.raw, 'SELECT value FROM meta WHERE key = ?', [AWAY_MARKER_KEY]);
+  /** The process dies: nothing is closed or flushed; the next launch recovers from the database. */
+  const crashAndRelaunch = (): TimerController => {
+    c.dispose();
+    c = make();
+    c.recoverOrphans();
+    return c;
+  };
+
+  it('persists an away marker and a checkpoint as soon as the idle threshold is crossed', () => {
+    c.start();
+    lastInput = NOW + MIN;
+    at(11 * MIN); // the 11:00 poll sees 10 min idle: away since 1:00
+    expect(JSON.parse(String(marker()?.value))).toEqual({
+      since: NOW + MIN,
+      rows: [{ rowId: rows()[0]!.id, focusMsAtSince: MIN }],
+    });
+    expect(rows()[0]).toMatchObject({ checkpointAt: NOW + 11 * MIN, focusMs: 11 * MIN });
+  });
+
+  it('a crash while away, not yet noticed, recovers the row without the away time', () => {
+    c.start();
+    lastInput = NOW + MIN;
+    at(13 * MIN + 7_000);
+    const cp = rows()[0]!;
+    crashAndRelaunch();
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        status: 'done',
+        endedAt: cp.checkpointAt,
+        focusMs: MIN,
+        discardedMs: cp.focusMs - MIN,
+      }),
+    ]);
+    expect(marker()).toBeNull();
+  });
+
+  it('a crash with the away prompt unanswered recovers the row without the away time', () => {
+    awayTwelveMinutes();
+    at(12 * MIN + 30_000);
+    const cp = rows()[0]!;
+    crashAndRelaunch();
+    expect(rows()[0]).toMatchObject({ status: 'done', focusMs: MIN, discardedMs: cp.focusMs - MIN });
+  });
+
+  it('a crash while away after the segment ended takes the away time out of the closed row', () => {
+    c.start();
+    lastInput = NOW + 10 * MIN;
+    at(27 * MIN); // the focus row closed at 25:00 with the away time in it
+    crashAndRelaunch();
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        status: 'done',
+        endedAt: NOW + FOCUS,
+        focusMs: 10 * MIN,
+        discardedMs: 15 * MIN,
+      }),
+    ]);
+  });
+
+  it('a crash while away deletes a recovered row left under a minute (rule 6)', () => {
+    c.start();
+    lastInput = NOW + 30_000;
+    at(12 * MIN);
+    crashAndRelaunch();
+    expect(rows()).toEqual([]);
+  });
+
+  it('a crash after Keep recovers normally', () => {
+    awayTwelveMinutes();
+    c.answerAway('keep');
+    expect(marker()).toBeNull();
+    at(13 * MIN);
+    const cp = rows()[0]!;
+    crashAndRelaunch();
+    expect(rows()[0]).toMatchObject({
+      status: 'done',
+      endedAt: cp.checkpointAt,
+      focusMs: cp.focusMs,
+      discardedMs: 0,
+    });
+    expect(cp.focusMs).toBeGreaterThan(12 * MIN);
+  });
+
+  it('discard, auto-discard and quit clear the marker', async () => {
+    awayTwelveMinutes();
+    c.answerAway('discard');
+    expect(marker()).toBeNull();
+    c.reset();
+    lastInput = clock.time;
+    c.start();
+    lastInput = clock.time;
+    at(25 * MIN); // away again, noticed at the next poll past 10 min idle
+    expect(marker()).not.toBeNull();
+    lastInput = clock.time + 1_000;
+    at(25 * MIN + 5_000);
+    expect(aways.at(-1)).not.toBeNull();
+    at(25 * MIN + 5_000 + 120_000); // auto-discard
+    expect(marker()).toBeNull();
+    lastInput = clock.time - 11 * MIN; // idle again past the threshold
+    clock.advance(5_000);
+    expect(marker()).not.toBeNull();
+    await c.quit();
+    expect(marker()).toBeNull();
+  });
+
+  it('a row opened while away joins the marker', () => {
+    c.setSubject(1);
+    c.start();
+    lastInput = NOW + MIN;
+    at(11 * MIN);
+    c.setSubject(2); // the tray, no input
+    const ids = rows().map((r) => r.id);
+    expect(JSON.parse(String(marker()?.value)).rows).toEqual([
+      { rowId: ids[0], focusMsAtSince: MIN },
+      { rowId: ids[1], focusMsAtSince: 0 },
+    ]);
+    at(12 * MIN);
+    crashAndRelaunch();
+    expect(rows().map((r) => [r.subjectId, r.focusMs])).toEqual([[1, MIN]]);
   });
 });
