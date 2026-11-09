@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BREAK_DONE, createNotifier, FOCUS_DONE, TRAY_NOTICE, type NotificationLike, type NotifyDeps } from './notify';
+import {
+  BREAK_DONE,
+  createNotifier,
+  FOCUS_DONE,
+  TRAY_NOTICE,
+  type NotificationLike,
+  type NotifyDeps,
+} from './notify';
 
 function setup(over: Partial<NotifyDeps> = {}) {
-  const made: { opts: Parameters<NotifyDeps['create']>[0]; n: NotificationLike & { fire(e: string): void } }[] = [];
+  const made: {
+    opts: Parameters<NotifyDeps['create']>[0];
+    n: NotificationLike & { fire(e: string): void };
+  }[] = [];
   const settings = { notifications: true };
   const deps: NotifyDeps = {
     create: (opts) => {

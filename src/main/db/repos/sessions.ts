@@ -15,7 +15,12 @@ export const MIN_SESSION_MS = 60_000;
 
 export interface SessionsRepo {
   /** A new `running` row, checkpointed at its start (rule 1). */
-  insertRunning(input: { pomodoroId: string; subjectId: number | null; startedAt: number; dayKey: string }): Session;
+  insertRunning(input: {
+    pomodoroId: string;
+    subjectId: number | null;
+    startedAt: number;
+    dayKey: string;
+  }): Session;
   /**
    * Records accrued focus time on a `running` row, and its discarded time when given (a discard on
    * the open row reaches the disk before the row closes); ignored once the row is done.
@@ -62,28 +67,32 @@ export function sessionsRepo(db: Db): SessionsRepo {
     },
     checkpoint(id, focusMs, at, discardedMs) {
       if (discardedMs === undefined) {
-        run(db.raw, "UPDATE sessions SET focus_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'", [focusMs, at, id]);
+        run(
+          db.raw,
+          "UPDATE sessions SET focus_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'",
+          [focusMs, at, id],
+        );
       } else {
-        run(db.raw, "UPDATE sessions SET focus_ms = ?, discarded_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'", [
-          focusMs,
-          discardedMs,
-          at,
-          id,
-        ]);
+        run(
+          db.raw,
+          "UPDATE sessions SET focus_ms = ?, discarded_ms = ?, checkpoint_at = ? WHERE id = ? AND status = 'running'",
+          [focusMs, discardedMs, at, id],
+        );
       }
       db.markDirty();
     },
     close(id, endedAt, focusMs, discardedMs) {
-      run(db.raw, "UPDATE sessions SET ended_at = ?, focus_ms = ?, discarded_ms = ?, status = 'done' WHERE id = ?", [
-        endedAt,
-        focusMs,
-        discardedMs,
-        id,
-      ]);
+      run(
+        db.raw,
+        "UPDATE sessions SET ended_at = ?, focus_ms = ?, discarded_ms = ?, status = 'done' WHERE id = ?",
+        [endedAt, focusMs, discardedMs, id],
+      );
       db.markDirty();
     },
     deleteIfShort(id, minMs = MIN_SESSION_MS) {
-      const deleted = run(db.raw, "DELETE FROM sessions WHERE id = ? AND status = 'done' AND focus_ms < ?", [id, minMs]) > 0;
+      const deleted =
+        run(db.raw, "DELETE FROM sessions WHERE id = ? AND status = 'done' AND focus_ms < ?", [id, minMs]) >
+        0;
       if (deleted) db.markDirty();
       return deleted;
     },

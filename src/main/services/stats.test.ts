@@ -30,7 +30,12 @@ afterEach(async () => {
 /** A finished focus row of `minutes`, started at `start`. */
 function addSession(start: number, minutes: number, subjectId: number | null = null): number {
   const repo = sessionsRepo(db);
-  const row = repo.insertRunning({ pomodoroId: `p${start}`, subjectId, startedAt: start, dayKey: dayKeyOf(start, 4) });
+  const row = repo.insertRunning({
+    pomodoroId: `p${start}`,
+    subjectId,
+    startedAt: start,
+    dayKey: dayKeyOf(start, 4),
+  });
   repo.close(row.id, start + minutes * MIN, minutes * MIN, 0);
   return row.id;
 }
@@ -38,7 +43,12 @@ function addSession(start: number, minutes: number, subjectId: number | null = n
 describe('statsService', () => {
   it('adds the running row live accrual to today, across every view', () => {
     addSession(WED - 3 * 3_600_000, 30);
-    const running = sessionsRepo(db).insertRunning({ pomodoroId: 'live', subjectId: null, startedAt: WED - 10 * MIN, dayKey: dayKeyOf(WED, 4) });
+    const running = sessionsRepo(db).insertRunning({
+      pomodoroId: 'live',
+      subjectId: null,
+      startedAt: WED - 10 * MIN,
+      dayKey: dayKeyOf(WED, 4),
+    });
     sessionsRepo(db).checkpoint(running.id, 5 * MIN, WED - 5 * MIN);
     // The controller's figure: 30 min done + 10 min of the running row (5 not yet checkpointed).
     const stats = statsService({ db, now: () => WED, liveTodayMs: () => 40 * MIN });
@@ -63,7 +73,12 @@ describe('statsService', () => {
     stats.updateSession(id, subject);
     expect(stats.sessions().find((s) => s.id === id)?.subjectId).toBe(subject);
     expect(() => stats.updateSession(id, 9999)).toThrow(IpcValidationError);
-    const running = sessionsRepo(db).insertRunning({ pomodoroId: 'r', subjectId: null, startedAt: WED, dayKey: '2026-11-11' });
+    const running = sessionsRepo(db).insertRunning({
+      pomodoroId: 'r',
+      subjectId: null,
+      startedAt: WED,
+      dayKey: '2026-11-11',
+    });
     expect(() => stats.deleteSession(running.id)).toThrow(IpcValidationError);
     stats.deleteSession(id);
     expect(stats.sessions().some((s) => s.id === id)).toBe(false);
@@ -107,7 +122,10 @@ describe('recapsService', () => {
     const subject = subjectsRepo(db).list()[1]!;
 
     recaps.refreshWeekOf(stats.updateSession(a, subject.id), WED);
-    expect(recapsRepo(db).get('2026-11-02')?.recap.topSubjects[0]).toMatchObject({ subjectId: subject.id, ms: 40 * MIN });
+    expect(recapsRepo(db).get('2026-11-02')?.recap.topSubjects[0]).toMatchObject({
+      subjectId: subject.id,
+      ms: 40 * MIN,
+    });
     recaps.refreshWeekOf(stats.deleteSession(b), WED);
     const stored = recapsRepo(db).get('2026-11-02')!;
     expect(stored.recap.totalMs).toBe(40 * MIN);
@@ -124,7 +142,12 @@ describe('recapsService', () => {
     // Sun 8 Nov 23:30, still running: credited to last week until it closes.
     const sunday = new Date(2026, 10, 8, 23, 30).getTime();
     const repo = sessionsRepo(db);
-    const running = repo.insertRunning({ pomodoroId: 'r', subjectId: null, startedAt: sunday, dayKey: dayKeyOf(sunday, 4) });
+    const running = repo.insertRunning({
+      pomodoroId: 'r',
+      subjectId: null,
+      startedAt: sunday,
+      dayKey: dayKeyOf(sunday, 4),
+    });
     repo.checkpoint(running.id, 10 * MIN, sunday + 10 * MIN);
     const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
     const recaps = recapsService({ db, stats });

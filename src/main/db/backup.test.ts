@@ -1,4 +1,12 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { dailyBackup, fileStamp, latestBackupBefore, listBackups, localDateKey } from './backup';
@@ -41,7 +49,9 @@ describe('backups', () => {
     // Today's file already exists, so nothing is copied and only pruning runs.
     writeFileSync(join(backups, 'daily-2026-11-08.sqlite'), 'x');
     await dailyBackup(dir, NOW);
-    const left = readdirSync(backups).filter((f) => f.startsWith('daily-')).sort();
+    const left = readdirSync(backups)
+      .filter((f) => f.startsWith('daily-'))
+      .sort();
     expect(left).toHaveLength(14);
     expect(left).not.toContain('daily-2026-10-20.sqlite');
     expect(left).not.toContain('daily-2026-10-21.sqlite');
@@ -86,7 +96,10 @@ describe('backups', () => {
     const backups = join(dir, 'backups');
     mkdirSync(backups);
     for (let d = 0; d < 14; d++) {
-      writeFileSync(join(backups, `daily-${localDateKey(new Date(2026, 9, 20 + d, 12).getTime())}.sqlite`), 'good');
+      writeFileSync(
+        join(backups, `daily-${localDateKey(new Date(2026, 9, 20 + d, 12).getTime())}.sqlite`),
+        'good',
+      );
     }
     const before = readdirSync(backups).sort();
     await dailyBackup(dir, NOW, { skip: true });
@@ -145,8 +158,12 @@ describe('backups', () => {
       writeFileSync(join(backups, name), 'x');
     }
     expect((await latestBackupBefore(dir, NOW))?.name).toBe('pre-migration-v1-2026-11-08-110000.sqlite');
-    expect((await latestBackupBefore(dir, new Date(2026, 10, 8, 10).getTime()))?.name).toBe('daily-2026-11-08.sqlite');
-    expect((await latestBackupBefore(dir, new Date(2026, 10, 8).getTime()))?.name).toBe('daily-2026-11-06.sqlite');
+    expect((await latestBackupBefore(dir, new Date(2026, 10, 8, 10).getTime()))?.name).toBe(
+      'daily-2026-11-08.sqlite',
+    );
+    expect((await latestBackupBefore(dir, new Date(2026, 10, 8).getTime()))?.name).toBe(
+      'daily-2026-11-06.sqlite',
+    );
     expect(await latestBackupBefore(dir, new Date(2026, 10, 6).getTime())).toBeNull();
   });
 
@@ -173,7 +190,10 @@ describe('backups', () => {
       return readFileSync(path, 'utf8') === 'good';
     };
     expect((await latestBackupBefore(dir, NOW, isReadable))?.name).toBe('daily-2026-11-06.sqlite');
-    expect(checked).toEqual([join(backups, 'daily-2026-11-07.sqlite'), join(backups, 'daily-2026-11-06.sqlite')]);
+    expect(checked).toEqual([
+      join(backups, 'daily-2026-11-07.sqlite'),
+      join(backups, 'daily-2026-11-06.sqlite'),
+    ]);
     expect(await latestBackupBefore(dir, NOW, () => Promise.resolve(false))).toBeNull();
   });
 

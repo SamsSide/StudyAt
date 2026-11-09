@@ -30,9 +30,11 @@ export function soundsService(deps: SoundsServiceDeps) {
   const settings = settingsRepo(deps.db);
   const exists = deps.exists ?? existsSync;
 
-  const resolve = (s: Sound): string => (s.builtin && !isAbsolute(s.source) ? join(deps.assetsDir, s.source) : s.source);
+  const resolve = (s: Sound): string =>
+    s.builtin && !isAbsolute(s.source) ? join(deps.assetsDir, s.source) : s.source;
 
-  const list = (): Sound[] => repo.list().map((s) => (s.kind === 'noise' ? s : { ...s, missing: !exists(resolve(s)) }));
+  const list = (): Sound[] =>
+    repo.list().map((s) => (s.kind === 'noise' ? s : { ...s, missing: !exists(resolve(s)) }));
 
   return {
     list,

@@ -7,7 +7,15 @@ import { overview } from '../../core/stats/overview';
 import { bySubject, dayTotals, todayKey, trend, weekBars, type StatsContext } from '../../core/stats/totals';
 import { weekStartOf } from '../../core/time';
 import type { SessionFilter } from '../../shared/ipc';
-import type { HeatmapCell, Session, StatsOverview, SubjectRange, SubjectTotal, TrendPoint, WeekBars } from '../../shared/types';
+import type {
+  HeatmapCell,
+  Session,
+  StatsOverview,
+  SubjectRange,
+  SubjectTotal,
+  TrendPoint,
+  WeekBars,
+} from '../../shared/types';
 import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
@@ -57,11 +65,18 @@ export function statsService(deps: StatsServiceDeps) {
 
   const contextAt = (now: number): StatsContext => {
     const s = settings.get();
-    return { now, rolloverHour: s.rolloverHour, streakMinutes: s.streakMinutes, goalMinutes: s.goalMinutes, tz: deps.tz };
+    return {
+      now,
+      rolloverHour: s.rolloverHour,
+      streakMinutes: s.streakMinutes,
+      goalMinutes: s.goalMinutes,
+      tz: deps.tz,
+    };
   };
 
   /** Every row, oldest first, with the live accrual when `now` is the present. */
-  const historyAt = (ctx: StatsContext): Session[] => withLiveAccrual(sessions.all(), todayKey(ctx), deps.liveTodayMs());
+  const historyAt = (ctx: StatsContext): Session[] =>
+    withLiveAccrual(sessions.all(), todayKey(ctx), deps.liveTodayMs());
 
   const current = (): { ctx: StatsContext; rows: Session[] } => {
     const ctx = contextAt(deps.now());

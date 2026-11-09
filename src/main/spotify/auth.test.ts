@@ -52,7 +52,9 @@ describe('pkce', () => {
 describe('SpotifyAuth.connect', () => {
   function setup(reply: (q: URLSearchParams) => URLSearchParams) {
     const store = memoryStore();
-    const fetchMock = vi.fn(async () => json({ access_token: 'fake-access', refresh_token: 'fake-refresh', expires_in: 3600 }));
+    const fetchMock = vi.fn(async () =>
+      json({ access_token: 'fake-access', refresh_token: 'fake-refresh', expires_in: 3600 }),
+    );
     const auth = new SpotifyAuth({
       fetch: fetchMock as unknown as typeof fetch,
       store,
@@ -78,19 +80,27 @@ describe('SpotifyAuth.connect', () => {
     expect(body.get('client_id')).toBe('fake-client');
     const verifier = body.get('code_verifier') ?? '';
     expect(createHash('sha256').update(verifier).digest('base64url')).toBe(challenge);
-    expect(store.value).toEqual({ access: 'fake-access', refresh: 'fake-refresh', expiresAt: 1_000 + 3_600_000 });
+    expect(store.value).toEqual({
+      access: 'fake-access',
+      refresh: 'fake-refresh',
+      expiresAt: 1_000 + 3_600_000,
+    });
     expect(auth.status('fake-client')).toEqual({ configured: true, connected: true });
   });
 
   it('state mismatch rejects', async () => {
-    const { auth, store, fetchMock } = setup(() => new URLSearchParams({ code: 'fake-code', state: 'wrong' }));
+    const { auth, store, fetchMock } = setup(
+      () => new URLSearchParams({ code: 'fake-code', state: 'wrong' }),
+    );
     await expect(auth.connect('fake-client')).rejects.toThrow(/state/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(store.value).toBeNull();
   });
 
   it('a denied authorisation rejects', async () => {
-    const { auth } = setup((q) => new URLSearchParams({ error: 'access_denied', state: q.get('state') ?? '' }));
+    const { auth } = setup(
+      (q) => new URLSearchParams({ error: 'access_denied', state: q.get('state') ?? '' }),
+    );
     await expect(auth.connect('fake-client')).rejects.toThrow(/access_denied/);
   });
 
@@ -128,7 +138,10 @@ describe('SpotifyAuth.accessToken', () => {
 
   it('refreshes 60 s before expiry', async () => {
     let t = 1_000_000 - 61_000;
-    const { auth, store, fetchMock } = setup(() => t, () => json({ access_token: 'fake-new', expires_in: 3600 }));
+    const { auth, store, fetchMock } = setup(
+      () => t,
+      () => json({ access_token: 'fake-new', expires_in: 3600 }),
+    );
     expect(await auth.accessToken()).toBe('fake-old');
     expect(fetchMock).not.toHaveBeenCalled();
     t = 1_000_000 - 60_000;
@@ -143,26 +156,38 @@ describe('SpotifyAuth.accessToken', () => {
   });
 
   it('refresh failure 400 → disconnected and tokens cleared', async () => {
-    const { auth, store } = setup(() => 999_999, () => json({ error: 'invalid_grant' }, 400));
+    const { auth, store } = setup(
+      () => 999_999,
+      () => json({ error: 'invalid_grant' }, 400),
+    );
     expect(await auth.accessToken()).toBeNull();
     expect(store.value).toBeNull();
     expect(auth.status('fake-client').connected).toBe(false);
   });
 
   it('a network failure during refresh throws and keeps the tokens', async () => {
-    const { auth, store } = setup(() => 999_999, () => Promise.reject(new TypeError('network')));
+    const { auth, store } = setup(
+      () => 999_999,
+      () => Promise.reject(new TypeError('network')),
+    );
     await expect(auth.accessToken()).rejects.toThrow();
     expect(store.value).toEqual(stored);
   });
 
   it('a 429 from the token endpoint keeps the tokens and throws', async () => {
-    const { auth, store } = setup(() => 999_999, () => json({}, 429));
+    const { auth, store } = setup(
+      () => 999_999,
+      () => json({}, 429),
+    );
     await expect(auth.accessToken()).rejects.toThrow();
     expect(store.value).toEqual(stored);
   });
 
   it('a 401 from the token endpoint clears the tokens', async () => {
-    const { auth, store } = setup(() => 999_999, () => json({ error: 'invalid_client' }, 401));
+    const { auth, store } = setup(
+      () => 999_999,
+      () => json({ error: 'invalid_client' }, 401),
+    );
     expect(await auth.accessToken()).toBeNull();
     expect(store.value).toBeNull();
   });
@@ -185,7 +210,10 @@ describe('SpotifyAuth.accessToken', () => {
   });
 
   it('a blank client id skips the network and keeps the tokens', async () => {
-    const { auth, store, fetchMock } = setup(() => 999_999, () => json({}));
+    const { auth, store, fetchMock } = setup(
+      () => 999_999,
+      () => json({}),
+    );
     auth.setClientId('  ');
     expect(await auth.accessToken()).toBeNull();
     expect(await auth.refreshNow()).toBeNull();
@@ -194,7 +222,10 @@ describe('SpotifyAuth.accessToken', () => {
   });
 
   it('disconnect deletes the tokens; status reports unconfigured for a blank id', () => {
-    const { auth, store } = setup(() => 0, () => json({}));
+    const { auth, store } = setup(
+      () => 0,
+      () => json({}),
+    );
     auth.disconnect();
     expect(store.value).toBeNull();
     expect(auth.status('  ')).toEqual({ configured: false, connected: false });

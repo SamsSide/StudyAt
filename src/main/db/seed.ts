@@ -44,7 +44,11 @@ export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
   transaction(raw, () => {
     if (isEmpty(db, 'subjects')) {
       SEED_SUBJECTS.forEach((s, i) => {
-        raw.run('INSERT INTO subjects (name, colour, archived, sort) VALUES (?, ?, 0, ?)', [s.name, s.colour, i]);
+        raw.run('INSERT INTO subjects (name, colour, archived, sort) VALUES (?, ?, 0, ?)', [
+          s.name,
+          s.colour,
+          i,
+        ]);
       });
     }
     if (isEmpty(db, 'spaces')) {
@@ -59,11 +63,19 @@ export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
     }
     if (isEmpty(db, 'sounds')) {
       builtin.sounds.forEach((s, i) => {
-        raw.run('INSERT INTO sounds (name, kind, source, builtin, sort) VALUES (?, ?, ?, 1, ?)', [s.name, s.kind, s.source, i]);
+        raw.run('INSERT INTO sounds (name, kind, source, builtin, sort) VALUES (?, ?, ?, 1, ?)', [
+          s.name,
+          s.kind,
+          s.source,
+          i,
+        ]);
       });
     }
     for (const key of PINNED_SETTINGS) {
-      raw.run('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [key, JSON.stringify(DEFAULT_SETTINGS[key])]);
+      raw.run('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', [
+        key,
+        JSON.stringify(DEFAULT_SETTINGS[key]),
+      ]);
     }
   });
 

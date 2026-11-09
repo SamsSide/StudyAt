@@ -76,8 +76,12 @@ describe('title and tooltip (spec §3.7)', () => {
     // Rounded up to the whole second, as the widget shows it.
     expect(trayTooltip(s)).toBe('12:34 · Focus');
     expect(windowTitle(s)).toBe('12:34 · Focus — StudyAt');
-    expect(trayTooltip(state({ status: 'running', mode: 'short', remainingMs: 5 * MIN }))).toBe('05:00 · Short break');
-    expect(trayTooltip(state({ status: 'running', mode: 'long', remainingMs: 90 * MIN }))).toBe('1:30:00 · Long break');
+    expect(trayTooltip(state({ status: 'running', mode: 'short', remainingMs: 5 * MIN }))).toBe(
+      '05:00 · Short break',
+    );
+    expect(trayTooltip(state({ status: 'running', mode: 'long', remainingMs: 90 * MIN }))).toBe(
+      '1:30:00 · Long break',
+    );
   });
 
   it('marks a paused timer', () => {
@@ -96,7 +100,12 @@ describe('createMainWindow', () => {
       minWidth: 960,
       minHeight: 600,
       show: false,
-      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        backgroundThrottling: false,
+      },
     });
     expect(fake.show).toHaveBeenCalled();
   });
@@ -401,8 +410,17 @@ describe('applyLoginItem', () => {
 });
 
 describe('resolveCorruptDb (spec §3.3)', () => {
-  const backup: BackupInfo = { name: 'daily-2026-11-07.sqlite', size: 1, createdAt: new Date(2026, 10, 7, 9, 5).getTime() };
-  const run = (response: number, latest: BackupInfo | null = backup, restored = true, restoreFailed = false) => {
+  const backup: BackupInfo = {
+    name: 'daily-2026-11-07.sqlite',
+    size: 1,
+    createdAt: new Date(2026, 10, 7, 9, 5).getTime(),
+  };
+  const run = (
+    response: number,
+    latest: BackupInfo | null = backup,
+    restored = true,
+    restoreFailed = false,
+  ) => {
     const boxes: MessageBoxOptions[] = [];
     const order: string[] = [];
     const restore = vi.fn(() => {

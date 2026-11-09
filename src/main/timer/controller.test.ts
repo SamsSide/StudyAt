@@ -63,9 +63,22 @@ describe('TimerController', () => {
   it('inserts running row at focus start', () => {
     const flush = vi.spyOn(db, 'flushNow');
     const s = c.start();
-    expect(s).toMatchObject({ mode: 'focus', status: 'running', remainingMs: FOCUS, segmentMs: FOCUS, subjectId: null });
+    expect(s).toMatchObject({
+      mode: 'focus',
+      status: 'running',
+      remainingMs: FOCUS,
+      segmentMs: FOCUS,
+      subjectId: null,
+    });
     expect(rows()).toEqual([
-      expect.objectContaining({ pomodoroId: 'p-1', subjectId: null, startedAt: NOW, focusMs: 0, dayKey: '2026-11-08', status: 'running' }),
+      expect.objectContaining({
+        pomodoroId: 'p-1',
+        subjectId: null,
+        startedAt: NOW,
+        focusMs: 0,
+        dayKey: '2026-11-08',
+        status: 'running',
+      }),
     ]);
     expect(flush).toHaveBeenCalled();
   });
@@ -108,8 +121,15 @@ describe('TimerController', () => {
     c.start();
     at(FOCUS);
     expect(ends).toEqual([{ mode: 'focus', next: 'short' }]);
-    expect(rows()).toEqual([expect.objectContaining({ status: 'done', focusMs: FOCUS, endedAt: NOW + FOCUS })]);
-    expect(c.getState()).toMatchObject({ mode: 'short', status: 'idle', remainingMs: 5 * MIN, completedFocusCount: 1 });
+    expect(rows()).toEqual([
+      expect.objectContaining({ status: 'done', focusMs: FOCUS, endedAt: NOW + FOCUS }),
+    ]);
+    expect(c.getState()).toMatchObject({
+      mode: 'short',
+      status: 'idle',
+      remainingMs: 5 * MIN,
+      completedFocusCount: 1,
+    });
     expect(states.at(-1)).toMatchObject({ mode: 'short', status: 'idle', todayFocusMs: FOCUS });
   });
 
@@ -145,7 +165,13 @@ describe('TimerController', () => {
     at(4 * MIN);
     expect(c.getState()).toMatchObject({ subjectId: 2, status: 'running', remainingMs: FOCUS - 4 * MIN });
     const [a, b] = rows();
-    expect(a).toMatchObject({ pomodoroId: 'p-1', subjectId: 1, status: 'done', focusMs: 2 * MIN, endedAt: NOW + 2 * MIN });
+    expect(a).toMatchObject({
+      pomodoroId: 'p-1',
+      subjectId: 1,
+      status: 'done',
+      focusMs: 2 * MIN,
+      endedAt: NOW + 2 * MIN,
+    });
     expect(b).toMatchObject({ pomodoroId: 'p-1', subjectId: 2, status: 'running', startedAt: NOW + 2 * MIN });
     c.pause();
     expect(rows()[1]).toMatchObject({ focusMs: 2 * MIN });
@@ -159,7 +185,11 @@ describe('TimerController', () => {
     clock.jump(60 * MIN);
     c.onResume();
     c.onLock(); // a second pause keeps the first reason
-    expect(c.getState()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000 });
+    expect(c.getState()).toMatchObject({
+      status: 'paused',
+      pauseReason: 'suspend',
+      remainingMs: FOCUS - 30_000,
+    });
     expect(rows()[0]).toMatchObject({ focusMs: 30_000 });
     expect(states.at(-1)).toMatchObject({ status: 'paused', pauseReason: 'suspend' });
   });
@@ -249,7 +279,12 @@ describe('TimerController', () => {
     const s = c.answerAway('discard');
     expect(s).toMatchObject({ mode: 'short', status: 'idle', remainingMs: 5 * MIN, todayFocusMs: 10 * MIN });
     expect(rows()).toEqual([
-      expect.objectContaining({ status: 'done', focusMs: 10 * MIN, discardedMs: 15 * MIN, endedAt: NOW + FOCUS }),
+      expect.objectContaining({
+        status: 'done',
+        focusMs: 10 * MIN,
+        discardedMs: 15 * MIN,
+        endedAt: NOW + FOCUS,
+      }),
     ]);
   });
 
@@ -314,13 +349,25 @@ describe('TimerController', () => {
 
   it('recoverOrphans closes running rows at checkpoint_at', () => {
     const repo = sessionsRepo(db);
-    const a = repo.insertRunning({ pomodoroId: 'x', subjectId: 3, startedAt: NOW - 30 * MIN, dayKey: '2026-11-08' });
+    const a = repo.insertRunning({
+      pomodoroId: 'x',
+      subjectId: 3,
+      startedAt: NOW - 30 * MIN,
+      dayKey: '2026-11-08',
+    });
     repo.checkpoint(a.id, 20 * MIN, NOW - 10 * MIN);
-    const b = repo.insertRunning({ pomodoroId: 'y', subjectId: null, startedAt: NOW - 5 * MIN, dayKey: '2026-11-08' });
+    const b = repo.insertRunning({
+      pomodoroId: 'y',
+      subjectId: null,
+      startedAt: NOW - 5 * MIN,
+      dayKey: '2026-11-08',
+    });
     repo.checkpoint(b.id, 45_000, NOW - 4 * MIN);
     const flush = vi.spyOn(db, 'flushNow');
     c.recoverOrphans();
-    expect(rows()).toEqual([expect.objectContaining({ id: a.id, status: 'done', endedAt: NOW - 10 * MIN, focusMs: 20 * MIN })]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ id: a.id, status: 'done', endedAt: NOW - 10 * MIN, focusMs: 20 * MIN }),
+    ]);
     expect(flush).toHaveBeenCalled();
     expect(c.getState()).toMatchObject({ mode: 'focus', status: 'idle', todayFocusMs: 20 * MIN });
   });
@@ -395,7 +442,12 @@ describe('TimerController', () => {
     at(30_000);
     clock.jump(31_000); // asleep, no suspend event
     clock.advance(250);
-    expect(c.getState()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000, todayFocusMs: 30_000 });
+    expect(c.getState()).toMatchObject({
+      status: 'paused',
+      pauseReason: 'suspend',
+      remainingMs: FOCUS - 30_000,
+      todayFocusMs: 30_000,
+    });
     expect(rows()[0]).toMatchObject({ status: 'running', focusMs: 30_000, checkpointAt: NOW + 30_000 });
     expect(states.at(-1)).toMatchObject({ status: 'paused', pauseReason: 'suspend' });
     expect(clock.periods()).toEqual([]);
@@ -418,7 +470,12 @@ describe('TimerController', () => {
     clock.jump(10 * MIN);
     clock.advance(250);
     expect(ends).toEqual([]);
-    expect(c.getState()).toMatchObject({ mode: 'focus', status: 'paused', pauseReason: 'suspend', remainingMs: MIN });
+    expect(c.getState()).toMatchObject({
+      mode: 'focus',
+      status: 'paused',
+      pauseReason: 'suspend',
+      remainingMs: MIN,
+    });
     expect(rows()[0]).toMatchObject({ focusMs: 24 * MIN });
   });
 
@@ -426,7 +483,11 @@ describe('TimerController', () => {
     c.start();
     at(30_000);
     clock.jump(5 * MIN);
-    expect(c.pause()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000 });
+    expect(c.pause()).toMatchObject({
+      status: 'paused',
+      pauseReason: 'suspend',
+      remainingMs: FOCUS - 30_000,
+    });
     expect(rows()[0]).toMatchObject({ focusMs: 30_000 });
   });
 
@@ -435,7 +496,11 @@ describe('TimerController', () => {
     at(30_000);
     clock.jump(10_000); // under the gap, but Electron says we slept
     c.onResume();
-    expect(c.getState()).toMatchObject({ status: 'paused', pauseReason: 'suspend', remainingMs: FOCUS - 30_000 });
+    expect(c.getState()).toMatchObject({
+      status: 'paused',
+      pauseReason: 'suspend',
+      remainingMs: FOCUS - 30_000,
+    });
     expect(rows()[0]).toMatchObject({ focusMs: 30_000, checkpointAt: NOW + 30_000 });
   });
 
@@ -527,7 +592,11 @@ describe('TimerController', () => {
     const after = c.getState();
     await db.close();
     expect(c.pause()).toEqual(after);
-    expect(c.getState()).toMatchObject({ status: 'running', remainingMs: FOCUS - 2 * MIN, todayFocusMs: 2 * MIN });
+    expect(c.getState()).toMatchObject({
+      status: 'running',
+      remainingMs: FOCUS - 2 * MIN,
+      todayFocusMs: 2 * MIN,
+    });
   });
 
   it('answers a late command after dispose without touching the closed database', async () => {
@@ -555,7 +624,14 @@ describe('TimerController', () => {
     expect(aways[0]?.awayMs).toBe(14 * MIN + 10_000);
     expect(c.answerAway('discard')).toMatchObject({ remainingMs: 60 * MIN, todayFocusMs: 0 });
     // The untagged row lost all of its 2 minutes and was deleted.
-    expect(rows()).toEqual([expect.objectContaining({ subjectId: 1, status: 'running', focusMs: 0, discardedMs: 12 * MIN + 10_000 })]);
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        subjectId: 1,
+        status: 'running',
+        focusMs: 0,
+        discardedMs: 12 * MIN + 10_000,
+      }),
+    ]);
   });
 
   it('forgets rows of older pomodoros once nothing can charge them', () => {

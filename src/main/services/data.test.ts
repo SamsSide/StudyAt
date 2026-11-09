@@ -46,9 +46,19 @@ describe('dataService', () => {
     const subject = subjectsRepo(db).list()[0]!;
     // 23:50 on 8 Nov to 00:15 on 9 Nov, 25.25 focus minutes: credited to the 8th (its start day).
     const start = new Date(2026, 10, 8, 23, 50).getTime();
-    const row = sessions.insertRunning({ pomodoroId: 'a', subjectId: subject.id, startedAt: start, dayKey: '2026-11-08' });
+    const row = sessions.insertRunning({
+      pomodoroId: 'a',
+      subjectId: subject.id,
+      startedAt: start,
+      dayKey: '2026-11-08',
+    });
     sessions.close(row.id, new Date(2026, 10, 9, 0, 15).getTime(), 1_515_000, 0);
-    const untagged = sessions.insertRunning({ pomodoroId: 'b', subjectId: null, startedAt: new Date(2026, 10, 9, 9, 5).getTime(), dayKey: '2026-11-09' });
+    const untagged = sessions.insertRunning({
+      pomodoroId: 'b',
+      subjectId: null,
+      startedAt: new Date(2026, 10, 9, 9, 5).getTime(),
+      dayKey: '2026-11-09',
+    });
     sessions.checkpoint(untagged.id, 120_000, new Date(2026, 10, 9, 9, 7).getTime());
 
     const out = join(dir, 'sessions.csv');
@@ -99,8 +109,13 @@ describe('dataService', () => {
       { id: note!.id, text: 'Bring calculator', colour: 'blue', sort: 0, createdAt: NOW, updatedAt: NOW + 1 },
     ]);
     expect(json.settings).not.toHaveProperty('spotifyTokens');
-    for (const key of ['calendarUrls', 'calendarCache', 'weatherCache']) expect(json.settings).not.toHaveProperty(key);
-    expect(json.settings).toMatchObject({ spotifyClientId: 'abc', weatherUnits: 'celsius', weatherPlace: null });
+    for (const key of ['calendarUrls', 'calendarCache', 'weatherCache'])
+      expect(json.settings).not.toHaveProperty(key);
+    expect(json.settings).toMatchObject({
+      spotifyClientId: 'abc',
+      weatherUnits: 'celsius',
+      weatherPlace: null,
+    });
     expect(readFileSync(out, 'utf8')).not.toContain('Y2FsZW5kYXI=');
     expect(readFileSync(out, 'utf8')).not.toContain('c2VjcmV0');
   });
@@ -133,7 +148,9 @@ describe('dataService', () => {
     const fs: DbFs = {
       ...nodeFs,
       copyFile: (from, to) =>
-        from.endsWith('daily-2026-11-07.sqlite') ? Promise.reject(new Error('disk full')) : nodeFs.copyFile(from, to),
+        from.endsWith('daily-2026-11-07.sqlite')
+          ? Promise.reject(new Error('disk full'))
+          : nodeFs.copyFile(from, to),
     };
     const { svc, app } = service({ fs });
 

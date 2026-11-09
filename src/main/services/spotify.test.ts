@@ -57,7 +57,9 @@ describe('safeTokenStore', () => {
 
 describe('spotifyCall', () => {
   it('maps API error kinds to readable messages and passes other errors through', async () => {
-    await expect(spotifyCall(() => Promise.reject(new SpotifyApiError('offline', 'x')))).rejects.toThrow('Spotify is offline');
+    await expect(spotifyCall(() => Promise.reject(new SpotifyApiError('offline', 'x')))).rejects.toThrow(
+      'Spotify is offline',
+    );
     await expect(spotifyCall(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
   });
 });

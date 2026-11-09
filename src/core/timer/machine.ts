@@ -134,7 +134,8 @@ export function step(s: MachineState, e: TimerEvent, now: number, cfg: TimerConf
     case 'setMode': {
       if (e.type === 'setMode' && e.mode === s.mode) return { state: s, effects };
       advance(s, now, effects);
-      if (focusStarted(s)) effects.push({ type: 'focusStopped', reason: e.type === 'setMode' ? 'mode' : e.type });
+      if (focusStarted(s))
+        effects.push({ type: 'focusStopped', reason: e.type === 'setMode' ? 'mode' : e.type });
       let mode: Mode;
       if (e.type === 'setMode') mode = e.mode;
       else if (e.type === 'reset') mode = s.mode;

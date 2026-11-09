@@ -62,7 +62,13 @@ function setup(over: Partial<TrayDeps> = {}) {
 describe('createTray (spec §3.7)', () => {
   it('builds the menu Show/Hide StudyAt · Start/Pause · Mini timer ✓ · Quit StudyAt', () => {
     const { menu } = setup();
-    expect(menu().map((m) => m.label ?? m.type)).toEqual(['Hide StudyAt', 'Start', 'Mini timer', 'separator', 'Quit StudyAt']);
+    expect(menu().map((m) => m.label ?? m.type)).toEqual([
+      'Hide StudyAt',
+      'Start',
+      'Mini timer',
+      'separator',
+      'Quit StudyAt',
+    ]);
     expect(menu()[2]).toMatchObject({ type: 'checkbox', checked: false });
   });
 

@@ -25,32 +25,22 @@ beforeAll(() => {
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const req = (url: string, headers?: Record<string, string>) =>
-  new Request(url, { headers });
+const req = (url: string, headers?: Record<string, string>) => new Request(url, { headers });
 const resolveTo = (path: string | null) => (): string | null => path;
 
 describe('handleMediaRequest', () => {
   it('404 for unknown id', async () => {
-    const res = await handleMediaRequest(
-      req('studyat-media://space/9'),
-      resolveTo(null),
-    );
+    const res = await handleMediaRequest(req('studyat-media://space/9'), resolveTo(null));
     expect(res.status).toBe(404);
   });
 
   it('404 when the file is missing on disk', async () => {
-    const res = await handleMediaRequest(
-      req('studyat-media://space/1'),
-      resolveTo(join(dir, 'gone.mp4')),
-    );
+    const res = await handleMediaRequest(req('studyat-media://space/1'), resolveTo(join(dir, 'gone.mp4')));
     expect(res.status).toBe(404);
   });
 
   it('400 for bad kind', async () => {
-    const res = await handleMediaRequest(
-      req('studyat-media://video/1'),
-      resolveTo(plain),
-    );
+    const res = await handleMediaRequest(req('studyat-media://video/1'), resolveTo(plain));
     expect(res.status).toBe(400);
   });
 
@@ -64,10 +54,7 @@ describe('handleMediaRequest', () => {
   });
 
   it('200 full body with Content-Type by extension', async () => {
-    const res = await handleMediaRequest(
-      req('studyat-media://space/1'),
-      resolveTo(plain),
-    );
+    const res = await handleMediaRequest(req('studyat-media://space/1'), resolveTo(plain));
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type')).toBe('video/mp4');
     expect(res.headers.get('Accept-Ranges')).toBe('bytes');
@@ -116,10 +103,7 @@ describe('handleMediaRequest', () => {
   });
 
   it('serves path with spaces and accents', async () => {
-    const res = await handleMediaRequest(
-      req('studyat-media://sound/2'),
-      resolveTo(accented),
-    );
+    const res = await handleMediaRequest(req('studyat-media://sound/2'), resolveTo(accented));
     expect(res.status).toBe(200);
     expect((await res.arrayBuffer()).byteLength).toBe(36);
   });
@@ -165,10 +149,7 @@ describe('handleMediaRequest', () => {
     for (const [ext, type] of Object.entries(cases)) {
       const p = join(dir, `x.${ext.toUpperCase()}`);
       writeFileSync(p, 'x');
-      const res = await handleMediaRequest(
-        req('studyat-media://space/1'),
-        resolveTo(p),
-      );
+      const res = await handleMediaRequest(req('studyat-media://space/1'), resolveTo(p));
       expect(res.headers.get('Content-Type'), ext).toBe(type);
       await res.arrayBuffer();
     }

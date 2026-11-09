@@ -41,7 +41,10 @@ describe('recapsRepo', () => {
     expect(repo.get('2026-11-02')).toEqual({ recap: recap('2026-11-02', 4_000_000), shownAt: NOW });
     await db.close();
     db = await openTestDb(dir);
-    expect(recapsRepo(db).get('2026-10-26')).toEqual({ recap: recap('2026-10-26', 7_200_000), shownAt: null });
+    expect(recapsRepo(db).get('2026-10-26')).toEqual({
+      recap: recap('2026-10-26', 7_200_000),
+      shownAt: null,
+    });
     expect(recapsRepo(db).list()).toHaveLength(2);
   });
 });

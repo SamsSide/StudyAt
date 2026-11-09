@@ -63,8 +63,12 @@ export function dataService(deps: DataServiceDeps) {
         subjects: subjectsRepo(db).list(),
         sessions: sessionsRepo(db).all(),
         tasks: tasksRepo(db).list(),
-        spaces: spacesRepo(db).list().map(({ missing: _missing, ...s }) => s),
-        sounds: soundsRepo(db).list().map(({ missing: _missing, ...s }) => s),
+        spaces: spacesRepo(db)
+          .list()
+          .map(({ missing: _missing, ...s }) => s),
+        sounds: soundsRepo(db)
+          .list()
+          .map(({ missing: _missing, ...s }) => s),
         mixes: mixesRepo(db).list(),
         recaps: recapsRepo(db).list(),
         notes: notesRepo(db).list(),
@@ -78,7 +82,11 @@ export function dataService(deps: DataServiceDeps) {
      * running row ends at its last checkpoint, minutes to 1 dp. CRLF line ends, for Excel.
      */
     async exportCsv(path: string): Promise<void> {
-      const names = new Map(subjectsRepo(db).list().map((s) => [s.id, s.name]));
+      const names = new Map(
+        subjectsRepo(db)
+          .list()
+          .map((s) => [s.id, s.name]),
+      );
       const lines = [CSV_HEADER];
       for (const s of sessionsRepo(db).all()) {
         lines.push(
@@ -117,7 +125,8 @@ export function dataService(deps: DataServiceDeps) {
       try {
         const file = join(deps.dir, DB_FILE);
         const backups = join(deps.dir, BACKUPS_DIR);
-        if (await fs.exists(file)) await copyAtomic(fs, file, join(backups, `pre-restore-${fileStamp(deps.now())}.sqlite`));
+        if (await fs.exists(file))
+          await copyAtomic(fs, file, join(backups, `pre-restore-${fileStamp(deps.now())}.sqlite`));
         await copyAtomic(fs, join(backups, name), file);
       } finally {
         deps.app.relaunch();

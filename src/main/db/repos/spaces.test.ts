@@ -20,7 +20,12 @@ describe('spacesRepo', () => {
   it('creates, updates (merging opts), removes and round-trips', async () => {
     const repo = spacesRepo(db);
     const made = repo.create(
-      { kind: 'video', name: 'café rain', source: 'C:\\Users\\samue\\Videos\\café rain.mp4', thumb: 'data:image/jpeg;base64,AA==' },
+      {
+        kind: 'video',
+        name: 'café rain',
+        source: 'C:\\Users\\samue\\Videos\\café rain.mp4',
+        thumb: 'data:image/jpeg;base64,AA==',
+      },
       NOW,
     );
     expect(made).toEqual({
@@ -35,12 +40,25 @@ describe('spacesRepo', () => {
       createdAt: NOW,
       missing: false,
     });
-    const updated = repo.update(made.id, { name: 'Rain', favourite: true, opts: { dim: 0.4 }, source: 'D:\\rain.mp4' });
-    expect(updated).toMatchObject({ name: 'Rain', favourite: true, source: 'D:\\rain.mp4', opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 0 } });
+    const updated = repo.update(made.id, {
+      name: 'Rain',
+      favourite: true,
+      opts: { dim: 0.4 },
+      source: 'D:\\rain.mp4',
+    });
+    expect(updated).toMatchObject({
+      name: 'Rain',
+      favourite: true,
+      source: 'D:\\rain.mp4',
+      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 0 },
+    });
     expect(repo.update(9999, { name: 'x' })).toBeNull();
 
     const builtinCount = repo.list().filter((s) => s.builtin).length;
-    const other = repo.create({ kind: 'youtube', name: 'Lofi', source: 'abcdefghijk', thumb: null, opts: { audio: true } }, NOW);
+    const other = repo.create(
+      { kind: 'youtube', name: 'Lofi', source: 'abcdefghijk', thumb: null, opts: { audio: true } },
+      NOW,
+    );
     expect(other.opts.audio).toBe(true);
     expect(repo.remove(other.id)).toBe(true);
     expect(repo.remove(other.id)).toBe(false);

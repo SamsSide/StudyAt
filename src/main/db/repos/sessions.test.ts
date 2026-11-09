@@ -19,7 +19,14 @@ describe('sessionsRepo', () => {
 
   const start = (
     over: Partial<{ pomodoroId: string; subjectId: number | null; startedAt: number; dayKey: string }> = {},
-  ) => sessionsRepo(db).insertRunning({ pomodoroId: 'p-1', subjectId: 1, startedAt: NOW, dayKey: '2026-11-08', ...over });
+  ) =>
+    sessionsRepo(db).insertRunning({
+      pomodoroId: 'p-1',
+      subjectId: 1,
+      startedAt: NOW,
+      dayKey: '2026-11-08',
+      ...over,
+    });
 
   it('inserts a running row, checkpoints and closes it', () => {
     const repo = sessionsRepo(db);
@@ -42,16 +49,29 @@ describe('sessionsRepo', () => {
     expect(repo.listRunning()).toEqual([{ ...s, focusMs: 15_000, checkpointAt: NOW + 15_000 }]);
     repo.close(s.id, NOW + 120_000, 110_000, 10_000);
     expect(repo.listRunning()).toEqual([]);
-    expect(repo.all()[0]).toMatchObject({ status: 'done', endedAt: NOW + 120_000, focusMs: 110_000, discardedMs: 10_000 });
+    expect(repo.all()[0]).toMatchObject({
+      status: 'done',
+      endedAt: NOW + 120_000,
+      focusMs: 110_000,
+      discardedMs: 10_000,
+    });
   });
 
   it('a checkpoint writes discarded time when given and leaves it alone otherwise', () => {
     const repo = sessionsRepo(db);
     const s = start();
     repo.checkpoint(s.id, 60_000, NOW + 15_000, 30_000);
-    expect(repo.listRunning()[0]).toMatchObject({ focusMs: 60_000, discardedMs: 30_000, checkpointAt: NOW + 15_000 });
+    expect(repo.listRunning()[0]).toMatchObject({
+      focusMs: 60_000,
+      discardedMs: 30_000,
+      checkpointAt: NOW + 15_000,
+    });
     repo.checkpoint(s.id, 75_000, NOW + 30_000);
-    expect(repo.listRunning()[0]).toMatchObject({ focusMs: 75_000, discardedMs: 30_000, checkpointAt: NOW + 30_000 });
+    expect(repo.listRunning()[0]).toMatchObject({
+      focusMs: 75_000,
+      discardedMs: 30_000,
+      checkpointAt: NOW + 30_000,
+    });
   });
 
   it('ignores a checkpoint on a closed row', () => {

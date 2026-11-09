@@ -4,6 +4,12 @@
 import type { PublicSettings, Settings } from '../../shared/types';
 
 export function publicSettings(s: Settings): PublicSettings {
-  const { spotifyTokens: _tokens, calendarUrls: _urls, calendarCache: _agenda, weatherCache: _weather, ...rest } = s;
+  const {
+    spotifyTokens: _tokens,
+    calendarUrls: _urls,
+    calendarCache: _agenda,
+    weatherCache: _weather,
+    ...rest
+  } = s;
   return rest;
 }

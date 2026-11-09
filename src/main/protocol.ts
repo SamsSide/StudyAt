@@ -71,8 +71,7 @@ function parseMediaUrl(url: string): { kind: MediaKind; id: number } | null {
   if (m === null) return null;
   const kind = (m[1] ?? '').toLowerCase();
   const id = Number(m[2]);
-  if (!KINDS.includes(kind) || !Number.isSafeInteger(id))
-    return null;
+  if (!KINDS.includes(kind) || !Number.isSafeInteger(id)) return null;
   return { kind: kind as MediaKind, id };
 }
 

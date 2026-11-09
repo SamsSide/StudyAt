@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type Effect, type MachineState, type TimerConfig, type TimerEvent, initialState, step } from './machine';
+import {
+  type Effect,
+  type MachineState,
+  type TimerConfig,
+  type TimerEvent,
+  initialState,
+  step,
+} from './machine';
 
 const MIN = 60_000;
 const cfg: TimerConfig = {
@@ -29,10 +36,14 @@ const ofType = (effects: Effect[], type: Effect['type']) => effects.filter((e) =
 
 // Completes one focus segment started at `at` and returns the state after it ends.
 function completeFocus(s: MachineState, at: number, c: TimerConfig = cfg) {
-  return run(s, [
-    [{ type: 'start' }, at],
-    [{ type: 'tick' }, at + c.focusMs],
-  ], c);
+  return run(
+    s,
+    [
+      [{ type: 'start' }, at],
+      [{ type: 'tick' }, at + c.focusMs],
+    ],
+    c,
+  );
 }
 
 describe('initialState', () => {
@@ -172,7 +183,12 @@ describe('step', () => {
     const c = { ...cfg, autoStartBreaks: true };
     const end = T0 + cfg.focusMs;
     const f = completeFocus(initialState(c), T0, c);
-    expect(f.state).toMatchObject({ mode: 'short', status: 'running', runningSince: end, remainingMs: 5 * MIN });
+    expect(f.state).toMatchObject({
+      mode: 'short',
+      status: 'running',
+      runningSince: end,
+      remainingMs: 5 * MIN,
+    });
     // Break time after auto-start still never accrues.
     const r = run(f.state, [[{ type: 'tick' }, end + MIN]], c);
     expect(r.effects).toEqual([]);
@@ -186,10 +202,14 @@ describe('step', () => {
   it('auto-start focus emits focusStarted after a break ends', () => {
     const c = { ...cfg, autoStartFocus: true };
     const f = completeFocus(initialState(c), T0, c);
-    const r = run(f.state, [
-      [{ type: 'start' }, T0 + 30 * MIN],
-      [{ type: 'tick' }, T0 + 35 * MIN],
-    ], c);
+    const r = run(
+      f.state,
+      [
+        [{ type: 'start' }, T0 + 30 * MIN],
+        [{ type: 'tick' }, T0 + 35 * MIN],
+      ],
+      c,
+    );
     expect(r.effects).toEqual([
       { type: 'segmentEnded', mode: 'short', next: 'focus' },
       { type: 'focusStarted' },
@@ -250,7 +270,12 @@ describe('step', () => {
       [{ type: 'reset' }, T0 + 31 * MIN],
     ]);
     expect(r.effects).toEqual([]);
-    expect(r.state).toMatchObject({ mode: 'short', status: 'idle', remainingMs: 5 * MIN, completedFocusCount: 1 });
+    expect(r.state).toMatchObject({
+      mode: 'short',
+      status: 'idle',
+      remainingMs: 5 * MIN,
+      completedFocusCount: 1,
+    });
   });
 
   it('backwards clock accrues 0', () => {
@@ -288,7 +313,12 @@ describe('step', () => {
       { type: 'accrue', ms: 4 * MIN },
       { type: 'focusStopped', reason: 'mode' },
     ]);
-    expect(r.state).toMatchObject({ mode: 'long', status: 'idle', segmentMs: 15 * MIN, remainingMs: 15 * MIN });
+    expect(r.state).toMatchObject({
+      mode: 'long',
+      status: 'idle',
+      segmentMs: 15 * MIN,
+      remainingMs: 15 * MIN,
+    });
   });
 
   it('setMode while paused focus closes the started focus', () => {
@@ -305,7 +335,12 @@ describe('step', () => {
   it('setMode while idle changes mode at full length', () => {
     const r = step(initialState(cfg), { type: 'setMode', mode: 'short' }, T0, cfg);
     expect(r.effects).toEqual([]);
-    expect(r.state).toMatchObject({ mode: 'short', status: 'idle', segmentMs: 5 * MIN, remainingMs: 5 * MIN });
+    expect(r.state).toMatchObject({
+      mode: 'short',
+      status: 'idle',
+      segmentMs: 5 * MIN,
+      remainingMs: 5 * MIN,
+    });
   });
 
   it('setMode to the current mode is a no-op', () => {
@@ -332,7 +367,11 @@ describe('step', () => {
 
   it('ignores ticks, pauses and resumes while idle', () => {
     const s = initialState(cfg);
-    for (const e of [{ type: 'tick' }, { type: 'pause', reason: 'user' }, { type: 'resume' }] as TimerEvent[]) {
+    for (const e of [
+      { type: 'tick' },
+      { type: 'pause', reason: 'user' },
+      { type: 'resume' },
+    ] as TimerEvent[]) {
       const r = step(s, e, T0, cfg);
       expect(r.effects).toEqual([]);
       expect(r.state).toBe(s);
@@ -341,10 +380,12 @@ describe('step', () => {
 
   it('never mutates the input state', () => {
     const s = Object.freeze(initialState(cfg));
-    expect(() => run(s, [
-      [{ type: 'start' }, T0],
-      [{ type: 'tick' }, T0 + 1000],
-      [{ type: 'skip' }, T0 + 2000],
-    ])).not.toThrow();
+    expect(() =>
+      run(s, [
+        [{ type: 'start' }, T0],
+        [{ type: 'tick' }, T0 + 1000],
+        [{ type: 'skip' }, T0 + 2000],
+      ]),
+    ).not.toThrow();
   });
 });

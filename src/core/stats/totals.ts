@@ -2,7 +2,15 @@
 // in through StatsContext. Every function sums the rows it is given; main decides which rows those
 // are. A row is credited wholly to its stored `dayKey`, the day its focus segment started on.
 
-import type { DayTotal, Session, Subject, SubjectRange, SubjectTotal, TrendPoint, WeekBars } from '../../shared/types';
+import type {
+  DayTotal,
+  Session,
+  Subject,
+  SubjectRange,
+  SubjectTotal,
+  TrendPoint,
+  WeekBars,
+} from '../../shared/types';
 import { addDays, dayKeyOf, weekStartOf } from '../time';
 
 /** Weeks always run Monday to Sunday (spec §3.5 `weekStartsOn: 1`). */
@@ -101,7 +109,12 @@ export function subjectTotals(sessions: Session[], subjects: Subject[]): Subject
 }
 
 /** `week` is this Monday–Sunday week, `month` this calendar month (both by day key), `all` all. */
-export function bySubject(sessions: Session[], subjects: Subject[], range: SubjectRange, ctx: StatsContext): SubjectTotal[] {
+export function bySubject(
+  sessions: Session[],
+  subjects: Subject[],
+  range: SubjectRange,
+  ctx: StatsContext,
+): SubjectTotal[] {
   const today = todayKey(ctx);
   let inRange: (dayKey: string) => boolean;
   if (range === 'week') {

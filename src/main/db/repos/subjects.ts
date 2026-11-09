@@ -41,7 +41,12 @@ export function subjectsRepo(db: Db): SubjectsRepo {
       const current = byId(id);
       if (!current) return null;
       const next = { ...current, ...patch };
-      db.raw.run('UPDATE subjects SET name = ?, colour = ?, sort = ? WHERE id = ?', [next.name, next.colour, next.sort, id]);
+      db.raw.run('UPDATE subjects SET name = ?, colour = ?, sort = ? WHERE id = ?', [
+        next.name,
+        next.colour,
+        next.sort,
+        id,
+      ]);
       db.markDirty();
       return byId(id);
     },

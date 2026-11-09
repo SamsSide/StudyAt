@@ -20,7 +20,11 @@ describe('soundsRepo', () => {
   it('creates at the end, removes and round-trips', async () => {
     const repo = soundsRepo(db);
     const before = repo.list().length;
-    const made = repo.create({ name: 'Library hum', kind: 'file', source: 'C:\\Users\\samue\\Music\\hum.mp3' });
+    const made = repo.create({
+      name: 'Library hum',
+      kind: 'file',
+      source: 'C:\\Users\\samue\\Music\\hum.mp3',
+    });
     expect(made).toEqual({
       id: made.id,
       name: 'Library hum',

@@ -37,12 +37,11 @@ export const listenForCallback: CallbackListener = (port, timeoutMs) =>
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', Connection: 'close' });
       res.end(PAGE, () => finish(() => resolve(url.searchParams)));
     });
-    const timer = setTimeout(
-      () => finish(() => reject(new Error('Spotify sign-in timed out'))),
-      timeoutMs,
-    );
+    const timer = setTimeout(() => finish(() => reject(new Error('Spotify sign-in timed out'))), timeoutMs);
     server.on('error', (err: NodeJS.ErrnoException) => {
-      finish(() => reject(err.code === 'EADDRINUSE' || err.code === 'EACCES' ? new PortInUseError(port) : err));
+      finish(() =>
+        reject(err.code === 'EADDRINUSE' || err.code === 'EACCES' ? new PortInUseError(port) : err),
+      );
     });
     server.listen(port, '127.0.0.1');
   });

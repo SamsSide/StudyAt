@@ -4,7 +4,13 @@
 // a minute) when it ends. Suspend and lock pause it; idle time over the threshold becomes an away
 // prompt that is discarded if not answered in 2 minutes, renderer or not. No clock inside: time,
 // intervals and idle seconds are injected.
-import { initialState, step, type MachineState, type TimerConfig, type TimerEvent } from '../../core/timer/machine';
+import {
+  initialState,
+  step,
+  type MachineState,
+  type TimerConfig,
+  type TimerEvent,
+} from '../../core/timer/machine';
 import { dayKeyOf } from '../../core/time';
 import type { AwayPrompt, Mode, SegmentEnd, TimerState } from '../../shared/types';
 import type { Db } from '../db/db';
@@ -133,7 +139,9 @@ export class TimerController {
 
   private liveMs(now: number): number {
     const m = this.machine;
-    return m.status === 'running' && m.runningSince !== null ? Math.min(m.remainingMs, Math.max(0, now - m.runningSince)) : 0;
+    return m.status === 'running' && m.runningSince !== null
+      ? Math.min(m.remainingMs, Math.max(0, now - m.runningSince))
+      : 0;
   }
 
   /** The state from memory alone; `todayFocusMs` is passed in because computing it reads the DB. */
@@ -250,7 +258,10 @@ export class TimerController {
     // No answer is possible after quitting, so an away period still open, prompted or not yet
     // noticed, is discarded (rule 4's honesty default; Sam's ruling A1, 2026-11-08).
     if (!this.pending && this.idle.since !== null) {
-      this.pending = { prompt: { awayMs: 0, deadline: now }, charges: this.ledger.covered(this.idle.since, now) };
+      this.pending = {
+        prompt: { awayMs: 0, deadline: now },
+        charges: this.ledger.covered(this.idle.since, now),
+      };
     }
     this.idle.clear();
     if (this.pending) this.resolveAway('discard', now);
@@ -266,7 +277,8 @@ export class TimerController {
   dispose(): void {
     if (!this.disposed) this.frozen = this.snapshot(this.deps.now(), this.lastTodayFocusMs);
     this.disposed = true;
-    for (const h of [this.tickTimer, this.pollTimer, this.awayTimer]) if (h !== null) this.deps.clearInterval(h);
+    for (const h of [this.tickTimer, this.pollTimer, this.awayTimer])
+      if (h !== null) this.deps.clearInterval(h);
     this.tickTimer = this.pollTimer = this.awayTimer = null;
   }
 
@@ -288,7 +300,12 @@ export class TimerController {
 
   private apply(event: TimerEvent, now: number): void {
     const before = this.machine;
-    if (event.type === 'skip' || event.type === 'reset' || event.type === 'setMode' || this.willEnd(event, now)) {
+    if (
+      event.type === 'skip' ||
+      event.type === 'reset' ||
+      event.type === 'setMode' ||
+      this.willEnd(event, now)
+    ) {
       // The next segment (idle or auto-started) is built from the settings as they are now.
       this.loadSettings();
     }
@@ -331,7 +348,12 @@ export class TimerController {
 
   private willEnd(event: TimerEvent, now: number): boolean {
     const m = this.machine;
-    return event.type === 'tick' && m.status === 'running' && m.runningSince !== null && now - m.runningSince >= m.remainingMs;
+    return (
+      event.type === 'tick' &&
+      m.status === 'running' &&
+      m.runningSince !== null &&
+      now - m.runningSince >= m.remainingMs
+    );
   }
 
   private pauseFor(reason: 'user' | 'suspend' | 'lock', now: number): void {
@@ -356,10 +378,15 @@ export class TimerController {
     this.syncTimers();
     if (this.dirty) {
       this.dirty = false;
-      this.deps.db.flushNow().catch((err: unknown) => console.error('StudyAt: could not save the session', err));
+      this.deps.db
+        .flushNow()
+        .catch((err: unknown) => console.error('StudyAt: could not save the session', err));
     }
     const m = this.machine;
-    const remaining = m.status === 'running' && m.runningSince !== null ? m.remainingMs - Math.max(0, now - m.runningSince) : m.remainingMs;
+    const remaining =
+      m.status === 'running' && m.runningSince !== null
+        ? m.remainingMs - Math.max(0, now - m.runningSince)
+        : m.remainingMs;
     const next: Emitted = {
       mode: m.mode,
       status: m.status,
@@ -389,9 +416,13 @@ export class TimerController {
     const running = this.machine.status === 'running';
     this.tickTimer = this.keep(this.tickTimer, running, TICK_MS, () => this.onTick());
     // Polling goes on after a pause or a segment end while away, so the return is still noticed.
-    this.pollTimer = this.keep(this.pollTimer, running || this.idle.since !== null, IDLE_POLL_MS, () => this.onPoll());
+    this.pollTimer = this.keep(this.pollTimer, running || this.idle.since !== null, IDLE_POLL_MS, () =>
+      this.onPoll(),
+    );
     // The auto-discard runs here in main, whether or not any renderer is listening.
-    this.awayTimer = this.keep(this.awayTimer, this.pending !== null, AWAY_CHECK_MS, () => this.onAwayCheck());
+    this.awayTimer = this.keep(this.awayTimer, this.pending !== null, AWAY_CHECK_MS, () =>
+      this.onAwayCheck(),
+    );
   }
 
   private keep(handle: Handle | null, on: boolean, ms: number, fn: () => void): Handle | null {
@@ -405,10 +436,19 @@ export class TimerController {
   /** `dayKey` is given for a subject split, which stays on its pomodoro's start day (A3). */
   private openRow(pomodoroId: string, now: number, dayKey = dayKeyOf(now, this.rolloverHour)): void {
     const s = this.sessions.insertRunning({ pomodoroId, subjectId: this.subjectId, startedAt: now, dayKey });
-    const row: Row = { id: s.id, pomodoroId, dayKey, endedAt: null, focusMs: 0, discardedMs: 0, deleted: false };
+    const row: Row = {
+      id: s.id,
+      pomodoroId,
+      dayKey,
+      endedAt: null,
+      focusMs: 0,
+      discardedMs: 0,
+      deleted: false,
+    };
     this.rows.set(row.id, row);
     this.open = row;
-    if (this.recentPomodoros.at(-1) !== pomodoroId) this.recentPomodoros = [...this.recentPomodoros, pomodoroId].slice(-2);
+    if (this.recentPomodoros.at(-1) !== pomodoroId)
+      this.recentPomodoros = [...this.recentPomodoros, pomodoroId].slice(-2);
     this.lastCheckpointAt = now;
     this.dirty = true;
   }
@@ -434,7 +474,8 @@ export class TimerController {
   private todayFocusMs(now: number, live: number): number {
     const today = dayKeyOf(now, this.rolloverHour);
     let total = 0;
-    for (const s of this.sessions.list({ from: today, to: today })) if (s.id !== this.open?.id) total += s.focusMs;
+    for (const s of this.sessions.list({ from: today, to: today }))
+      if (s.id !== this.open?.id) total += s.focusMs;
     if (this.open?.dayKey === today) total += this.open.focusMs + live;
     return total;
   }
@@ -445,7 +486,12 @@ export class TimerController {
     if (this.disposed) return;
     const now = this.deps.now();
     if (this.pending) return;
-    const result = this.idle.poll(this.deps.idleSeconds(), now, this.machine.status === 'running', this.idleThresholdMs);
+    const result = this.idle.poll(
+      this.deps.idleSeconds(),
+      now,
+      this.machine.status === 'running',
+      this.idleThresholdMs,
+    );
     if (result.kind === 'back') {
       this.tick(now);
       this.raiseAway(result.since, now);
@@ -550,7 +596,8 @@ export class TimerController {
   private resizeIdle(): void {
     const m = this.machine;
     if (m.status !== 'idle' || m.remainingMs !== m.segmentMs) return;
-    const len = m.mode === 'focus' ? this.cfg.focusMs : m.mode === 'short' ? this.cfg.shortMs : this.cfg.longMs;
+    const len =
+      m.mode === 'focus' ? this.cfg.focusMs : m.mode === 'short' ? this.cfg.shortMs : this.cfg.longMs;
     this.machine = { ...m, segmentMs: len, remainingMs: len };
   }
 }

@@ -64,7 +64,9 @@ describe('migrations', () => {
   it('a fresh install goes straight to v2 with the notes table and no backup', async () => {
     const db = await openTestDb(dir);
     expect(schemaVersion(db.raw)).toBe(2);
-    expect(db.raw.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'notes'")[0]!.values).toEqual([['notes']]);
+    expect(
+      db.raw.exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'notes'")[0]!.values,
+    ).toEqual([['notes']]);
     expect(existsSync(join(dir, 'backups'))).toBe(false);
     await db.close();
   });
@@ -75,7 +77,12 @@ describe('migrations', () => {
     const file = join(dir, DB_FILE);
     const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
     const v1 = new SQL.Database();
-    await migrate(v1, null, NOW, MIGRATIONS.filter((m) => m.version === 1));
+    await migrate(
+      v1,
+      null,
+      NOW,
+      MIGRATIONS.filter((m) => m.version === 1),
+    );
     expect(schemaVersion(v1)).toBe(1);
     v1.exec(`
       INSERT INTO subjects (name, colour, archived, sort) VALUES ('Maths', '#ff0000', 0, 0);
@@ -106,7 +113,9 @@ describe('migrations', () => {
       ['p1', 1500000, '2026-11-07', 'done'],
     ]);
     expect(db.raw.exec('SELECT text, colour FROM tasks')[0]!.values).toEqual([['Read chapter 3', 'pink']]);
-    expect(db.raw.exec("SELECT value FROM settings WHERE key = 'streakThresholdMin'")[0]!.values).toEqual([['30']]);
+    expect(db.raw.exec("SELECT value FROM settings WHERE key = 'streakThresholdMin'")[0]!.values).toEqual([
+      ['30'],
+    ]);
     expect(db.raw.exec('SELECT count(*) FROM notes')[0]!.values).toEqual([[0]]);
     await db.close();
 
@@ -123,7 +132,9 @@ describe('migrations', () => {
     await migrate(raw, null, NOW);
     raw.run('INSERT INTO notes (sort, created_at, updated_at) VALUES (0, 1, 1)');
     expect(raw.exec('SELECT text, colour FROM notes')[0]!.values).toEqual([['', 'yellow']]);
-    expect(() => raw.run("INSERT INTO notes (colour, sort, created_at, updated_at) VALUES ('orange', 0, 1, 1)")).toThrow();
+    expect(() =>
+      raw.run("INSERT INTO notes (colour, sort, created_at, updated_at) VALUES ('orange', 0, 1, 1)"),
+    ).toThrow();
     raw.close();
   });
 
@@ -179,7 +190,9 @@ describe('migrations', () => {
     writeFileSync(file, new Uint8Array(0));
     const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
     const raw = new SQL.Database();
-    raw.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('schema_version', '7');");
+    raw.exec(
+      "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('schema_version', '7');",
+    );
     const err: unknown = await migrate(raw, file, NOW).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NewerSchemaError);
     expect(err).toMatchObject({ found: 7, supported: LATEST_VERSION });

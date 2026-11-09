@@ -54,7 +54,10 @@ export function sanitiseSpacePatch(v: unknown): MainSpacePatch {
     const o = assertRecord(p.opts, 'opts');
     const opts: Partial<SpaceOpts> = {};
     if (o.audio !== undefined) opts.audio = assertBool(o.audio, 'audio');
-    for (const [key, [min, max]] of Object.entries(OPT_RANGES) as [keyof typeof OPT_RANGES, [number, number]][]) {
+    for (const [key, [min, max]] of Object.entries(OPT_RANGES) as [
+      keyof typeof OPT_RANGES,
+      [number, number],
+    ][]) {
       if (o[key] !== undefined) opts[key] = clampNum(o[key], min, max, key);
     }
     out.opts = opts;
@@ -77,7 +80,8 @@ export function spacesService(deps: SpacesServiceDeps) {
   const settings = settingsRepo(deps.db);
   const exists = deps.exists ?? existsSync;
 
-  const resolve = (s: Space): string => (s.builtin && !isAbsolute(s.source) ? join(deps.assetsDir, s.source) : s.source);
+  const resolve = (s: Space): string =>
+    s.builtin && !isAbsolute(s.source) ? join(deps.assetsDir, s.source) : s.source;
 
   const list = (): Space[] =>
     repo.list().map((s) => (s.kind === 'youtube' ? s : { ...s, missing: !exists(resolve(s)) }));
@@ -113,7 +117,10 @@ export function spacesService(deps: SpacesServiceDeps) {
       const id = parseYouTubeId(url);
       if (!id) throw new IpcValidationError("That isn't a YouTube video link");
       if (!repo.list().some((s) => s.kind === 'youtube' && s.source === id)) {
-        repo.create({ kind: 'youtube', name: `YouTube video ${id}`, source: id, thumb: youTubeThumb(id) }, deps.now());
+        repo.create(
+          { kind: 'youtube', name: `YouTube video ${id}`, source: id, thumb: youTubeThumb(id) },
+          deps.now(),
+        );
       }
       return list();
     },

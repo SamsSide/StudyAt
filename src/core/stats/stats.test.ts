@@ -5,14 +5,28 @@ import { SHADE_MINUTES, heatmap } from './heatmap';
 import { overview } from './overview';
 import { finishedWeeksSince, recapFor } from './recap';
 import { currentStreak, longestStreak } from './streak';
-import { NO_SUBJECT_COLOUR, NO_SUBJECT_KEY, NO_SUBJECT_NAME, bySubject, dayTotals, trend, weekBars } from './totals';
+import {
+  NO_SUBJECT_COLOUR,
+  NO_SUBJECT_KEY,
+  NO_SUBJECT_NAME,
+  bySubject,
+  dayTotals,
+  trend,
+  weekBars,
+} from './totals';
 import type { StatsContext } from './totals';
 
 const TZ = 'Europe/London';
 const MIN = 60_000;
 
 // Sunday 2026-11-08, 12:00 GMT: today is 2026-11-08, this week starts Monday 2026-11-02.
-const ctx: StatsContext = { now: Date.UTC(2026, 10, 8, 12), rolloverHour: 4, streakMinutes: 25, goalMinutes: 180, tz: TZ };
+const ctx: StatsContext = {
+  now: Date.UTC(2026, 10, 8, 12),
+  rolloverHour: 4,
+  streakMinutes: 25,
+  goalMinutes: 180,
+  tz: TZ,
+};
 
 const subjects: Subject[] = [
   { id: 1, name: 'Networks', colour: '#5ccfb0', archived: false, sort: 0 },
@@ -22,7 +36,12 @@ const subjects: Subject[] = [
 ];
 
 let nextId = 1;
-function sessionAt(startedAt: number, focusMs: number, subjectId: number | null = null, pomodoroId?: string): Session {
+function sessionAt(
+  startedAt: number,
+  focusMs: number,
+  subjectId: number | null = null,
+  pomodoroId?: string,
+): Session {
   const id = nextId++;
   return {
     id,
@@ -49,8 +68,17 @@ function totalsOf(days: Record<string, number>): Map<string, DayTotal> {
 
 describe('dayTotals', () => {
   it('sums focus by day key and by subject', () => {
-    const t = dayTotals([on('2026-11-08', 30, 1), on('2026-11-08', 20, 1), on('2026-11-08', 10), on('2026-11-07', 5, 2)]);
-    expect(t.get('2026-11-08')).toEqual({ dayKey: '2026-11-08', ms: 60 * MIN, bySubject: { '1': 50 * MIN, [NO_SUBJECT_KEY]: 10 * MIN } });
+    const t = dayTotals([
+      on('2026-11-08', 30, 1),
+      on('2026-11-08', 20, 1),
+      on('2026-11-08', 10),
+      on('2026-11-07', 5, 2),
+    ]);
+    expect(t.get('2026-11-08')).toEqual({
+      dayKey: '2026-11-08',
+      ms: 60 * MIN,
+      bySubject: { '1': 50 * MIN, [NO_SUBJECT_KEY]: 10 * MIN },
+    });
     expect(t.get('2026-11-07')?.ms).toBe(5 * MIN);
   });
 
@@ -84,7 +112,10 @@ describe('streaks', () => {
   it('streak counts 25:00 but not 24:59', () => {
     const counted = dayTotals([on('2026-11-08', 25), on('2026-11-07', 25)]);
     expect(currentStreak(counted, ctx)).toBe(2);
-    const short = dayTotals([on('2026-11-08', 25), sessionAt(Date.parse('2026-11-07T10:00:00Z'), 25 * MIN - 1000)]);
+    const short = dayTotals([
+      on('2026-11-08', 25),
+      sessionAt(Date.parse('2026-11-07T10:00:00Z'), 25 * MIN - 1000),
+    ]);
     expect(currentStreak(short, ctx)).toBe(1);
   });
 
@@ -148,7 +179,9 @@ describe('heatmap', () => {
     const byKey = new Map(cells.map((c) => [c.dayKey, c]));
     expect(byKey.get('2026-11-01')?.shade).toBe(0);
     expect(byKey.get('2026-11-01')?.ms).toBe(0);
-    expect(['02', '03', '04', '05', '06', '07'].map((d) => byKey.get(`2026-11-${d}`)?.shade)).toEqual([1, 2, 2, 3, 3, 4]);
+    expect(['02', '03', '04', '05', '06', '07'].map((d) => byKey.get(`2026-11-${d}`)?.shade)).toEqual([
+      1, 2, 2, 3, 3, 4,
+    ]);
     expect(byKey.get('2026-11-08')?.shade).toBe(1);
   });
 
@@ -169,23 +202,51 @@ describe('heatmap', () => {
 
 describe('weekBars and trend', () => {
   it('weekBars stacks bySubject', () => {
-    const t = dayTotals([on('2026-11-02', 30, 1), on('2026-11-02', 15, 2), on('2026-11-04', 20), on('2026-11-09', 50, 1)]);
+    const t = dayTotals([
+      on('2026-11-02', 30, 1),
+      on('2026-11-02', 15, 2),
+      on('2026-11-04', 20),
+      on('2026-11-09', 50, 1),
+    ]);
     const bars = weekBars(t, '2026-11-02');
     expect(bars.weekStart).toBe('2026-11-02');
-    expect(bars.days.map((d) => d.dayKey)).toEqual(['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07', '2026-11-08']);
-    expect(bars.days[0]).toEqual({ dayKey: '2026-11-02', ms: 45 * MIN, bySubject: { '1': 30 * MIN, '2': 15 * MIN } });
+    expect(bars.days.map((d) => d.dayKey)).toEqual([
+      '2026-11-02',
+      '2026-11-03',
+      '2026-11-04',
+      '2026-11-05',
+      '2026-11-06',
+      '2026-11-07',
+      '2026-11-08',
+    ]);
+    expect(bars.days[0]).toEqual({
+      dayKey: '2026-11-02',
+      ms: 45 * MIN,
+      bySubject: { '1': 30 * MIN, '2': 15 * MIN },
+    });
     expect(bars.days[1]).toEqual({ dayKey: '2026-11-03', ms: 0, bySubject: {} });
     expect(bars.days[2]?.bySubject).toEqual({ [NO_SUBJECT_KEY]: 20 * MIN });
   });
 
   it('trend returns 12 weeks oldest first', () => {
-    const t = totalsOf({ '2026-11-08': 30, '2026-11-02': 10, '2026-10-26': 60, '2026-08-17': 5, '2026-08-16': 99 });
+    const t = totalsOf({
+      '2026-11-08': 30,
+      '2026-11-02': 10,
+      '2026-10-26': 60,
+      '2026-08-17': 5,
+      '2026-08-16': 99,
+    });
     const points = trend(t, ctx);
     expect(points).toHaveLength(12);
     expect(points[0]).toEqual({ weekStart: '2026-08-17', ms: 5 * MIN });
     expect(points[10]).toEqual({ weekStart: '2026-10-26', ms: 60 * MIN });
     expect(points[11]).toEqual({ weekStart: '2026-11-02', ms: 40 * MIN });
-    expect(trend(t, ctx, 4).map((p) => p.weekStart)).toEqual(['2026-10-12', '2026-10-19', '2026-10-26', '2026-11-02']);
+    expect(trend(t, ctx, 4).map((p) => p.weekStart)).toEqual([
+      '2026-10-12',
+      '2026-10-19',
+      '2026-10-26',
+      '2026-11-02',
+    ]);
   });
 });
 
@@ -232,7 +293,13 @@ describe('bySubject', () => {
 describe('overview', () => {
   it('reports today, week, last week, streaks, all time and goal', () => {
     const o = overview(
-      [on('2026-11-08', 90), on('2026-11-07', 30), on('2026-11-03', 30), on('2026-10-28', 100), on('2025-01-01', 20)],
+      [
+        on('2026-11-08', 90),
+        on('2026-11-07', 30),
+        on('2026-11-03', 30),
+        on('2026-10-28', 100),
+        on('2025-01-01', 20),
+      ],
       ctx,
     );
     expect(o).toEqual({
@@ -312,14 +379,21 @@ describe('recap', () => {
     expect(r.goalDaysHit).toBe(1);
     expect(r.streakAtEnd).toBe(1); // only Sunday 1 Nov; Wed–Sat empty
 
-    const longest = recapFor('2026-10-26', [on('2026-10-26', 25, 1, 'a'), on('2026-10-26', 24, 2, 'a')], subjects, ctx);
+    const longest = recapFor(
+      '2026-10-26',
+      [on('2026-10-26', 25, 1, 'a'), on('2026-10-26', 24, 2, 'a')],
+      subjects,
+      ctx,
+    );
     expect(longest.longestSessionMs).toBe(49 * MIN);
   });
 
   it('streakAtEnd counts back from Sunday and is 0 if Sunday missed the threshold', () => {
     const run = ['2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01'].map((d) => on(d, 25));
     expect(recapFor('2026-10-26', run, subjects, ctx).streakAtEnd).toBe(4);
-    expect(recapFor('2026-10-26', [...run.slice(0, 3), on('2026-11-01', 24)], subjects, ctx).streakAtEnd).toBe(0);
+    expect(
+      recapFor('2026-10-26', [...run.slice(0, 3), on('2026-11-01', 24)], subjects, ctx).streakAtEnd,
+    ).toBe(0);
   });
 
   it('finishedWeeksSince excludes the current week', () => {
@@ -334,7 +408,9 @@ describe('recap', () => {
     expect(finishedWeeksSince('2026-10-26', '2026-01-05', ctx)).toEqual([]);
     // Monday 03:59 is still Sunday, so last week isn't finished yet.
     expect(finishedWeeksSince(null, '2026-11-03', { ...ctx, now: Date.UTC(2026, 10, 9, 3, 59) })).toEqual([]);
-    expect(finishedWeeksSince(null, '2026-11-03', { ...ctx, now: Date.UTC(2026, 10, 9, 4, 0) })).toEqual(['2026-11-02']);
+    expect(finishedWeeksSince(null, '2026-11-03', { ...ctx, now: Date.UTC(2026, 10, 9, 4, 0) })).toEqual([
+      '2026-11-02',
+    ]);
     expect(addDays('2026-11-02', 7)).toBe('2026-11-09');
   });
 });

@@ -10,7 +10,10 @@ const empty = (status: number, headers: Record<string, string> = {}): Response =
 
 type Handler = (url: string, init: RequestInit) => Response | Promise<Response>;
 
-function setup(handler: Handler, tokens: Tokens | null = { access: 'fake-access', refresh: 'fake-refresh', expiresAt: 10_000_000 }) {
+function setup(
+  handler: Handler,
+  tokens: Tokens | null = { access: 'fake-access', refresh: 'fake-refresh', expiresAt: 10_000_000 },
+) {
   let t = 0;
   const store: TokenStore & { value: Tokens | null } = {
     value: tokens,
@@ -22,7 +25,13 @@ function setup(handler: Handler, tokens: Tokens | null = { access: 'fake-access'
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => handler(String(url), init));
   const f = fetchMock as unknown as typeof fetch;
   const now = () => t;
-  const auth = new SpotifyAuth({ fetch: f, store, now, openExternal: () => undefined, listen: async () => new URLSearchParams() });
+  const auth = new SpotifyAuth({
+    fetch: f,
+    store,
+    now,
+    openExternal: () => undefined,
+    listen: async () => new URLSearchParams(),
+  });
   auth.setClientId('fake-client');
   const api = new SpotifyApi(auth, f, now);
   return { api, store, fetchMock, advance: (ms: number) => (t += ms) };
@@ -32,7 +41,12 @@ const playerBody = {
   is_playing: true,
   progress_ms: 5000,
   device: { name: 'Desk' },
-  item: { name: 'Song', duration_ms: 180000, artists: [{ name: 'A' }, { name: 'B' }], album: { images: [{ url: 'https://img/1' }] } },
+  item: {
+    name: 'Song',
+    duration_ms: 180000,
+    artists: [{ name: 'A' }, { name: 'B' }],
+    album: { images: [{ url: 'https://img/1' }] },
+  },
 };
 
 describe('SpotifyApi.nowPlaying', () => {
@@ -77,7 +91,9 @@ describe('SpotifyApi.nowPlaying', () => {
     const { api } = setup((url, init) => {
       if (url.includes('/api/token')) return json({ access_token: 'fake-new', expires_in: 3600 });
       calls++;
-      return (init.headers as Record<string, string>).Authorization === 'Bearer fake-new' ? json(playerBody) : empty(401);
+      return (init.headers as Record<string, string>).Authorization === 'Bearer fake-new'
+        ? json(playerBody)
+        : empty(401);
     });
     expect((await api.nowPlaying()).state).toBe('playing');
     expect(calls).toBe(2);
@@ -85,7 +101,9 @@ describe('SpotifyApi.nowPlaying', () => {
 
   it('429 waits Retry-After before the next call', async () => {
     let n = 0;
-    const { api, fetchMock, advance } = setup(() => (n++ === 0 ? empty(429, { 'Retry-After': '7' }) : json(playerBody)));
+    const { api, fetchMock, advance } = setup(() =>
+      n++ === 0 ? empty(429, { 'Retry-After': '7' }) : json(playerBody),
+    );
     await api.nowPlaying();
     advance(6_999);
     await api.nowPlaying();
@@ -124,7 +142,12 @@ describe('SpotifyApi.nowPlaying', () => {
 
 describe('SpotifyApi controls and lists', () => {
   it('playlists returns first 50', async () => {
-    const items = Array.from({ length: 60 }, (_, i) => ({ id: `p${i}`, name: `P${i}`, uri: `spotify:playlist:p${i}`, images: i === 0 ? [{ url: 'https://img/p' }] : [] }));
+    const items = Array.from({ length: 60 }, (_, i) => ({
+      id: `p${i}`,
+      name: `P${i}`,
+      uri: `spotify:playlist:p${i}`,
+      images: i === 0 ? [{ url: 'https://img/p' }] : [],
+    }));
     const { api, fetchMock } = setup(() => json({ items }));
     const lists = await api.playlists();
     expect(lists).toHaveLength(50);
@@ -134,7 +157,9 @@ describe('SpotifyApi controls and lists', () => {
   });
 
   it('devices maps the list', async () => {
-    const { api } = setup(() => json({ devices: [{ id: 'd1', name: 'Desk', type: 'Computer', is_active: true }] }));
+    const { api } = setup(() =>
+      json({ devices: [{ id: 'd1', name: 'Desk', type: 'Computer', is_active: true }] }),
+    );
     expect(await api.devices()).toEqual([{ id: 'd1', name: 'Desk', type: 'Computer', active: true }]);
   });
 
@@ -162,7 +187,9 @@ describe('SpotifyApi controls and lists', () => {
 
   it('a control call fails with a typed error: 404 no-device, offline, disconnected', async () => {
     await expect(setup(() => empty(404)).api.play()).rejects.toMatchObject({ kind: 'no-device' });
-    await expect(setup(() => Promise.reject(new TypeError('x'))).api.pause()).rejects.toBeInstanceOf(SpotifyApiError);
+    await expect(setup(() => Promise.reject(new TypeError('x'))).api.pause()).rejects.toBeInstanceOf(
+      SpotifyApiError,
+    );
     await expect(setup(() => empty(204), null).api.next()).rejects.toMatchObject({ kind: 'disconnected' });
   });
 

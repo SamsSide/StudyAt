@@ -8,7 +8,12 @@ import type { StatsContext } from './totals';
 
 const TOP_SUBJECTS = 3;
 
-export function recapFor(weekStart: string, sessions: Session[], subjects: Subject[], ctx: StatsContext): WeeklyRecap {
+export function recapFor(
+  weekStart: string,
+  sessions: Session[],
+  subjects: Subject[],
+  ctx: StatsContext,
+): WeeklyRecap {
   const weekEnd = addDays(weekStart, 6);
   const totals = dayTotals(sessions);
   const inWeek = sessions.filter((s) => s.dayKey >= weekStart && s.dayKey <= weekEnd);
@@ -49,7 +54,11 @@ export function recapFor(weekStart: string, sessions: Session[], subjects: Subje
  * Mondays of the fully finished weeks still needing a recap: those after `lastWeekStart` (the
  * newest stored recap), or from the first session's week if none is stored, up to last week.
  */
-export function finishedWeeksSince(lastWeekStart: string | null, firstSessionDayKey: string | null, ctx: StatsContext): string[] {
+export function finishedWeeksSince(
+  lastWeekStart: string | null,
+  firstSessionDayKey: string | null,
+  ctx: StatsContext,
+): string[] {
   const thisWeek = weekStartOf(todayKey(ctx));
   let week: string;
   if (lastWeekStart !== null) week = addDays(weekStartOf(lastWeekStart), 7);

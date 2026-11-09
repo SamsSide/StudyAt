@@ -163,7 +163,9 @@ describe('guardHotkeySetting', () => {
     guarded.handle('settings:set', () => {
       throw new Error('Invalid settings');
     });
-    expect(() => listener?.({}, { globalHotkey: 'Ctrl+Shift+F', notifications: 'yes' })).toThrow('Invalid settings');
+    expect(() => listener?.({}, { globalHotkey: 'Ctrl+Shift+F', notifications: 'yes' })).toThrow(
+      'Invalid settings',
+    );
     expect(hk.active).toBe('Ctrl+Alt+P');
     expect([...live.keys()]).toEqual(['Ctrl+Alt+P']);
   });

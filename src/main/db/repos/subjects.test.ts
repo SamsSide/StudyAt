@@ -28,6 +28,12 @@ describe('subjectsRepo', () => {
     db = await openTestDb(dir);
     const all = subjectsRepo(db).list();
     expect(all).toHaveLength(7);
-    expect(all.find((s) => s.id === made.id)).toEqual({ id: made.id, name: 'Analysis', colour: '#ffffff', archived: true, sort: 0 });
+    expect(all.find((s) => s.id === made.id)).toEqual({
+      id: made.id,
+      name: 'Analysis',
+      colour: '#ffffff',
+      archived: true,
+      sort: 0,
+    });
   });
 });

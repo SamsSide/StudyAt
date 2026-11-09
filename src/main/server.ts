@@ -32,9 +32,7 @@ function reply(res: ServerResponse, status: number, text: string): void {
   res.end(text);
 }
 
-export async function startRendererServer(
-  rootDir: string,
-): Promise<{ url: string; close(): Promise<void> }> {
+export async function startRendererServer(rootDir: string): Promise<{ url: string; close(): Promise<void> }> {
   const root = resolve(rootDir);
 
   const server = createServer((req, res) => {
@@ -62,7 +60,9 @@ export async function startRendererServer(
           'Cache-Control': 'no-cache',
         });
         if (req.method === 'HEAD') return void res.end();
-        createReadStream(target).on('error', () => res.destroy()).pipe(res);
+        createReadStream(target)
+          .on('error', () => res.destroy())
+          .pipe(res);
       } catch {
         reply(res, 404, 'Not found');
       }

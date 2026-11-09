@@ -5,7 +5,8 @@ import { corruptState, markCorruptRestoreAttempt, resolveCorrupt } from './corru
 import { DB_FILE, nodeFs, type Db, type DbFs } from './db';
 import { NOW, openTestDb, recordingFs, tempDir } from './test-helpers';
 
-const corruptFiles = (dir: string): string[] => readdirSync(dir).filter((f) => /^studyat\.corrupt-.+\.sqlite$/.test(f));
+const corruptFiles = (dir: string): string[] =>
+  readdirSync(dir).filter((f) => /^studyat\.corrupt-.+\.sqlite$/.test(f));
 
 // R32: "corrupt, unresolved" survives a relaunch, a kill or a failed restore until Sam chooses.
 describe('corrupt state in meta', () => {
@@ -52,7 +53,9 @@ describe('corrupt state in meta', () => {
     const killed: DbFs = {
       ...nodeFs,
       writeDurable: (path, data) =>
-        path.endsWith(`${DB_FILE}.tmp`) ? Promise.reject(new Error('killed')) : nodeFs.writeDurable(path, data),
+        path.endsWith(`${DB_FILE}.tmp`)
+          ? Promise.reject(new Error('killed'))
+          : nodeFs.writeDurable(path, data),
     };
     await expect(openTestDb(dir, NOW + 5000, killed)).rejects.toThrow('killed');
     // Nothing is lost: the damaged bytes are still on disk.

@@ -21,7 +21,10 @@ const toRecap = (r: Row): WeeklyRecap | null => json<WeeklyRecap | null>(r.data,
 
 export function recapsRepo(db: Db): RecapsRepo {
   return {
-    list: () => all(db.raw, 'SELECT data FROM recaps ORDER BY week_start').map(toRecap).filter((r): r is WeeklyRecap => r !== null),
+    list: () =>
+      all(db.raw, 'SELECT data FROM recaps ORDER BY week_start')
+        .map(toRecap)
+        .filter((r): r is WeeklyRecap => r !== null),
     get(weekStart) {
       const r = one(db.raw, 'SELECT data, shown_at FROM recaps WHERE week_start = ?', [weekStart]);
       if (!r) return null;

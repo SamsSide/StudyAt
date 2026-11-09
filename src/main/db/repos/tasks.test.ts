@@ -22,12 +22,23 @@ describe('tasksRepo', () => {
     const a = repo.create({ text: 'Read chapter 3', colour: 'yellow' }, NOW);
     const b = repo.create({ text: 'Lab sheet', colour: 'pink' }, NOW + 1);
     const c = repo.create({ text: 'Past paper', colour: 'blue' }, NOW + 2);
-    expect(a).toEqual({ id: a.id, text: 'Read chapter 3', colour: 'yellow', done: false, sort: 0, createdAt: NOW, doneAt: null });
+    expect(a).toEqual({
+      id: a.id,
+      text: 'Read chapter 3',
+      colour: 'yellow',
+      done: false,
+      sort: 0,
+      createdAt: NOW,
+      doneAt: null,
+    });
     expect([b.sort, c.sort]).toEqual([1, 2]);
 
     expect(repo.update(b.id, { done: true }, NOW + 10)).toMatchObject({ done: true, doneAt: NOW + 10 });
     expect(repo.update(b.id, { done: false }, NOW + 20)).toMatchObject({ done: false, doneAt: null });
-    expect(repo.update(a.id, { text: 'Read chapter 4', colour: 'green' }, NOW)).toMatchObject({ text: 'Read chapter 4', colour: 'green' });
+    expect(repo.update(a.id, { text: 'Read chapter 4', colour: 'green' }, NOW)).toMatchObject({
+      text: 'Read chapter 4',
+      colour: 'green',
+    });
     expect(repo.update(9999, { text: 'x' }, NOW)).toBeNull();
 
     repo.reorder([c.id, a.id, b.id]);
@@ -37,7 +48,11 @@ describe('tasksRepo', () => {
     repo.clearDone();
     await db.close();
     db = await openTestDb(dir);
-    expect(tasksRepo(db).list().map((t) => [t.id, t.sort])).toEqual([
+    expect(
+      tasksRepo(db)
+        .list()
+        .map((t) => [t.id, t.sort]),
+    ).toEqual([
       [c.id, 0],
       [b.id, 2],
     ]);

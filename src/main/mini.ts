@@ -92,7 +92,11 @@ export class MiniWindow {
       return;
     }
     if (!this.wanted || win.isDestroyed()) return;
-    const pos = placeMini(this.deps.settings.get().miniPos, this.deps.screen.workAreas(), this.deps.screen.primaryWorkArea());
+    const pos = placeMini(
+      this.deps.settings.get().miniPos,
+      this.deps.screen.workAreas(),
+      this.deps.screen.primaryWorkArea(),
+    );
     win.setPosition(pos.x, pos.y);
     win.showInactive();
   }
@@ -147,7 +151,11 @@ export class MiniWindow {
 
   private async load(): Promise<BrowserWindow> {
     const { deps } = this;
-    const pos = placeMini(deps.settings.get().miniPos, deps.screen.workAreas(), deps.screen.primaryWorkArea());
+    const pos = placeMini(
+      deps.settings.get().miniPos,
+      deps.screen.workAreas(),
+      deps.screen.primaryWorkArea(),
+    );
     const win = deps.create({
       ...MINI_SIZE,
       ...pos,

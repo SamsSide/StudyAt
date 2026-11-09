@@ -35,7 +35,18 @@ const touch = (name: string): string => {
 describe('spacesService', () => {
   it('addFiles assigns video/image kind by extension', () => {
     const svc = spacesService({ db, now: () => NOW, assetsDir: assets });
-    const files = ['a.MP4', 'b.webm', 'c.mov', 'd.m4v', 'e.jpg', 'f.JPEG', 'g.png', 'h.webp', 'i.gif', 'j.txt'].map(touch);
+    const files = [
+      'a.MP4',
+      'b.webm',
+      'c.mov',
+      'd.m4v',
+      'e.jpg',
+      'f.JPEG',
+      'g.png',
+      'h.webp',
+      'i.gif',
+      'j.txt',
+    ].map(touch);
     const added = svc.addFiles(files).filter((s) => !s.builtin);
     expect(added.map((s) => [s.name, s.kind])).toEqual([
       ['a', 'video'],
@@ -65,13 +76,22 @@ describe('spacesService', () => {
     expect(byName.get('Forest path')?.missing).toBe(true);
     writeFileSync(join(assets, 'images', 'forest-path.jpg'), 'x');
     expect(svc.list().find((s) => s.name === 'Forest path')?.missing).toBe(false);
-    expect(svc.list().filter((s) => s.kind === 'youtube').every((s) => !s.missing)).toBe(true);
+    expect(
+      svc
+        .list()
+        .filter((s) => s.kind === 'youtube')
+        .every((s) => !s.missing),
+    ).toBe(true);
   });
 
   it('addYouTube stores the id and thumb, and rejects other links', () => {
     const svc = spacesService({ db, now: () => NOW, assetsDir: assets });
     const added = svc.addYouTube('https://youtu.be/dQw4w9WgXcQ').at(-1)!;
-    expect(added).toMatchObject({ kind: 'youtube', source: 'dQw4w9WgXcQ', thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg' });
+    expect(added).toMatchObject({
+      kind: 'youtube',
+      source: 'dQw4w9WgXcQ',
+      thumb: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+    });
     expect(() => svc.addYouTube('https://vimeo.com/123')).toThrow(IpcValidationError);
   });
 
@@ -79,11 +99,15 @@ describe('spacesService', () => {
     const svc = spacesService({ db, now: () => NOW, assetsDir: assets });
     const id = svc.addFiles([touch('v.mp4')]).at(-1)!.id;
     const thumb = `data:image/jpeg;base64,${'A'.repeat(100)}`;
-    const s = svc.update(id, { name: 'Rain', favourite: true, opts: { speed: 9, dim: 0.3 }, thumb }).find((x) => x.id === id)!;
+    const s = svc
+      .update(id, { name: 'Rain', favourite: true, opts: { speed: 9, dim: 0.3 }, thumb })
+      .find((x) => x.id === id)!;
     expect(s).toMatchObject({ name: 'Rain', favourite: true, thumb });
     expect(s.opts).toMatchObject({ speed: 1.5, dim: 0.3 });
     expect(() => svc.update(id, { thumb: 'https://evil.example/x.jpg' })).toThrow(IpcValidationError);
-    expect(() => svc.update(id, { thumb: `data:image/jpeg;base64,${'A'.repeat(300_000)}` })).toThrow(IpcValidationError);
+    expect(() => svc.update(id, { thumb: `data:image/jpeg;base64,${'A'.repeat(300_000)}` })).toThrow(
+      IpcValidationError,
+    );
     expect(() => svc.update(id, { name: 'x'.repeat(501) })).toThrow(IpcValidationError);
     expect(() => svc.update(9999, { name: 'x' })).toThrow(IpcValidationError);
   });
@@ -126,7 +150,11 @@ describe('soundsService', () => {
     const svc = soundsService({ db, assetsDir: assets });
     const id = svc.addFiles([join(dir, 'gone.mp3')]).at(-1)!.id;
     const moved = touch('found.wav');
-    expect(svc.relocate(id, moved).find((s) => s.id === id)).toMatchObject({ id, source: moved, missing: false });
+    expect(svc.relocate(id, moved).find((s) => s.id === id)).toMatchObject({
+      id,
+      source: moved,
+      missing: false,
+    });
     expect(svc.pathOf(id)).toBe(moved);
     expect(() => svc.relocate(id, touch('x.mp4'))).toThrow(IpcValidationError);
     const noise = svc.list().find((s) => s.kind === 'noise')!;

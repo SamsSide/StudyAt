@@ -248,7 +248,9 @@ export type PublicSettings = Omit<Settings, MainOnlySettingsKey>;
  * A renderer settings patch: any public key except `activeSpaceId` (only `spaces:setActive`
  * changes it) and `weatherPlace` (only `weather:setPlace`), and `widgets` may name just some widgets.
  */
-export type SettingsPatch = Partial<Omit<Settings, 'widgets' | MainOnlySettingsKey | 'activeSpaceId' | 'weatherPlace'>> & {
+export type SettingsPatch = Partial<
+  Omit<Settings, 'widgets' | MainOnlySettingsKey | 'activeSpaceId' | 'weatherPlace'>
+> & {
   widgets?: Partial<Record<WidgetId, WidgetPos>>;
 };
 

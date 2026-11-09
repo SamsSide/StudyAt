@@ -21,7 +21,9 @@ describe('notesRepo', () => {
     const repo = notesRepo(db);
     expect(repo.list()).toEqual([]);
     const first = repo.create({}, NOW);
-    expect(first).toEqual([{ id: first[0]!.id, text: '', colour: 'yellow', sort: 0, createdAt: NOW, updatedAt: NOW }]);
+    expect(first).toEqual([
+      { id: first[0]!.id, text: '', colour: 'yellow', sort: 0, createdAt: NOW, updatedAt: NOW },
+    ]);
     const second = repo.create({ colour: 'purple' }, NOW + 1);
     expect(second.map((n) => [n.colour, n.sort, n.createdAt])).toEqual([
       ['yellow', 0, NOW],

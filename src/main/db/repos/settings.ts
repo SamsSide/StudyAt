@@ -31,7 +31,11 @@ export function settingsRepo(db: Db): SettingsRepo {
       }
     }
     const widgets = (stored.widgets ?? {}) as Partial<Settings['widgets']>;
-    return { ...DEFAULT_SETTINGS, ...stored, widgets: { ...DEFAULT_SETTINGS.widgets, ...widgets } } as Settings;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...stored,
+      widgets: { ...DEFAULT_SETTINGS.widgets, ...widgets },
+    } as Settings;
   };
 
   return {
@@ -41,7 +45,10 @@ export function settingsRepo(db: Db): SettingsRepo {
       const keys = Object.keys(patch).filter((k) => KEYS.has(k)) as (keyof Settings)[];
       transaction(db.raw, () => {
         for (const key of keys) {
-          db.raw.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, JSON.stringify(next[key])]);
+          db.raw.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [
+            key,
+            JSON.stringify(next[key]),
+          ]);
         }
       });
       db.markDirty();

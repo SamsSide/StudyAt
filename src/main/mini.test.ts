@@ -81,7 +81,12 @@ describe('MiniWindow', () => {
       resizable: false,
       skipTaskbar: true,
       show: false,
-      webPreferences: { preload: '/out/preload/index.js', contextIsolation: true, sandbox: true, nodeIntegration: false },
+      webPreferences: {
+        preload: '/out/preload/index.js',
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+      },
     });
     expect(win().setAlwaysOnTop).toHaveBeenCalledWith(true, 'floating');
     expect(win().url).toBe('http://127.0.0.1:5000/mini.html');

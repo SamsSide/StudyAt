@@ -27,7 +27,11 @@ export function assertIntOrNull(v: unknown, what = 'id'): number | null {
 }
 
 /** A string of at most `max` chars; `nonEmpty` also rejects one that is blank after trimming. */
-export function assertStr(v: unknown, what = 'text', opts: { max?: number; nonEmpty?: boolean } = {}): string {
+export function assertStr(
+  v: unknown,
+  what = 'text',
+  opts: { max?: number; nonEmpty?: boolean } = {},
+): string {
   const max = opts.max ?? MAX_STRING;
   if (typeof v !== 'string') throw new IpcValidationError(`${what} must be text`);
   if (v.length > max) throw new IpcValidationError(`${what} is longer than ${max} characters`);

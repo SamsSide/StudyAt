@@ -144,7 +144,10 @@ describe('AudioEngine', () => {
     ['an unknown id', 'nonsense', undefined],
     ['a custom id without a URL', 'file:8', undefined],
   ])('falls back to the bell for %s', async (_label, id, customUrl) => {
-    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('gone'))));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('gone'))),
+    );
     const fake = new FakeAudioContext();
     const engine = new AudioEngine(() => asAudioContext(fake));
     await engine.playChime(id as ChimeId, { volume: 1, repeat: 1, customUrl });

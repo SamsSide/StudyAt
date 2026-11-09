@@ -45,7 +45,10 @@ describe('seedIfEmpty', () => {
       opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0 },
       createdAt: NOW,
     });
-    expect(spaces.find((s) => s.kind === 'image')).toMatchObject({ source: 'images/forest-path.jpg', thumb: null });
+    expect(spaces.find((s) => s.kind === 'image')).toMatchObject({
+      source: 'images/forest-path.jpg',
+      thumb: null,
+    });
 
     const sounds = soundsRepo(db).list();
     expect(sounds.map((s) => s.name)).toEqual(builtin.sounds.map((s) => s.name));
@@ -82,7 +85,10 @@ describe('seedIfEmpty', () => {
       'idleMinutes',
     ] as const;
     const stored = new Map(
-      all(db.raw, 'SELECT key, value FROM settings').map((r) => [String(r.key), JSON.parse(String(r.value)) as unknown]),
+      all(db.raw, 'SELECT key, value FROM settings').map((r) => [
+        String(r.key),
+        JSON.parse(String(r.value)) as unknown,
+      ]),
     );
     for (const key of pinned) expect(stored.get(key), key).toBe(DEFAULT_SETTINGS[key]);
   });

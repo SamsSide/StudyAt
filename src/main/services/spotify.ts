@@ -20,7 +20,11 @@ const isTokens = (v: unknown): v is Tokens =>
   typeof (v as Tokens).refresh === 'string' &&
   typeof (v as Tokens).expiresAt === 'number';
 
-export function safeTokenStore(db: Db, safe: SafeStorageLike, log: (msg: string) => void = console.warn): TokenStore {
+export function safeTokenStore(
+  db: Db,
+  safe: SafeStorageLike,
+  log: (msg: string) => void = console.warn,
+): TokenStore {
   const settings = settingsRepo(db);
   let cached: Tokens | null | undefined;
   let warned = false;
@@ -55,7 +59,9 @@ export function safeTokenStore(db: Db, safe: SafeStorageLike, log: (msg: string)
         settings.set({ spotifyTokens: null });
         return;
       }
-      settings.set({ spotifyTokens: available() ? safe.encryptString(JSON.stringify(t)).toString('base64') : null });
+      settings.set({
+        spotifyTokens: available() ? safe.encryptString(JSON.stringify(t)).toString('base64') : null,
+      });
     },
   };
 }

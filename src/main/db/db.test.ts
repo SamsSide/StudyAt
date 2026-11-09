@@ -41,8 +41,21 @@ describe('openDatabase', () => {
     db = await openTestDb(dir);
     expect(LATEST_VERSION).toBe(2);
     expect(schemaVersion(db.raw)).toBe(2);
-    const tables = db.raw.exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")[0]!.values.flat();
-    for (const t of ['meta', 'settings', 'subjects', 'sessions', 'tasks', 'spaces', 'sounds', 'mixes', 'recaps', 'notes']) {
+    const tables = db.raw
+      .exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")[0]!
+      .values.flat();
+    for (const t of [
+      'meta',
+      'settings',
+      'subjects',
+      'sessions',
+      'tasks',
+      'spaces',
+      'sounds',
+      'mixes',
+      'recaps',
+      'notes',
+    ]) {
       expect(tables).toContain(t);
     }
     expect(db.recovered).toBe('ok');

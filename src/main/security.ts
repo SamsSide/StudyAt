@@ -10,7 +10,7 @@ export const CSP = [
   "media-src 'self' studyat-media: blob: data:",
   "connect-src 'self' studyat-media: data: blob:",
   "font-src 'self' data:",
-  "frame-src https://www.youtube.com",
+  'frame-src https://www.youtube.com',
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",
