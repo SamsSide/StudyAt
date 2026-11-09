@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, mergeSettings, sanitisePlace, sanitiseSettingsPatch } from './settings';
 import { SEED_SUBJECTS } from './subjects';
+import type { WidgetId } from './types';
 
 describe('DEFAULT_SETTINGS', () => {
   it('defaults match spec values', () => {
@@ -33,12 +34,47 @@ describe('DEFAULT_SETTINGS', () => {
 
   it('adds the widgets addendum keys and closed widgets at their positions', () => {
     const d = DEFAULT_SETTINGS;
-    expect(d.widgets.calendar).toEqual({ open: false, x: 0.18, y: 0.62, autoHide: false });
-    expect(d.widgets.weather).toEqual({ open: false, x: 0.18, y: 0.14, autoHide: false });
-    expect(d.widgets.quote).toEqual({ open: false, x: 0.5, y: 0.86, autoHide: false });
-    expect(d.widgets.notes).toEqual({ open: false, x: 0.82, y: 0.38, autoHide: false });
+    expect(d.widgets.calendar).toEqual({ open: false, x: 0.22, y: 0.46, autoHide: false });
+    expect(d.widgets.weather).toEqual({ open: false, x: 0.22, y: 0.1, autoHide: false });
+    expect(d.widgets.quote).toEqual({ open: false, x: 0.82, y: 0.76, autoHide: false });
+    expect(d.widgets.notes).toEqual({ open: false, x: 0.5, y: 0.56, autoHide: false });
     expect([d.weatherPlace, d.weatherUnits, d.weatherCache]).toEqual([null, 'celsius', null]);
     expect([d.calendarUrls, d.calendarCache]).toEqual([null, null]);
+  });
+
+  it('the default widget spots never overlap each other or the chrome in a 1280 x 800 window', () => {
+    // Frame sizes measured in the real app (shots real-2), with room for a configured Calendar
+    // (six events), Weather (forecast) and Spotify, and Tasks with two tasks.
+    const size: Record<WidgetId, { w: number; h: number }> = {
+      timer: { w: 352, h: 333 },
+      tasks: { w: 332, h: 250 },
+      spotify: { w: 336, h: 210 },
+      calendar: { w: 304, h: 390 },
+      weather: { w: 320, h: 271 },
+      quote: { w: 352, h: 178 },
+      notes: { w: 313, h: 329 },
+    };
+    const W = 1280;
+    const H = 800;
+    // Free area: right of the dock (12 + 76 + 12), below the top bar (12 + 52 + 12), 12 px off the edges.
+    const area = { left: 100, top: 76, right: W - 12, bottom: H - 12 };
+    const rects = (Object.keys(size) as WidgetId[]).map((id) => {
+      const { x, y } = DEFAULT_SETTINGS.widgets[id];
+      const left = x * W - size[id].w / 2;
+      return { id, left, top: y * H, right: left + size[id].w, bottom: y * H + size[id].h };
+    });
+    for (const r of rects) {
+      expect(r.left, r.id).toBeGreaterThanOrEqual(area.left);
+      expect(r.top, r.id).toBeGreaterThanOrEqual(area.top);
+      expect(r.right, r.id).toBeLessThanOrEqual(area.right);
+      expect(r.bottom, r.id).toBeLessThanOrEqual(area.bottom);
+    }
+    for (const a of rects)
+      for (const b of rects) {
+        if (a.id >= b.id) continue;
+        const apart = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+        expect(apart, `${a.id} / ${b.id}`).toBe(true);
+      }
   });
 
   it('seeds the six subjects in order', () => {
@@ -85,7 +121,9 @@ describe('sanitiseSettingsPatch', () => {
   });
 
   it('drops values of the wrong type', () => {
-    expect(sanitiseSettingsPatch({ focusMinutes: '30', notifications: 'yes', chimeFocusEnd: 'gong' })).toEqual({});
+    expect(
+      sanitiseSettingsPatch({ focusMinutes: '30', notifications: 'yes', chimeFocusEnd: 'gong' }),
+    ).toEqual({});
     expect(sanitiseSettingsPatch({ focusMinutes: Number.NaN })).toEqual({});
   });
 
@@ -131,7 +169,13 @@ describe('widgets addendum settings', () => {
   });
 
   it('never accepts the main-only keys or weatherPlace (set through weather.setPlace)', () => {
-    const place = { name: 'Durham', latitude: 54.77, longitude: -1.57, country: 'United Kingdom', admin1: 'England' };
+    const place = {
+      name: 'Durham',
+      latitude: 54.77,
+      longitude: -1.57,
+      country: 'United Kingdom',
+      admin1: 'England',
+    };
     expect(
       sanitiseSettingsPatch({
         calendarUrls: 'blob',
@@ -144,13 +188,21 @@ describe('widgets addendum settings', () => {
   });
 
   it('sanitises the new widgets like the old ones', () => {
-    const out = sanitiseSettingsPatch({ widgets: { notes: { open: true, x: 2, y: 0.5, autoHide: false }, bogus: {} } });
+    const out = sanitiseSettingsPatch({
+      widgets: { notes: { open: true, x: 2, y: 0.5, autoHide: false }, bogus: {} },
+    });
     expect(out.widgets).toEqual({ notes: { open: true, x: 1, y: 0.5, autoHide: false } });
   });
 });
 
 describe('sanitisePlace', () => {
-  const durham = { name: 'Durham', latitude: 54.77, longitude: -1.57, country: 'United Kingdom', admin1: 'England' };
+  const durham = {
+    name: 'Durham',
+    latitude: 54.77,
+    longitude: -1.57,
+    country: 'United Kingdom',
+    admin1: 'England',
+  };
 
   it('keeps a valid place, trimming the text and nulling blank or missing country and admin1', () => {
     expect(sanitisePlace(durham)).toEqual(durham);
@@ -196,7 +248,9 @@ describe('mergeSettings', () => {
 
   it('does not mutate the stored settings and keeps spotifyTokens', () => {
     const stored = { ...structuredClone(DEFAULT_SETTINGS), spotifyTokens: 'enc' };
-    const merged = mergeSettings(stored, { widgets: { timer: { open: false, x: 0, y: 0, autoHide: false } } });
+    const merged = mergeSettings(stored, {
+      widgets: { timer: { open: false, x: 0, y: 0, autoHide: false } },
+    });
     expect(stored.widgets.timer.open).toBe(true);
     expect(merged.spotifyTokens).toBe('enc');
   });

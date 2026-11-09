@@ -41,6 +41,24 @@ describe('WidgetFrame', () => {
     expect(screen.getByText('body')).toBeInTheDocument();
   });
 
+  it('never opens under the dock or the top bar, nor against the window edges', () => {
+    installMockApi(mockApi());
+    // An old saved spot under the dock, at the very top.
+    useStudyStore.setState({ settings: settingsWith(0.05, 0) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <p>body</p>
+      </WidgetFrame>,
+    );
+    // Dock: 12 px in, 76 px wide, then a 12 px gap. Top bar: 12 px down, 52 px tall, then 12 px.
+    expect(frame().style.left).toBe('100px');
+    expect(frame().style.top).toBe('76px');
+    act(() => useStudyStore.setState({ settings: settingsWith(1, 1) }));
+    // 12 px clear of the right and bottom edges: 1000 - 12 - 200 and 800 - 12 - 100.
+    expect(frame().style.left).toBe('788px');
+    expect(frame().style.top).toBe('688px');
+  });
+
   it('widget drag persists fractions and clamps inside window', async () => {
     const api = mockApi();
     installMockApi(api);
@@ -58,12 +76,12 @@ describe('WidgetFrame', () => {
     expect(api.settings.set).not.toHaveBeenCalled();
     fireEvent.pointerMove(window, { clientX: 2500, clientY: -900, pointerId: 1 });
     fireEvent.pointerUp(window, { clientX: 2500, clientY: -900, pointerId: 1 });
-    expect(frame().style.left).toBe('800px');
-    expect(frame().style.top).toBe('0px');
+    expect(frame().style.left).toBe('788px');
+    expect(frame().style.top).toBe('76px');
     expect(api.settings.set).toHaveBeenCalledWith({
-      widgets: { tasks: { open: true, x: 0.9, y: 0, autoHide: false } },
+      widgets: { tasks: { open: true, x: 0.888, y: 0.095, autoHide: false } },
     });
-    await waitFor(() => expect(useStudyStore.getState().settings?.widgets.tasks.x).toBe(0.9));
+    await waitFor(() => expect(useStudyStore.getState().settings?.widgets.tasks.x).toBe(0.888));
   });
 
   it('a click on the handle without a move saves nothing', () => {
@@ -91,14 +109,14 @@ describe('WidgetFrame', () => {
         <p>body</p>
       </WidgetFrame>,
     );
-    expect(frame().style.left).toBe('800px');
-    expect(frame().style.top).toBe('700px');
+    expect(frame().style.left).toBe('788px');
+    expect(frame().style.top).toBe('688px');
     act(() => {
       setWindow(500, 400);
       window.dispatchEvent(new Event('resize'));
     });
-    expect(frame().style.left).toBe('300px');
-    expect(frame().style.top).toBe('300px');
+    expect(frame().style.left).toBe('288px');
+    expect(frame().style.top).toBe('288px');
     expect(api.settings.set).not.toHaveBeenCalled();
   });
 

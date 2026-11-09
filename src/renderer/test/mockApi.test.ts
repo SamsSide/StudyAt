@@ -58,6 +58,18 @@ describe('mockApi', () => {
     expect(vis).toHaveBeenCalledWith(false);
   });
 
+  it('emitSettings drives settings.onChanged', async () => {
+    const api = mockApi();
+    const cb = vi.fn();
+    const off = api.settings.onChanged(cb);
+    const base = await api.settings.get();
+    const next = { ...base, focusMinutes: 40 };
+    api.emitSettings(next);
+    off();
+    api.emitSettings(base);
+    expect(cb.mock.calls).toEqual([[next]]);
+  });
+
   it('honours overrides and installs on window', () => {
     const start = vi.fn(() => Promise.resolve({ ...idleTimerState(), status: 'running' as const }));
     const api = mockApi({ timer: { start } });
@@ -84,7 +96,9 @@ describe('mockApi', () => {
 
   it('settings.set merges widgets and never exposes spotifyTokens', async () => {
     const api = mockApi();
-    const out = await api.settings.set({ widgets: { tasks: { open: true, x: 0.3, y: 0.3, autoHide: false } } });
+    const out = await api.settings.set({
+      widgets: { tasks: { open: true, x: 0.3, y: 0.3, autoHide: false } },
+    });
     expect(out.widgets.timer).toBeDefined();
     expect(out.widgets.tasks.open).toBe(true);
     expect('spotifyTokens' in out).toBe(false);

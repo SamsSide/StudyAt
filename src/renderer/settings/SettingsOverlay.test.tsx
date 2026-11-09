@@ -82,6 +82,17 @@ describe('SettingsOverlay', () => {
     expect(api.settings.set).toHaveBeenLastCalledWith({ focusMinutes: 1 });
   });
 
+  it('every number field has a unit cell, empty where there is no unit, so the inputs line up', () => {
+    setup();
+    const inputs = screen.getAllByRole('spinbutton');
+    expect(inputs.length).toBeGreaterThanOrEqual(5);
+    const units = inputs.map((input) => input.nextElementSibling);
+    for (const unit of units) expect(unit).toHaveAttribute('data-unit');
+    expect(units.map((u) => u?.textContent)).toEqual(['min', 'min', 'min', '', 'min']);
+    // The empty cell is decoration only.
+    expect(units[3]).toHaveAttribute('aria-hidden', 'true');
+  });
+
   it('chime selects list Bell, Singing bowl, Wood block, Marimba, Soft digital and Custom file…', async () => {
     setup();
     await openSection('Chimes');
@@ -555,6 +566,19 @@ describe('SettingsOverlay', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Remove calendar address 5' }));
       expect(screen.queryByLabelText('Calendar address 5')).toBeNull();
       expect(add).toBeEnabled();
+    });
+
+    it('hides Remove while the only address row is empty', async () => {
+      setup();
+      await openSection('Calendar');
+      expect(screen.queryByRole('button', { name: 'Remove calendar address 1' })).toBeNull();
+      await userEvent.type(screen.getByLabelText('Calendar address 1'), 'x');
+      expect(screen.getByRole('button', { name: 'Remove calendar address 1' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Remove calendar address 1' }));
+      expect(screen.getByLabelText('Calendar address 1')).toHaveValue('');
+      expect(screen.queryByRole('button', { name: 'Remove calendar address 1' })).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Add calendar' }));
+      expect(screen.getByRole('button', { name: 'Remove calendar address 1' })).toBeInTheDocument();
     });
 
     it('Save sends the trimmed, non-blank addresses once, then shows the calendars', async () => {

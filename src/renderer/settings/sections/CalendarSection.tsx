@@ -160,14 +160,17 @@ export function CalendarSection() {
                   if (e.key === 'Enter' && canSave) void send(next);
                 }}
               />
-              <button
-                type="button"
-                className={styles.button}
-                aria-label={`Remove calendar address ${i + 1}`}
-                onClick={() => remove(i)}
-              >
-                Remove
-              </button>
+              {/* Nothing to remove while the only row is still empty. */}
+              {!(urls.length === 1 && url.trim() === '') && (
+                <button
+                  type="button"
+                  className={styles.button}
+                  aria-label={`Remove calendar address ${i + 1}`}
+                  onClick={() => remove(i)}
+                >
+                  Remove
+                </button>
+              )}
             </li>
           );
         })}

@@ -25,6 +25,8 @@ export interface SpacesState {
   markEmbedError(id: number, kind?: VideoError): void;
   /** Forgets every `play` mark (the connection is back); embed blocks stay. */
   clearPlayErrors(): void;
+  /** Forgets one space's mark: its player has reached PLAYING, so it plainly can play. */
+  clearVideoError(id: number): void;
 }
 
 // The newest update per space. A reply to an older one is dropped, so a slider dragged quickly
@@ -90,6 +92,10 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
     const errors = get().embedErrors;
     const kept = Object.fromEntries(Object.entries(errors).filter(([, kind]) => kind === 'embed'));
     if (Object.keys(kept).length !== Object.keys(errors).length) set({ embedErrors: kept });
+  },
+  clearVideoError(id) {
+    const { [id]: mark, ...rest } = get().embedErrors;
+    if (mark) set({ embedErrors: rest });
   },
 }));
 

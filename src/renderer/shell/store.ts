@@ -160,6 +160,8 @@ export function initStudyStore(): Unsubscribe {
     }),
     studyat.timer.onSegmentEnd(() => void store.refreshOverview()),
     studyat.app.onFullscreen((fullscreen) => useStudyStore.setState({ fullscreen })),
+    // Main pushes every settings write, wherever it came from (a widget, Settings, another window).
+    studyat.settings.onChanged((settings) => useStudyStore.setState({ settings })),
   ];
 
   const refresh = (): void => void store.refreshOverview().catch(() => undefined);

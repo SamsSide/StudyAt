@@ -6,7 +6,14 @@ import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
 import { mediaUrl, useSpacesStore } from './spacesStore';
 import { useWindowVisibility } from './windowVisibility';
-import { captionsOff, EMBED_BLOCKED, loadYouTubeApi, playerVars, type YTPlayer } from './youtube';
+import {
+  captionsOff,
+  EMBED_BLOCKED,
+  loadYouTubeApi,
+  PERSISTENT_ERRORS,
+  playerVars,
+  type YTPlayer,
+} from './youtube';
 
 /** YT.PlayerState.PLAYING. */
 const YT_PLAYING = 1;
@@ -95,10 +102,14 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
   const player = useRef<YTPlayer | null>(null);
   const [ready, setReady] = useState(false);
   const markEmbedError = useSpacesStore((s) => s.markEmbedError);
+  const clearVideoError = useSpacesStore((s) => s.clearVideoError);
   const { audio, volume, speed } = space.opts;
 
   useEffect(() => {
     let dead = false;
+    // Once this player has played, a later error (often a passing one while it pauses or is torn
+    // down on a space switch) is logged but never marks the space as unplayable.
+    let played = false;
     const el = host.current;
     const mount = document.createElement('div');
     el?.appendChild(mount);
@@ -114,14 +125,22 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
               if (player.current) captionsOff(player.current);
               setReady(true);
             },
-            // The player can bring captions back when a looped video starts again.
             onStateChange: (e) => {
-              if (!dead && e.data === YT_PLAYING && player.current) captionsOff(player.current);
+              if (dead || e.data !== YT_PLAYING) return;
+              played = true;
+              // It is playing, so any earlier mark was wrong.
+              clearVideoError(space.id);
+              // The player can bring captions back when a looped video starts again.
+              if (player.current) captionsOff(player.current);
             },
-            // 101/150: the owner blocked embedding. Anything else (2 bad id, 5 HTML5 player,
-            // 100 removed or private) still leaves a black frame, so it gets a message too.
+            // 101/150: the owner blocked embedding. 2 bad id, 5 HTML5 player and 100 removed or
+            // private still leave a black frame, so they get a message too, but only while the
+            // video hasn't played yet. Any other code passes by itself.
             onError: (e) => {
-              if (!dead) markEmbedError(space.id, EMBED_BLOCKED.has(e.data) ? 'embed' : 'play');
+              if (dead) return;
+              console.warn('[spaces] YouTube error', e.data);
+              if (played || !PERSISTENT_ERRORS.has(e.data)) return;
+              markEmbedError(space.id, EMBED_BLOCKED.has(e.data) ? 'embed' : 'play');
             },
           },
         });
@@ -136,7 +155,7 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
       player.current = null;
       el?.replaceChildren();
     };
-  }, [space.id, space.source, markEmbedError]);
+  }, [space.id, space.source, markEmbedError, clearVideoError]);
 
   useEffect(() => {
     const p = player.current;

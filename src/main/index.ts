@@ -79,11 +79,21 @@ function resourcePaths(): { assets: string; wasm: string } {
   if (app.isPackaged) {
     return {
       assets: join(process.resourcesPath, 'assets'),
-      wasm: join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+      wasm: join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        'sql.js',
+        'dist',
+        'sql-wasm.wasm',
+      ),
     };
   }
   const root = app.getAppPath();
-  return { assets: join(root, 'assets'), wasm: join(root, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm') };
+  return {
+    assets: join(root, 'assets'),
+    wasm: join(root, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+  };
 }
 
 function rendererOrigin(): string | null {
@@ -103,13 +113,23 @@ const isTrustedSender = (event: IpcMainInvokeEvent): boolean => senderIsFrom(eve
 
 const dialogs: Dialogs = {
   async openFiles(filters, multi = true) {
-    const opts: Electron.OpenDialogOptions = { filters, properties: multi ? ['openFile', 'multiSelections'] : ['openFile'] };
-    const res = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts);
+    const opts: Electron.OpenDialogOptions = {
+      filters,
+      properties: multi ? ['openFile', 'multiSelections'] : ['openFile'],
+    };
+    const res = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, opts)
+      : await dialog.showOpenDialog(opts);
     return res.canceled ? [] : res.filePaths;
   },
   async saveFile(defaultName, filters) {
-    const opts: Electron.SaveDialogOptions = { defaultPath: join(app.getPath('documents'), defaultName), filters };
-    const res = mainWindow ? await dialog.showSaveDialog(mainWindow, opts) : await dialog.showSaveDialog(opts);
+    const opts: Electron.SaveDialogOptions = {
+      defaultPath: join(app.getPath('documents'), defaultName),
+      filters,
+    };
+    const res = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, opts)
+      : await dialog.showSaveDialog(opts);
     return res.canceled || !res.filePath ? null : res.filePath;
   },
   async confirm(message, detail) {
@@ -121,7 +141,9 @@ const dialogs: Dialogs = {
       message,
       detail,
     };
-    const res = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts);
+    const res = mainWindow
+      ? await dialog.showMessageBox(mainWindow, opts)
+      : await dialog.showMessageBox(opts);
     return res.response === 0;
   },
 };
@@ -140,7 +162,12 @@ async function trayImage(assets: string): Promise<Electron.NativeImage> {
 /** Opens the database; a newer schema is explained calmly and the app quits (nothing written). */
 async function openDb(paths: { assets: string; wasm: string }): Promise<Db | null> {
   try {
-    return await openDatabase({ dir: userData, now: Date.now, wasmPath: paths.wasm, builtinPath: join(paths.assets, 'builtin.json') });
+    return await openDatabase({
+      dir: userData,
+      now: Date.now,
+      wasmPath: paths.wasm,
+      builtinPath: join(paths.assets, 'builtin.json'),
+    });
   } catch (err) {
     if (!(err instanceof NewerSchemaError)) throw err;
     dialog.showErrorBox(
@@ -173,13 +200,16 @@ async function recoverCorruptDb(db: Db, wasmPath: string): Promise<boolean> {
       showMessageBox: (opts) => dialog.showMessageBox(opts),
       keptAs: `studyat.corrupt-${fileStamp(corruptAt)}.sqlite`,
       // A backup that would itself open corrupt is skipped for the next older one.
-      latestBackup: () => latestBackupBefore(userData, corruptAt, (path) => isReadableDatabase(path, wasmPath)),
+      latestBackup: () =>
+        latestBackupBefore(userData, corruptAt, (path) => isReadableDatabase(path, wasmPath)),
       restore: (name) => data.restoreBackup(name),
       restoreFailed: corruptState(db.raw).restoreFailed,
       markRestoreAttempt: () => markCorruptRestoreAttempt(db),
       // Cleared in memory at once; if this write fails the next flush carries it.
       resolveFresh: () =>
-        resolveCorrupt(db).catch((err: unknown) => console.error('StudyAt: could not save the Start fresh choice', err)),
+        resolveCorrupt(db).catch((err: unknown) =>
+          console.error('StudyAt: could not save the Start fresh choice', err),
+        ),
     });
     return outcome === 'fresh';
   } catch (err) {
@@ -195,7 +225,8 @@ async function recoverCorruptDb(db: Db, wasmPath: string): Promise<boolean> {
 
 async function boot(): Promise<void> {
   // Windows ties notifications to this id; unpackaged, the Electron binary stands in for the app.
-  if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'io.studyat.app' : process.execPath);
+  if (process.platform === 'win32')
+    app.setAppUserModelId(app.isPackaged ? 'io.studyat.app' : process.execPath);
 
   const csp = devUrl ? DEV_CSP : CSP;
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -282,11 +313,7 @@ async function boot(): Promise<void> {
   });
   const quitting = installQuit(
     app,
-    () =>
-      runShutdown(
-        [() => main?.flush(), () => mini?.flush(), () => hotkey.dispose()],
-        stopTimerAndDb,
-      ),
+    () => runShutdown([() => main?.flush(), () => mini?.flush(), () => hotkey.dispose()], stopTimerAndDb),
     async () => {
       tray?.destroy();
       await rendererServer?.close();
@@ -315,6 +342,8 @@ async function boot(): Promise<void> {
     onSettingsChanged: (_next, patch) => {
       if (patch.launchAtStartup !== undefined) applyLoginItem(app, patch.launchAtStartup);
     },
+    // A change made anywhere (Settings, a widget, another window) reaches every window.
+    pushSettings: (s) => broadcaster.send(CHANNELS.events.settingsChanged, s),
     showMini: (show) => {
       if (show) {
         void mini?.show();

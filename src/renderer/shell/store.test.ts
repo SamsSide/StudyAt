@@ -53,6 +53,26 @@ describe('useStudyStore', () => {
     expect(s.settingsSection).toBeNull();
   });
 
+  it('replaces settings with what main pushes, and stops on unsubscribe', async () => {
+    const api = mockApi();
+    installMockApi(api);
+    const stop = initStudyStore();
+    await flush();
+    const base = useStudyStore.getState().settings!;
+    const london = {
+      name: 'London',
+      admin1: 'England',
+      country: 'United Kingdom',
+      latitude: 51.5,
+      longitude: -0.13,
+    };
+    api.emitSettings({ ...base, weatherPlace: london });
+    expect(useStudyStore.getState().settings?.weatherPlace).toEqual(london);
+    stop();
+    api.emitSettings({ ...base, focusMinutes: 40 });
+    expect(useStudyStore.getState().settings?.focusMinutes).toBe(base.focusMinutes);
+  });
+
   it('follows app.onFullscreen', async () => {
     const api = mockApi();
     installMockApi(api);

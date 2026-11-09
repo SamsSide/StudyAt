@@ -25,6 +25,7 @@ export type MockApi = StudyAtApi & {
   emitFullscreen(on: boolean): void;
   emitMini(shown: boolean): void;
   emitVisibility(visible: boolean): void;
+  emitSettings(settings: PublicSettings): void;
 };
 
 const MINUTE = 60_000;
@@ -67,8 +68,13 @@ const emptyWeek = (): WeekBars => ({
 
 /** Drops the main-only keys, as the real settings channel does. */
 function publicSettings(s: Settings): PublicSettings {
-  const { spotifyTokens: _tokens, calendarUrls: _urls, calendarCache: _agenda, weatherCache: _weather, ...rest } =
-    structuredClone(s);
+  const {
+    spotifyTokens: _tokens,
+    calendarUrls: _urls,
+    calendarCache: _agenda,
+    weatherCache: _weather,
+    ...rest
+  } = structuredClone(s);
   return rest;
 }
 
@@ -102,6 +108,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
   const fullscreen = channel<boolean>();
   const mini = channel<boolean>();
   const visibility = channel<boolean>();
+  const settingsChanged = channel<PublicSettings>();
   const timer = (): Promise<TimerState> => Promise.resolve(idleTimerState());
   const resolves = <T>(value: T) => vi.fn(() => Promise.resolve(value));
 
@@ -173,6 +180,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       set: vi.fn((patch: SettingsPatch) =>
         Promise.resolve(publicSettings(mergeSettings(structuredClone(DEFAULT_SETTINGS), patch))),
       ),
+      onChanged: vi.fn(settingsChanged.subscribe),
     },
     data: {
       exportJson: resolves(true),
@@ -245,6 +253,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     emitFullscreen: fullscreen.emit,
     emitMini: mini.emit,
     emitVisibility: visibility.emit,
+    emitSettings: settingsChanged.emit,
   });
 }
 

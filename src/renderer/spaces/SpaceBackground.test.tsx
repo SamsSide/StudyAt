@@ -192,6 +192,57 @@ describe('SpaceBackground', () => {
       expect(screen.getByTestId('space-layer').querySelector('img[src="data:x"]')).not.toBeNull();
     });
 
+    it('logs every player error code', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onError?.({ data: 5 }));
+      expect(warn).toHaveBeenCalledWith('[spaces] YouTube error', 5);
+      warn.mockRestore();
+    });
+
+    it('an error after the video has played is only logged, never marked', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onStateChange?.({ data: 1 }));
+      act(() => h.opts()?.events.onError?.({ data: 5 }));
+      expect(warn).toHaveBeenCalledWith('[spaces] YouTube error', 5);
+      expect(useSpacesStore.getState().embedErrors[3]).toBeUndefined();
+      expect(screen.queryByText("This video can't be played.")).not.toBeInTheDocument();
+      expect(screen.getByTestId('space-youtube')).toBeInTheDocument();
+      warn.mockRestore();
+    });
+
+    it('a passing error code (not 2, 5, 100, 101 or 150) is never marked', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => h.opts()?.events.onError?.({ data: 3 }));
+      expect(warn).toHaveBeenCalledWith('[spaces] YouTube error', 3);
+      expect(useSpacesStore.getState().embedErrors[3]).toBeUndefined();
+      expect(screen.getByTestId('space-youtube')).toBeInTheDocument();
+      warn.mockRestore();
+    });
+
+    it('reaching PLAYING clears a mark the player set before', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const h = yt(space);
+      await mount([space]);
+      await waitFor(() => expect(h.opts()).toBeDefined());
+      act(() => {
+        h.opts()?.events.onError?.({ data: 5 });
+        expect(useSpacesStore.getState().embedErrors[3]).toBe('play');
+        h.opts()?.events.onStateChange?.({ data: 1 });
+      });
+      expect(useSpacesStore.getState().embedErrors[3]).toBeUndefined();
+      expect(screen.queryByText("This video can't be played.")).not.toBeInTheDocument();
+      warn.mockRestore();
+    });
+
     it('a failed API script load shows "This video can\'t be played."', async () => {
       await mount([space]);
       const script = await waitFor(() => {

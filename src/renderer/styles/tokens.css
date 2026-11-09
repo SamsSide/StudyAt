@@ -4,10 +4,14 @@
    shadows, rounded shapes, system type and gentle spring-like motion. Other modules read these
    names, so a name is never removed; only values change.
 
-   Contrast (WCAG AA, checked numerically): the glass dims what is behind it to 72 % and lays a
-   68 % dark tint on top, so over a pure white space the panel is at least rgb(72 74 78). On that
-   worst case --text is 8.1:1, --text-muted 6.0:1 and --text-faint 4.7:1; over a black space all
-   three are above 9:1. --panel-strong (overlays, menus) is darker still. */
+   Contrast (WCAG AA, checked numerically): the glass is light enough for the space to show through
+   (macOS Liquid Glass): it keeps the space behind at 86 % brightness and lays a 62 % dark tint on
+   top, so over a pure white space a widget is at least rgb(96 97 101). On that worst case --text
+   is 5.8:1, --text-muted 5.0:1, --text-faint 4.6:1, --accent-bright 4.6:1 and --danger 4.6:1;
+   over a black space all of them are above 13:1. --panel-strong (overlays, menus) uses a 58 % tint
+   at 80 % brightness: over pure white it is rgb(96 97 101) on its own and rgb(71 72 77) over the
+   overlay scrim, so the same ratios hold. The sheen adds at most 5 % white at the very top edge,
+   fading out by 38 % of the height, above the text rows. */
 :root {
   /* Type: the platform's own UI face. No bundled Apple fonts: on Windows this is Segoe UI Variable. */
   --font:
@@ -19,23 +23,23 @@
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, monospace;
 
   /* Glass */
-  --glass-fill: rgba(20, 22, 29, 0.68);
-  --glass-fill-strong: rgba(18, 20, 27, 0.86);
+  --glass-fill: rgba(20, 22, 29, 0.62);
+  --glass-fill-strong: rgba(18, 20, 27, 0.58);
   /* Controls and cards that sit on a glass panel */
   --glass-fill-thin: rgba(255, 255, 255, 0.07);
   --glass-fill-raised: rgba(255, 255, 255, 0.16);
-  --glass-filter: blur(32px) saturate(180%) brightness(0.72);
-  --glass-filter-strong: blur(40px) saturate(170%) brightness(0.6);
+  --glass-filter: blur(32px) saturate(180%) brightness(0.86);
+  --glass-filter-strong: blur(40px) saturate(170%) brightness(0.8);
   --glass-edge: rgba(255, 255, 255, 0.1);
   --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.16);
   /* A faint specular sheen across the top of a panel; layer it over a fill colour. */
-  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 38%);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 38%);
 
   /* Surfaces (the original names, now glass) */
   --bg: #0b0d12;
   --panel: var(--glass-fill);
   --panel-strong: var(--glass-fill-strong);
-  --scrim: rgba(6, 7, 10, 0.42);
+  --scrim: rgba(6, 7, 10, 0.3);
   --blur: var(--glass-filter);
   --hover: rgba(255, 255, 255, 0.09);
   --active: rgba(124, 156, 255, 0.22);
@@ -49,16 +53,16 @@
   --shadow-lg: var(--glass-highlight), 0 24px 64px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.3);
 
   /* Text */
-  --text: #f2f4f8;
-  --text-muted: #d0d4dd;
-  --text-faint: #b8bdca;
+  --text: #f5f7fa;
+  --text-muted: #e4e7ee;
+  --text-faint: #dadee6;
 
-  /* Accent: fills use --accent; accent-coloured text on glass uses --accent-bright (4.7:1 worst case). */
+  /* Accent: fills use --accent; accent-coloured text on glass uses --accent-bright (4.6:1 worst case). */
   --accent: #7c9cff;
-  --accent-bright: #a8b9ff;
+  --accent-bright: #d4dcff;
   --accent-text: #0b0d12;
   --accent-soft: rgba(124, 156, 255, 0.28);
-  --danger: #ff9b9b;
+  --danger: #ffd4d4;
   /* A macOS-style soft ring: a thin dark gap so it reads on accent fills, then the accent halo. */
   --focus-ring: 0 0 0 1.5px rgba(10, 12, 18, 0.85), 0 0 0 4.5px rgba(140, 166, 255, 0.8);
 

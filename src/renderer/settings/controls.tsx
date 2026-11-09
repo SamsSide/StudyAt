@@ -119,7 +119,10 @@ export function NumberField({
           if (e.key === 'Enter') void commit();
         }}
       />
-      {unit && <span className={styles.hint}>{unit}</span>}
+      {/* A fixed-width unit column, empty where there is no unit, so every input lines up. */}
+      <span data-unit className={`${styles.hint} ${styles.unit}`} aria-hidden={unit ? undefined : true}>
+        {unit ?? ''}
+      </span>
       {failed && (
         <span id={`${id}-error`} role="alert" className={styles.error}>
           Couldn&apos;t save that. Please try again.

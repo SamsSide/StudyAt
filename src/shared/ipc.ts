@@ -134,6 +134,11 @@ export interface StudyAtApi {
   settings: {
     get(): Promise<PublicSettings>;
     set(patch: SettingsPatch): Promise<PublicSettings>;
+    /**
+     * Main saved settings the renderer can see (settings:set, a weather place, the active space, a
+     * chime reset when its sound goes), whoever asked, so every window shows the same values.
+     */
+    onChanged(cb: (settings: PublicSettings) => void): Unsubscribe;
   };
   data: {
     exportJson(): Promise<boolean>;
@@ -242,7 +247,12 @@ export const CHANNELS = {
     relocate: 'spaces:relocate',
     setActive: 'spaces:setActive',
   },
-  sounds: { list: 'sounds:list', addFiles: 'sounds:addFiles', remove: 'sounds:remove', relocate: 'sounds:relocate' },
+  sounds: {
+    list: 'sounds:list',
+    addFiles: 'sounds:addFiles',
+    remove: 'sounds:remove',
+    relocate: 'sounds:relocate',
+  },
   mixes: { list: 'mixes:list', save: 'mixes:save', remove: 'mixes:remove' },
   settings: { get: 'settings:get', set: 'settings:set' },
   data: {
@@ -277,6 +287,7 @@ export const CHANNELS = {
     appFullscreen: 'app:fullscreen',
     appMini: 'app:mini',
     appVisibility: 'app:visibility',
+    settingsChanged: 'settings:changed',
   },
 } as const;
 

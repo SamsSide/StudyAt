@@ -150,8 +150,9 @@
   color: var(--text);
 }
 
-/* A macOS segmented control: a glass track with a raised pill on the chosen segment. Five equal
-   segments fit the 360 px panel without wrapping. */
+/* A macOS segmented control: a glass track with a raised pill on the chosen segment. Segments size
+   to their label and share the spare width, so "Favourites" never truncates in the 360 px panel
+   (the five labels need about 260 px). */
 .tabs {
   display: flex;
   gap: 2px;
@@ -162,21 +163,18 @@
 }
 
 .tab {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 0 auto;
   min-height: 26px;
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: center;
   color: var(--text-muted);
   background: transparent;
   border: 0;
   border-radius: var(--radius-pill);
-  padding: 0 var(--space-1);
+  padding: 0 6px;
   cursor: pointer;
   transition:
     background var(--duration) var(--ease),

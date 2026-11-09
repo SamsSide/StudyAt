@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNELS } from '../shared/ipc';
+import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { Note, TimerState } from '../shared/types';
 import type { CalendarAgenda, CalendarStatus, Place, WeatherReport } from '../shared/widgets';
 import type { Db } from './db/db';
@@ -341,6 +342,45 @@ describe('createBroadcaster', () => {
     expect(
       ((await invoke(CHANNELS.weather.setPlace, null)) as Record<string, unknown>).weatherPlace,
     ).toBeNull();
+  });
+
+  it('pushes the public settings after every write the renderer can see, never a secret', async () => {
+    settingsRepo(db).set({ spotifyTokens: 'secret' });
+    const pushSettings = vi.fn();
+    const { invoke, dialogs } = setup({ pushSettings });
+    const last = (): Record<string, unknown> =>
+      pushSettings.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+
+    await invoke(CHANNELS.settings.set, { focusMinutes: 40 });
+    expect(pushSettings).toHaveBeenCalledTimes(1);
+    expect(last().focusMinutes).toBe(40);
+
+    await invoke(CHANNELS.weather.setPlace, DURHAM);
+    expect(pushSettings).toHaveBeenCalledTimes(2);
+    expect(last().weatherPlace).toEqual(DURHAM);
+
+    const [space] = (await invoke(CHANNELS.spaces.list)) as { id: number }[];
+    await invoke(CHANNELS.spaces.setActive, space!.id);
+    expect(pushSettings).toHaveBeenCalledTimes(3);
+    expect(last().activeSpaceId).toBe(space!.id);
+
+    const ding = join(dir, 'ding.wav');
+    writeFileSync(ding, '');
+    vi.mocked(dialogs.openFiles).mockResolvedValueOnce([ding]);
+    const sounds = (await invoke(CHANNELS.sounds.addFiles)) as { id: number; source: string }[];
+    const sound = sounds.find((s) => s.source === ding);
+    await invoke(CHANNELS.settings.set, { chimeFocusEnd: `file:${sound!.id}` });
+    await invoke(CHANNELS.sounds.remove, sound!.id);
+    expect(pushSettings).toHaveBeenCalledTimes(5);
+    expect(last().chimeFocusEnd).toBe(DEFAULT_SETTINGS.chimeFocusEnd);
+
+    for (const [payload] of pushSettings.mock.calls)
+      for (const key of ['spotifyTokens', 'calendarUrls', 'calendarCache', 'weatherCache'])
+        expect(payload).not.toHaveProperty(key);
+
+    // A read pushes nothing.
+    await invoke(CHANNELS.settings.get);
+    expect(pushSettings).toHaveBeenCalledTimes(5);
   });
 
   it('settings:set takes weatherUnits but not the place, the addresses or the caches', async () => {

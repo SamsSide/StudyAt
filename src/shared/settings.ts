@@ -28,14 +28,17 @@ export const DEFAULT_SETTINGS: Settings = {
   soundLevels: {},
   masterVolume: 0.8,
   widgets: {
+    // Three columns that never overlap at the default 1280 x 800 window and stay clear of the dock
+    // and the top bar: Weather and Calendar on the left, Timer and Notes in the middle, Tasks,
+    // Spotify and Quote on the right (settings.test.ts checks it with the measured sizes).
     timer: { open: true, x: 0.5, y: 0.12, autoHide: false },
-    tasks: { open: false, x: 0.82, y: 0.14, autoHide: false },
-    spotify: { open: false, x: 0.82, y: 0.62, autoHide: false },
+    tasks: { open: false, x: 0.82, y: 0.1, autoHide: false },
+    spotify: { open: false, x: 0.82, y: 0.42, autoHide: false },
     // Widgets addendum §1, §4b: closed until picked from the Widgets popover.
-    calendar: { open: false, x: 0.18, y: 0.62, autoHide: false },
-    weather: { open: false, x: 0.18, y: 0.14, autoHide: false },
-    quote: { open: false, x: 0.5, y: 0.86, autoHide: false },
-    notes: { open: false, x: 0.82, y: 0.38, autoHide: false },
+    calendar: { open: false, x: 0.22, y: 0.46, autoHide: false },
+    weather: { open: false, x: 0.22, y: 0.1, autoHide: false },
+    quote: { open: false, x: 0.82, y: 0.76, autoHide: false },
+    notes: { open: false, x: 0.5, y: 0.56, autoHide: false },
   },
   spotifyClientId: '',
   spotifyTokens: null,
@@ -51,7 +54,15 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const MAX_STRING = 500;
-const WIDGET_IDS: readonly WidgetId[] = ['timer', 'tasks', 'spotify', 'calendar', 'weather', 'quote', 'notes'];
+const WIDGET_IDS: readonly WidgetId[] = [
+  'timer',
+  'tasks',
+  'spotify',
+  'calendar',
+  'weather',
+  'quote',
+  'notes',
+];
 const WEATHER_UNITS: readonly WeatherUnits[] = ['celsius', 'fahrenheit'];
 /** Longest place name or region kept (a real one is far shorter). */
 export const PLACE_TEXT_MAX = 200;
@@ -77,7 +88,8 @@ const bool: Sanitiser = (v) => (typeof v === 'boolean' ? v : NONE);
 
 const str =
   (allowEmpty: boolean): Sanitiser =>
-  (v) => (typeof v === 'string' && v.length <= MAX_STRING && (allowEmpty || v.length > 0) ? v : NONE);
+  (v) =>
+    typeof v === 'string' && v.length <= MAX_STRING && (allowEmpty || v.length > 0) ? v : NONE;
 
 const chime: Sanitiser = (v) => {
   if (typeof v !== 'string' || v.length > MAX_STRING) return NONE;
@@ -117,7 +129,8 @@ const widgets: Sanitiser = (v) => {
   return out;
 };
 
-const weatherUnits: Sanitiser = (v) => (typeof v === 'string' && (WEATHER_UNITS as readonly string[]).includes(v) ? v : NONE);
+const weatherUnits: Sanitiser = (v) =>
+  typeof v === 'string' && (WEATHER_UNITS as readonly string[]).includes(v) ? v : NONE;
 
 const placeText = (v: unknown): string | null | typeof NONE => {
   if (v === undefined || v === null) return null;
@@ -139,7 +152,14 @@ export function sanitisePlace(v: unknown): Place | null {
   const admin1 = placeText(v.admin1);
   const latitude = coord(v.latitude, 90);
   const longitude = coord(v.longitude, 180);
-  if (name === null || name === NONE || country === NONE || admin1 === NONE || latitude === NONE || longitude === NONE) {
+  if (
+    name === null ||
+    name === NONE ||
+    country === NONE ||
+    admin1 === NONE ||
+    latitude === NONE ||
+    longitude === NONE
+  ) {
     return null;
   }
   return { name, latitude, longitude, country, admin1 };

@@ -17,6 +17,7 @@ export const EVENT_METHODS = {
   'app.onFullscreen': CHANNELS.events.appFullscreen,
   'app.onMini': CHANNELS.events.appMini,
   'app.onVisibility': CHANNELS.events.appVisibility,
+  'settings.onChanged': CHANNELS.events.settingsChanged,
 } as const;
 
 type Fn = (...args: unknown[]) => unknown;

@@ -137,6 +137,11 @@ export interface IpcDeps {
   beforeRestore(): Promise<void>;
   /** After every `settings:set` (Task 13 re-registers the global hotkey and login item here). */
   onSettingsChanged?(settings: Settings, patch: MainSettingsPatch): void;
+  /**
+   * After every settings write a renderer can see, with the public settings: the bootstrap sends
+   * them on `settings:changed` to every window, so a change made anywhere shows everywhere.
+   */
+  pushSettings?(settings: PublicSettings): void;
   /** `app:showMini` (Task 13's mini window). */
   showMini?(show: boolean): void;
   exists?: (path: string) => boolean;
@@ -297,12 +302,17 @@ export function registerIpc(deps: IpcDeps) {
     });
   };
   const clientId = (): string => settings.get().spotifyClientId;
+  /** Tells every window what main now has; returns the same public copy. */
+  const pushSettings = (out: PublicSettings = publicSettings(settings.get())): PublicSettings => {
+    deps.pushSettings?.(out);
+    return out;
+  };
   const setSettings = (patch: SettingsPatch): PublicSettings => {
     const next = settings.set(patch);
     timer.applySettings();
     if (patch.spotifyClientId !== undefined) auth.setClientId(patch.spotifyClientId);
     deps.onSettingsChanged?.(next, patch);
-    return publicSettings(next);
+    return pushSettings(publicSettings(next));
   };
   const stamp = (): string => localDateKey(now());
 
@@ -413,13 +423,19 @@ export function registerIpc(deps: IpcDeps) {
     const spaceId = assertInt(id);
     const list = spaces.setActive(spaceId);
     deps.onSettingsChanged?.(settings.get(), { activeSpaceId: spaceId });
+    pushSettings();
     return list;
   });
 
   // ── Sounds and mixes (spec §3.9) ──────────────────────────────────────────
   handle(C.sounds.list, () => sounds.list());
   handle(C.sounds.addFiles, async () => sounds.addFiles(await dialogs.openFiles(SOUND_FILTERS)));
-  handle(C.sounds.remove, (id) => sounds.remove(assertInt(id)));
+  handle(C.sounds.remove, (id) => {
+    // A chime that played this sound goes back to its default.
+    const list = sounds.remove(assertInt(id));
+    pushSettings();
+    return list;
+  });
   handle(C.sounds.relocate, async (id) => {
     const soundId = assertInt(id);
     const [path] = await dialogs.openFiles(SOUND_FILTERS, false);
@@ -500,10 +516,10 @@ export function registerIpc(deps: IpcDeps) {
   // ── Weather and Calendar (widgets addendum §2, §3): network in main only ────
   handle(C.weather.searchPlaces, (q) => widgets.searchPlaces(placeQuery(q)));
   handle(C.weather.setPlace, (place) => {
-    if (place === null) return widgets.setPlace(null);
+    if (place === null) return pushSettings(widgets.setPlace(null));
     const clean = sanitisePlace(place);
     if (clean === null) throw new IpcValidationError('place must be a place from the search');
-    return widgets.setPlace(clean);
+    return pushSettings(widgets.setPlace(clean));
   });
   handle(C.weather.current, () => widgets.weatherCurrent());
   handle(C.calendar.status, () => widgets.calendarStatus());

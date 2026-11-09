@@ -23,7 +23,9 @@ function fakeIpc() {
 }
 
 const names = (api: object): string[] =>
-  Object.entries(api).flatMap(([group, methods]) => Object.keys(methods as object).map((m) => `${group}.${m}`));
+  Object.entries(api).flatMap(([group, methods]) =>
+    Object.keys(methods as object).map((m) => `${group}.${m}`),
+  );
 
 describe('preload api', () => {
   it('preload exposes exactly the StudyAtApi method names', () => {
@@ -61,6 +63,18 @@ describe('preload api', () => {
     api.app.onFullscreen(fs);
     emit(CHANNELS.events.appFullscreen, true);
     expect(fs).toHaveBeenCalledWith(true);
+  });
+
+  it('pushes settings changes made in main', () => {
+    const { ipc, emit, listeners } = fakeIpc();
+    const api = buildApi(ipc);
+    const cb = vi.fn();
+    const off = api.settings.onChanged(cb);
+    emit(CHANNELS.events.settingsChanged, { focusMinutes: 40 });
+    off();
+    emit(CHANNELS.events.settingsChanged, { focusMinutes: 50 });
+    expect(cb.mock.calls).toEqual([[{ focusMinutes: 40 }]]);
+    expect(listeners.get('settings:changed')?.size).toBe(0);
   });
 
   it('pushes mini-window and main-window visibility changes (R24)', () => {

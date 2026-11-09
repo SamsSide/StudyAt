@@ -1,7 +1,8 @@
 // A floating widget's frame (spec §3.11, §4). Position is stored as fractions of the window: `x`
 // is the widget's horizontal centre, `y` its top edge (so the timer's 0.5 / 0.12 is top centre).
-// Dragged by its header, clamped inside the window and re-clamped on resize; the clamp is only
-// for display, so a window that grows back puts the widget where it was. The position is saved
+// Dragged by its header, clamped to the free area (clear of the dock and the top bar, 12 px off
+// every edge) and re-clamped on resize; the clamp is only for display, so a window that grows back
+// puts the widget where it was, and an old saved spot under the dock shows clear of it. The position is saved
 // on drag end (a click without a move saves nothing); arrow keys on the header move it too. A widget with `autoHide` fades with the
 // chrome (spec §3.7); the others stay.
 import {
@@ -28,13 +29,36 @@ interface Box {
   h: number;
 }
 
-/** Window-pixel top-left for fractional (x, y), clamped so the whole frame stays on screen. */
-function place(x: number, y: number, frame: Box, win: Box): { left: number; top: number } {
+/** A layout token in px, or the value tokens.css sets when the sheet isn't loaded (tests). */
+function tokenPx(name: string, fallback: number): number {
+  const value = parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  return Number.isFinite(value) ? value : fallback;
+}
+
+/** Where a widget may sit: right of the dock and below the top bar, a gap clear of each. */
+function freeArea(win: Box): { left: number; top: number; right: number; bottom: number } {
+  const gap = tokenPx('--space-3', 12);
+  // The dock and the top bar are both inset by one gap from the window edge (shell.module.css).
   return {
-    left: clamp(x * win.w - frame.w / 2, 0, win.w - frame.w),
-    top: clamp(y * win.h, 0, win.h - frame.h),
+    left: gap + tokenPx('--dock-w', 76) + gap,
+    top: gap + tokenPx('--topbar-h', 52) + gap,
+    right: win.w - gap,
+    bottom: win.h - gap,
   };
 }
+
+/** Window-pixel top-left clamped into the free area, so the whole frame stays clear of the chrome. */
+function clampBox(left: number, top: number, frame: Box, win: Box): { left: number; top: number } {
+  const area = freeArea(win);
+  return {
+    left: clamp(left, area.left, area.right - frame.w),
+    top: clamp(top, area.top, area.bottom - frame.h),
+  };
+}
+
+/** Window-pixel top-left for fractional (x, y). */
+const place = (x: number, y: number, frame: Box, win: Box): { left: number; top: number } =>
+  clampBox(x * win.w - frame.w / 2, y * win.h, frame, win);
 
 /** The fractions that put the frame's top-left at (left, top). */
 const fractions = (left: number, top: number, frame: Box, win: Box) => ({
@@ -86,9 +110,8 @@ export function WidgetFrame({ id, title, children }: { id: WidgetId; title: stri
       if (ev.clientX === start.cx && ev.clientY === start.cy) return;
       moved = true;
       const w = windowBox();
-      const nextLeft = clamp(start.left + ev.clientX - start.cx, 0, w.w - frame.w);
-      const nextTop = clamp(start.top + ev.clientY - start.cy, 0, w.h - frame.h);
-      last = fractions(nextLeft, nextTop, frame, w);
+      const next = clampBox(start.left + ev.clientX - start.cx, start.top + ev.clientY - start.cy, frame, w);
+      last = fractions(next.left, next.top, frame, w);
       setDrag(last);
     };
     const end = (): void => {
