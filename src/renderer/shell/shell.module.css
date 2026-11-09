@@ -402,7 +402,90 @@
   z-index: var(--z-widget);
   min-width: 200px;
   border-radius: var(--radius-widget);
-  animation: popIn var(--duration-slow) var(--ease-spring);
+  /* WidgetFrame sets transform: scale(s) inline (spec §3.5); the pop-in animates the separate
+     scale property so the two compose instead of fighting. */
+  transform-origin: top left;
+  animation: widgetPopIn var(--duration-slow) var(--ease-spring);
+}
+
+/* The resize corner (spec §3.5): bottom-right, 16 × 16, shown on hover and keyboard focus, and
+   faded with the chrome (it always carries .fades). */
+.resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 var(--radius-widget) 0;
+  background:
+    linear-gradient(135deg, transparent 55%, var(--text-faint) 55%, var(--text-faint) 62%, transparent 62%),
+    linear-gradient(135deg, transparent 75%, var(--text-faint) 75%, var(--text-faint) 82%, transparent 82%);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity var(--duration-fade) var(--ease);
+}
+
+.widget:hover .resize,
+.resizing .resize,
+.resize:focus-visible {
+  opacity: 0.8;
+}
+
+.resize:focus-visible {
+  border-radius: var(--radius-xs);
+}
+
+.shell[data-chrome='hidden'] .resize {
+  opacity: 0;
+}
+
+.resizing {
+  user-select: none;
+  box-shadow: var(--shadow-lg);
+}
+
+/* A bare widget (image widgets, spec §3.6): no glass, no header; the body is the drag handle. */
+.bare {
+  min-width: 0;
+  border-radius: 12px;
+}
+
+.bareBody {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.bare.dragging .bareBody {
+  cursor: grabbing;
+}
+
+.bare .resize {
+  border-radius: 0 0 12px 0;
+}
+
+/* Its toolbar floats above the top-right corner on hover or focus, and fades with the chrome. */
+.bareTools {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--space-1));
+  display: flex;
+  gap: var(--space-1);
+  opacity: 0;
+}
+
+.widget:hover .bareTools,
+.bareTools:focus-within {
+  opacity: 1;
+}
+
+.shell[data-chrome='hidden'] .bareTools {
+  opacity: 0;
 }
 
 .widgetHeader {
@@ -656,6 +739,13 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
+  }
+}
+
+@keyframes widgetPopIn {
+  from {
+    opacity: 0;
+    scale: 0.97;
   }
 }
 
