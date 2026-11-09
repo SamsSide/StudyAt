@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db';
 import { NOW, openTestDb, tempDir } from '../test-helpers';
-import { tasksRepo } from './tasks';
+import { onTasksChanged, tasksRepo } from './tasks';
 
 describe('tasksRepo', () => {
   let dir: string;
@@ -56,5 +56,23 @@ describe('tasksRepo', () => {
       [c.id, 0],
       [b.id, 2],
     ]);
+  });
+
+  it('tells listeners of the same database when a task is ticked, unticked or cleared', () => {
+    const heard = vi.fn();
+    const stop = onTasksChanged(db, heard);
+    const writer = tasksRepo(db); // another repo of the same database, as the IPC handlers use
+    const a = writer.create({ text: 'A', colour: 'yellow' }, NOW);
+    writer.update(a.id, { text: 'A edited' }, NOW);
+    writer.reorder([a.id]);
+    expect(heard).not.toHaveBeenCalled();
+    writer.update(a.id, { done: true }, NOW);
+    writer.update(a.id, { done: true }, NOW); // no change, no call
+    writer.update(a.id, { done: false }, NOW);
+    writer.clearDone();
+    expect(heard).toHaveBeenCalledTimes(3);
+    stop();
+    writer.update(a.id, { done: true }, NOW);
+    expect(heard).toHaveBeenCalledTimes(3);
   });
 });

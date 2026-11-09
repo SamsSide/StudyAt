@@ -3,6 +3,7 @@ import type { AwayPrompt, SegmentEnd, TimerState } from '../../shared/types';
 import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
+import { tasksRepo } from '../db/repos/tasks';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { one } from '../db/sql';
 import { AWAY_MARKER_KEY, readAwayMarker } from './away-marker';
@@ -1019,7 +1020,12 @@ describe('TimerController', () => {
 
   // ── v1.1: a task on the timer (spec §3.3) ──
 
+  /** Held tasks are real rows: one that is missing is cleared whenever no focus segment runs. */
+  const addTask = (text: string): number => tasksRepo(db).create({ text, colour: 'yellow' }, clock.time).id;
+  const tickOff = (id: number) => tasksRepo(db).update(id, { done: true }, clock.time);
+
   it('the held task is written on the row and in the state', () => {
+    addTask('A');
     expect(c.setTask(1, 'A')).toMatchObject({ taskId: 1, taskText: 'A', status: 'idle' });
     c.start();
     expect(rows()[0]).toMatchObject({ taskId: 1, taskText: 'A' });
@@ -1031,6 +1037,8 @@ describe('TimerController', () => {
     await db.close();
     cleanup();
     await setup(new Date(2026, 10, 9, 3, 50, 0).getTime());
+    addTask('A');
+    addTask('B');
     c.setTask(1, 'A');
     c.start();
     clock.advance(10 * MIN); // 04:00, the rollover
@@ -1052,6 +1060,7 @@ describe('TimerController', () => {
   });
 
   it('setTask same id is a no-op', () => {
+    addTask('A');
     c.setTask(1, 'A');
     c.start();
     at(2 * MIN);
@@ -1062,12 +1071,150 @@ describe('TimerController', () => {
 
   it('the held task carries over a segment end into the next focus row', () => {
     settingsRepo(db).set({ autoStartBreaks: true, autoStartFocus: true });
-    c.setTask(1, 'A');
+    const a = addTask('A');
+    c.setTask(a, 'A');
     c.start();
     at(FOCUS + 5 * MIN + MIN);
     expect(rows().map((r) => [r.pomodoroId, r.taskId])).toEqual([
-      ['p-1', 1],
-      ['p-2', 1],
+      ['p-1', a],
+      ['p-2', a],
     ]);
+  });
+
+  // ── A done or missing held task goes once no focus segment runs (spec §3.3; Sam's ruling, final review F1) ──
+
+  it('a task ticked off mid-focus stays held, then goes at the natural end before the auto-started focus', () => {
+    settingsRepo(db).set({ autoStartBreaks: true, autoStartFocus: true });
+    const a = addTask('A');
+    c.setTask(a, 'A');
+    c.start();
+    at(10 * MIN);
+    tickOff(a);
+    expect(c.getState()).toMatchObject({ taskId: a, taskText: 'A', status: 'running' });
+    at(FOCUS - 1);
+    expect(rows()).toHaveLength(1);
+    at(FOCUS);
+    expect(c.getState()).toMatchObject({ mode: 'short', status: 'running', taskId: null, taskText: null });
+    expect(states.at(-1)).toMatchObject({ taskId: null, taskText: null });
+    at(FOCUS + 5 * MIN + MIN);
+    // One whole row per focus: no split, no sliver, and the next focus has no task.
+    expect(rows().map((r) => [r.pomodoroId, r.taskId, r.taskText, r.focusMs])).toEqual([
+      ['p-1', a, 'A', FOCUS],
+      ['p-2', null, null, MIN],
+    ]);
+  });
+
+  it('a task gone during a break is cleared before the auto-started focus opens its row', () => {
+    settingsRepo(db).set({ autoStartBreaks: true, autoStartFocus: true });
+    const a = addTask('A');
+    c.setTask(a, 'A');
+    c.start();
+    at(FOCUS + MIN);
+    // Gone without the repo noticing (as if by another writer): only the segment end can see it.
+    db.raw.run('DELETE FROM tasks WHERE id = ?', [a]);
+    expect(c.getState()).toMatchObject({ mode: 'short', taskId: a });
+    at(FOCUS + 5 * MIN + 2 * MIN);
+    expect(rows().map((r) => [r.pomodoroId, r.taskId, r.focusMs])).toEqual([
+      ['p-1', a, FOCUS],
+      ['p-2', null, 2 * MIN],
+    ]);
+    expect(c.getState()).toMatchObject({ mode: 'focus', status: 'running', taskId: null, taskText: null });
+  });
+
+  it.each([
+    ['skip', () => c.skip()],
+    ['reset', () => c.reset()],
+    ['setMode', () => c.setMode('long')],
+  ] as const)('%s after a task ticked off mid-focus clears it and keeps the row whole', (_, act) => {
+    const a = addTask('A');
+    c.setTask(a, 'A');
+    c.start();
+    at(3 * MIN);
+    tickOff(a);
+    expect(c.getState().taskId).toBe(a);
+    expect(act()).toMatchObject({ status: 'idle', taskId: null, taskText: null });
+    expect(rows().map((r) => [r.taskId, r.focusMs, r.status])).toEqual([[a, 3 * MIN, 'done']]);
+  });
+
+  it('a Countdown that ends (or is skipped) clears a done task', () => {
+    const a = addTask('A');
+    const b = addTask('B');
+    settingsRepo(db).set({ countdownMinutes: 30 });
+    c.setMode('countdown');
+    c.setTask(a, 'A');
+    c.start();
+    at(5 * MIN);
+    tickOff(a);
+    at(30 * MIN);
+    expect(c.getState()).toMatchObject({ mode: 'countdown', status: 'idle', taskId: null });
+    c.setTask(b, 'B');
+    c.start();
+    at(32 * MIN);
+    tickOff(b);
+    expect(c.skip()).toMatchObject({ mode: 'countdown', status: 'idle', taskId: null });
+    expect(rows().map((r) => [r.taskId, r.focusMs])).toEqual([
+      [a, 30 * MIN],
+      [b, 2 * MIN],
+    ]);
+  });
+
+  it('a held task ticked off, or removed by Clear done, while idle is cleared at once and broadcast', () => {
+    const a = addTask('A');
+    const b = addTask('B');
+    c.setTask(a, 'A');
+    const before = states.length;
+    tickOff(a);
+    expect(c.getState()).toMatchObject({ taskId: null, taskText: null });
+    expect(states.length).toBeGreaterThan(before);
+    expect(states.at(-1)).toMatchObject({ taskId: null, taskText: null });
+    c.setTask(b, 'B');
+    db.raw.run('UPDATE tasks SET done = 1 WHERE id = ?', [b]);
+    tasksRepo(db).clearDone();
+    expect(c.getState()).toMatchObject({ taskId: null, taskText: null });
+    expect(rows()).toEqual([]);
+  });
+
+  it('a held task ticked off during a running break is cleared at once', () => {
+    settingsRepo(db).set({ autoStartBreaks: true });
+    const a = addTask('A');
+    c.setTask(a, 'A');
+    c.start();
+    at(FOCUS + MIN);
+    tickOff(a);
+    expect(c.getState()).toMatchObject({ mode: 'short', status: 'running', taskId: null });
+  });
+
+  it('a held task ticked off while its focus is paused stays held, with no split', () => {
+    const a = addTask('A');
+    c.setTask(a, 'A');
+    c.start();
+    at(4 * MIN);
+    c.pause();
+    tickOff(a);
+    expect(c.getState()).toMatchObject({ status: 'paused', taskId: a, taskText: 'A' });
+    c.resume();
+    at(6 * MIN);
+    expect(rows()).toHaveLength(1);
+    c.reset();
+    expect(c.getState().taskId).toBeNull();
+  });
+
+  it('an open task, or another task ticked off, is kept', () => {
+    const a = addTask('A');
+    const b = addTask('B');
+    c.setTask(a, 'A');
+    tickOff(b);
+    c.start();
+    at(2 * MIN);
+    c.skip();
+    expect(c.getState()).toMatchObject({ taskId: a, taskText: 'A' });
+  });
+
+  it('stops listening for task changes once disposed', () => {
+    const a = addTask('A');
+    c.setTask(a, 'A');
+    c.dispose();
+    tickOff(a);
+    expect(c.getState()).toMatchObject({ taskId: a });
   });
 });

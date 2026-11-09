@@ -11,7 +11,6 @@ import { idleTimerState, installMockApi, mockApi, seedSubjects, type MockApi } f
 import { AwayPrompt } from './AwayPrompt';
 import { formatClock } from './format';
 import { TimerWidget } from './TimerWidget';
-import { useClearHeldTask } from './useClearHeldTask';
 
 let api: MockApi;
 
@@ -282,40 +281,6 @@ describe('TaskSelect', () => {
 });
 
 const optionNames = (): string[] => screen.getAllByRole('option').map((o) => o.textContent ?? '');
-
-describe('useClearHeldTask', () => {
-  /** Mounted on its own, as the shell does: no timer widget is open. */
-  function Probe() {
-    useClearHeldTask();
-    return null;
-  }
-
-  it('clears a held task that is done or gone when a segment ends, with the timer widget closed', async () => {
-    setup({ taskId: 2, taskText: 'Old' });
-    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Old', true)]);
-    render(<Probe />);
-    expect(screen.queryByRole('combobox', { name: 'Task' })).toBeNull();
-    act(() => api.emitSegmentEnd({ mode: 'countdown', next: 'countdown' }));
-    await waitFor(() => expect(api.timer.setTask).toHaveBeenCalledWith(null));
-  });
-
-  it('clears a held task that was deleted', async () => {
-    setup({ taskId: 2, taskText: 'Gone' });
-    vi.mocked(api.tasks.list).mockResolvedValue([]);
-    render(<Probe />);
-    act(() => api.emitSegmentEnd({ mode: 'focus', next: 'short' }));
-    await waitFor(() => expect(api.timer.setTask).toHaveBeenCalledWith(null));
-  });
-
-  it('keeps a held task that is still open', async () => {
-    setup({ taskId: 2, taskText: 'Open' });
-    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Open')]);
-    render(<Probe />);
-    act(() => api.emitSegmentEnd({ mode: 'focus', next: 'short' }));
-    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
-    expect(api.timer.setTask).not.toHaveBeenCalled();
-  });
-});
 
 describe('SubjectSelect', () => {
   it('lists "No subject" first, then the live subjects, each with its colour dot', async () => {

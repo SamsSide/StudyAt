@@ -17,7 +17,6 @@ import { initStudyStore, type PanelId, useStudyStore } from './store';
 import { TopBar } from './TopBar';
 import { useAutoHide } from './useAutoHide';
 import { useShortcuts } from './useShortcuts';
-import { useClearHeldTask } from '../timer/useClearHeldTask';
 import { Welcome } from './Welcome';
 import { WidgetFrame } from './WidgetFrame';
 
@@ -91,7 +90,6 @@ export function Shell({ registry }: { registry: Registry }) {
   useEffect(() => initStudyStore(), []);
   useEffect(() => void useImagesStore.getState().load(), []);
   useShortcuts();
-  useClearHeldTask();
   const visible = useAutoHide(settings?.autoHideSeconds ?? DEFAULT_AUTO_HIDE_SECONDS);
   // An overlay always shows over everything; focus view keeps the chrome hidden whatever the mouse
   // does (spec §3.4); otherwise auto-hide decides.

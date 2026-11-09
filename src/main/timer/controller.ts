@@ -4,7 +4,8 @@
 // a minute) when it ends. Suspend and lock pause it; idle time over the threshold becomes an away
 // prompt that is discarded if not answered in 2 minutes, renderer or not, unless the away prompt
 // is switched off (v1.1 spec §3.1). A Countdown is a focus segment like a Pomodoro focus (spec
-// §3.2). No clock inside: time, intervals and idle seconds are injected.
+// §3.2). A held task that is done or gone is let go whenever no focus segment runs (spec §3.3). No
+// clock inside: time, intervals and idle seconds are injected.
 import {
   initialState,
   lengthOf,
@@ -19,6 +20,7 @@ import type { AwayPrompt, Mode, SegmentEnd, TimerState } from '../../shared/type
 import type { Db } from '../db/db';
 import { sessionsRepo, type SessionsRepo } from '../db/repos/sessions';
 import { settingsRepo, type SettingsRepo } from '../db/repos/settings';
+import { onTasksChanged, tasksRepo, type TasksRepo } from '../db/repos/tasks';
 import { clearAwayMarker, readAwayMarker, writeAwayMarker } from './away-marker';
 import { AWAY_AUTO_DISCARD_MS, FocusLedger, IDLE_POLL_MS, IdleWatch } from './idle';
 
@@ -86,6 +88,8 @@ interface Emitted {
 export class TimerController {
   private readonly sessions: SessionsRepo;
   private readonly settings: SettingsRepo;
+  private readonly tasks: TasksRepo;
+  private readonly stopTasks: () => void;
   private cfg!: TimerConfig;
   private idleThresholdMs = 10 * MINUTE;
   /** Off: idle time is never polled, so no away period, prompt or discard (spec §3.1). */
@@ -98,7 +102,10 @@ export class TimerController {
   private rolloverHour = 4;
   private machine: MachineState;
   private subjectId: number | null = null;
-  /** The task held on the timer and its text as chosen (spec §3.3); kept even if later ticked off. */
+  /**
+   * The task held on the timer and its text as chosen (spec §3.3). Ticked off or deleted, it stays
+   * until no focus segment runs, then goes (`releaseFinishedTask`).
+   */
   private taskId: number | null = null;
   private taskText: string | null = null;
   /** The focus row of the current segment, open from focus start to its end. */
@@ -129,6 +136,8 @@ export class TimerController {
   constructor(private readonly deps: ControllerDeps) {
     this.sessions = sessionsRepo(deps.db);
     this.settings = settingsRepo(deps.db);
+    this.tasks = tasksRepo(deps.db);
+    this.stopTasks = onTasksChanged(deps.db, () => this.onTasksChanged());
     this.loadSettings();
     this.machine = initialState(this.cfg);
   }
@@ -268,6 +277,25 @@ export class TimerController {
     });
   }
 
+  /** A task was ticked off, unticked or removed: a held one now done or gone goes, unless focus runs. */
+  private onTasksChanged(): void {
+    if (this.disposed || this.taskId === null) return;
+    this.command(() => this.releaseFinishedTask());
+  }
+
+  /**
+   * Spec §3.3 (Sam's ruling, final review F1): whenever no focus segment runs (idle, a break, or
+   * the instant between one segment and the next), a held task that is done or deleted is cleared
+   * to "No task". A focus segment, running or paused, is never split by it: its row keeps the task.
+   */
+  private releaseFinishedTask(): void {
+    if (this.taskId === null || this.open) return;
+    const task = this.tasks.list().find((t) => t.id === this.taskId);
+    if (task && !task.done) return;
+    this.taskId = null;
+    this.taskText = null;
+  }
+
   /** Mid-segment, closes the open row and opens one on the same pomodoro and day key. */
   private split(now: number): void {
     if (!this.open) return;
@@ -352,6 +380,7 @@ export class TimerController {
   dispose(): void {
     if (!this.disposed) this.frozen = this.snapshot(this.deps.now(), this.lastTodayFocusMs);
     this.disposed = true;
+    this.stopTasks();
     for (const h of [this.tickTimer, this.pollTimer, this.awayTimer])
       if (h !== null) this.deps.clearInterval(h);
     this.tickTimer = this.pollTimer = this.awayTimer = null;
@@ -386,6 +415,13 @@ export class TimerController {
     }
     const { state, effects } = step(before, event, now, this.cfg);
     this.machine = state;
+    // A segment boundary (an end, a skip, a reset, a mode change, a start) is where a done or
+    // deleted task is let go; plain ticks and pauses are not, so a running break doesn't query.
+    const boundary =
+      event.type === 'skip' ||
+      event.type === 'reset' ||
+      event.type === 'setMode' ||
+      effects.some((e) => e.type !== 'accrue');
     for (const effect of effects) {
       switch (effect.type) {
         case 'accrue': {
@@ -399,6 +435,8 @@ export class TimerController {
           if (this.open) this.closeOpen(now);
           break;
         case 'focusStarted':
+          // Before the row opens, so an auto-started focus never splits a sliver off for it.
+          this.releaseFinishedTask();
           this.openRow(this.deps.uuid(), now);
           break;
         case 'segmentEnded':
@@ -406,6 +444,7 @@ export class TimerController {
           break;
       }
     }
+    if (boundary) this.releaseFinishedTask();
   }
 
   /**

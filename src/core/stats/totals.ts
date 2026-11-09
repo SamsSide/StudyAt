@@ -1,7 +1,7 @@
 // Day totals, week bars, trend, by-subject and by-task totals (spec §3.5; v1.1 spec §3.3;
-// appplan §4.7). Pure: "now" comes
-// in through StatsContext. Every function sums the rows it is given; main decides which rows those
-// are. A row is credited wholly to its stored `dayKey`, the day its focus segment started on.
+// appplan §4.7). Pure: "now" comes in through StatsContext. Every function sums the rows it is
+// given; main decides which rows those are. A row is credited wholly to its stored `dayKey`, the
+// day its focus segment started on.
 
 import type {
   DayTotal,

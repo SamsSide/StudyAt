@@ -16,6 +16,25 @@ export interface TasksRepo {
   clearDone(): void;
 }
 
+/**
+ * Who hears that a task was ticked off, unticked or removed, per database: every `tasksRepo` of a
+ * database shares them. The timer listens so a held task that is done or gone leaves it whenever
+ * no focus segment runs (v1.1 spec §3.3).
+ */
+const listeners = new WeakMap<Db, Set<() => void>>();
+
+/** Calls `fn` after every change to a task's done state or a removal; returns the unsubscribe. */
+export function onTasksChanged(db: Db, fn: () => void): () => void {
+  let set = listeners.get(db);
+  if (!set) listeners.set(db, (set = new Set()));
+  set.add(fn);
+  return () => void set.delete(fn);
+}
+
+function notify(db: Db): void {
+  for (const fn of [...(listeners.get(db) ?? [])]) fn();
+}
+
 const toTask = (r: Row): Task => ({
   id: int(r.id),
   text: text(r.text),
@@ -57,6 +76,7 @@ export function tasksRepo(db: Db): TasksRepo {
         id,
       ]);
       db.markDirty();
+      if (done !== current.done) notify(db);
       return byId(id);
     },
     reorder(ids) {
@@ -68,6 +88,7 @@ export function tasksRepo(db: Db): TasksRepo {
     clearDone() {
       db.raw.run('DELETE FROM tasks WHERE done = 1');
       db.markDirty();
+      notify(db);
     },
   };
 }
