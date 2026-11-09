@@ -75,4 +75,23 @@ describe('tasksRepo', () => {
     writer.update(a.id, { done: true }, NOW);
     expect(heard).toHaveBeenCalledTimes(3);
   });
+
+  it('never lets a throwing listener fail a write or hide it from the next listener', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stopBad = onTasksChanged(db, () => {
+      throw new Error('listener broke');
+    });
+    const heard = vi.fn();
+    const stop = onTasksChanged(db, heard);
+    const writer = tasksRepo(db);
+    const a = writer.create({ text: 'A', colour: 'yellow' }, NOW);
+    expect(writer.update(a.id, { done: true }, NOW)?.done).toBe(true);
+    expect(() => writer.clearDone()).not.toThrow();
+    expect(writer.list()).toEqual([]);
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledTimes(2);
+    stopBad();
+    stop();
+    log.mockRestore();
+  });
 });

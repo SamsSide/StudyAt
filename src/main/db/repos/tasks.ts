@@ -32,7 +32,14 @@ export function onTasksChanged(db: Db, fn: () => void): () => void {
 }
 
 function notify(db: Db): void {
-  for (const fn of [...(listeners.get(db) ?? [])]) fn();
+  // A write has already happened: a listener that throws must not fail it or silence the others.
+  for (const fn of [...(listeners.get(db) ?? [])]) {
+    try {
+      fn();
+    } catch (err) {
+      console.error('StudyAt: task listener failed', err);
+    }
+  }
 }
 
 const toTask = (r: Row): Task => ({

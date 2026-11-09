@@ -137,9 +137,10 @@ export class TimerController {
     this.sessions = sessionsRepo(deps.db);
     this.settings = settingsRepo(deps.db);
     this.tasks = tasksRepo(deps.db);
-    this.stopTasks = onTasksChanged(deps.db, () => this.onTasksChanged());
     this.loadSettings();
     this.machine = initialState(this.cfg);
+    // Last, so a constructor that throws leaves no live subscription.
+    this.stopTasks = onTasksChanged(deps.db, () => this.onTasksChanged());
   }
 
   /**
