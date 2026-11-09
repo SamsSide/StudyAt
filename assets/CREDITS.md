@@ -59,3 +59,11 @@ removed or have embedding disabled later; the card then shows "This video can't 
 | `wFW2_nzAFv8` | Rainy café | Cozy London Cafe Ambience on Rainy Autumn Day - Relaxing Jazz Piano & Rain Sounds | Relaxing Jazz Rhythms | https://www.youtube.com/watch?v=wFW2_nzAFv8 |
 | `XxP8kxUn5bc` | Forest birdsong | 4K Forest Birdsong 2 - Birds Sing in the Woods - No Loop Realtime Birdsong | TheSilentWatcher | https://www.youtube.com/watch?v=XxP8kxUn5bc |
 | `kTMja8RgJXk` | Night city balcony | SAFE ZONE: Relaxing Blade Runner Hideout for Focus & Sleep - Cozy Cyberpunk Balcony in the City | Focus Soundscapes | https://www.youtube.com/watch?v=kTMja8RgJXk |
+
+## Quotations (`assets/quotes.json`)
+
+Public domain: every quoted author died before 1955. The translations used are public-domain or
+paraphrase-free standard renderings (for example Long's Marcus Aurelius and Epictetus, Gummere's
+Seneca, Legge's Confucius and Lao Tzu, Jowett's Plato).
+
+Weather data by Open-Meteo.com (CC BY 4.0) — fetched at runtime, not bundled.
