@@ -893,7 +893,7 @@ describe('TimerController', () => {
     expect(rows()[0]).toMatchObject({ discardedMs: away });
   });
 
-  it('turning awayPrompt back on applies from the next poll', () => {
+  it('turning awayPrompt back on applies from the next poll; focus before the switch stays kept', () => {
     settingsRepo(db).set({ awayPrompt: false });
     c.applySettings();
     c.start();
@@ -901,10 +901,46 @@ describe('TimerController', () => {
     at(5 * MIN);
     settingsRepo(db).set({ awayPrompt: true });
     c.applySettings();
-    at(12 * MIN + 2_000); // a poll sees over 10 min idle: away since 1:00
+    at(11 * MIN + 5_000); // a poll sees over 10 min idle: idle since 1:00, but away only since 5:00
+    expect(readAwayMarker(db)).toMatchObject({ since: NOW + 5 * MIN });
+    at(12 * MIN + 2_000);
     lastInput = clock.time;
     at(12 * MIN + 5_000);
-    expect(aways).toEqual([{ awayMs: 11 * MIN + 5_000, deadline: NOW + 12 * MIN + 5_000 + 120_000 }]);
+    expect(aways).toEqual([{ awayMs: 7 * MIN + 5_000, deadline: NOW + 12 * MIN + 5_000 + 120_000 }]);
+    c.answerAway('discard');
+    expect(rows()[0]).toMatchObject({ focusMs: 5 * MIN, discardedMs: 7 * MIN + 5_000 });
+  });
+
+  it('turning awayPrompt on while already idle past the threshold charges nothing before the switch', () => {
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    c.start();
+    lastInput = NOW + MIN;
+    at(15 * MIN); // 14 min idle, all of it kept while the switch was off
+    settingsRepo(db).set({ awayPrompt: true });
+    c.applySettings();
+    at(15 * MIN + 5_000); // the first poll: away, clamped to the switch-on moment
+    expect(readAwayMarker(db)).toMatchObject({ since: NOW + 15 * MIN });
+    at(17 * MIN + 2_000);
+    lastInput = clock.time;
+    at(17 * MIN + 5_000);
+    expect(aways).toEqual([{ awayMs: 2 * MIN + 5_000, deadline: NOW + 17 * MIN + 5_000 + 120_000 }]);
+    c.answerAway('discard');
+    expect(rows()[0]).toMatchObject({ focusMs: 15 * MIN, discardedMs: 2 * MIN + 5_000 });
+    expect(readAwayMarker(db)).toBeNull();
+  });
+
+  it('a crash while away after the switch went on discards only the time since the switch', () => {
+    settingsRepo(db).set({ awayPrompt: false });
+    c.applySettings();
+    c.start();
+    lastInput = NOW + MIN;
+    at(15 * MIN);
+    settingsRepo(db).set({ awayPrompt: true });
+    c.applySettings();
+    at(16 * MIN); // away since 15:00 (clamped); the last checkpoint is 15:50 (15:05 + 3 × 15 s)
+    crashAndRelaunch();
+    expect(rows()[0]).toMatchObject({ status: 'done', focusMs: 15 * MIN, discardedMs: 50_000 });
   });
 
   // ── v1.1: Countdown (spec §3.2) ──

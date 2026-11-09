@@ -90,6 +90,11 @@ export class TimerController {
   private idleThresholdMs = 10 * MINUTE;
   /** Off: idle time is never polled, so no away period, prompt or discard (spec §3.1). */
   private awayPrompt = true;
+  /**
+   * When the away prompt last went from off to on. An away period never reaches back before it, so
+   * focus accrued while the switch was off stays kept (spec §3.1: "applies from the next poll").
+   */
+  private awayPromptOnSince = Number.NEGATIVE_INFINITY;
   private rolloverHour = 4;
   private machine: MachineState;
   private subjectId: number | null = null;
@@ -579,11 +584,15 @@ export class TimerController {
       this.idleThresholdMs,
     );
     if (result.kind === 'away') {
+      // Idle time from before the switch went on is not away time: the period starts no earlier
+      // than the switch-on, and the marker and the later prompt use that same start.
+      const since = Math.max(result.since, this.awayPromptOnSince);
+      this.idle.since = since;
       // R39: the row and the marker reach the disk now, so a crash from here on never credits
       // the away time.
       this.tick(now);
       this.checkpoint(now);
-      this.writeMarker(result.since, now);
+      this.writeMarker(since, now);
       this.settle(now);
     } else if (result.kind === 'back') {
       this.tick(now);
@@ -730,6 +739,7 @@ export class TimerController {
       autoStartFocus: s.autoStartFocus,
       countdownMs: s.countdownMinutes * MINUTE,
     };
+    if (s.awayPrompt && !this.awayPrompt) this.awayPromptOnSince = this.deps.now();
     this.awayPrompt = s.awayPrompt;
     this.idleThresholdMs = s.idleMinutes * MINUTE;
     this.rolloverHour = s.rolloverHour;
