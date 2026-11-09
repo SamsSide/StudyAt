@@ -136,7 +136,9 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
             },
             // 101/150: the owner blocked embedding. 2 bad id, 5 HTML5 player and 100 removed or
             // private still leave a black frame, so they get a message too, but only while the
-            // video hasn't played yet. Any other code passes by itself.
+            // video hasn't played yet. 152/153 are player configuration errors (a missing or
+            // bad referrer): they get the play message and are logged. Any other code passes
+            // by itself.
             onError: (e) => {
               if (dead) return;
               console.warn('[spaces] YouTube error', e.data);

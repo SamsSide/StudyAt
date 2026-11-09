@@ -283,6 +283,7 @@ describe('SpaceBackground', () => {
       await waitFor(() => expect(h.opts()).toBeDefined());
       act(() => h.opts()?.events.onError?.({ data: 150 }));
       expect(await screen.findByText("This video can't be embedded.")).toBeInTheDocument();
+      expect(useSpacesStore.getState().embedErrors[3]).toBe('embed');
     });
 
     it('error 153 is a configuration error: a play message, not an embed block', async () => {

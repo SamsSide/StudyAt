@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { request } from 'node:http';
+import { get, request } from 'node:http';
 import { Server, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -48,8 +48,18 @@ describe('startRendererServer', () => {
     addr.mockRestore();
     await second.close();
     expect(bound?.address).toBe('127.0.0.1');
-    const res = await rawGet('/');
-    expect(res.body).toBe('<h1>StudyAt</h1>');
+  });
+
+  it('reaches index.html through the returned localhost URL itself', async () => {
+    // Uses the URL's hostname, so a localhost that resolves to ::1 first would fail here.
+    const body = await new Promise<string>((resolve, reject) => {
+      get(server.url, (res) => {
+        let data = '';
+        res.on('data', (c: Buffer) => (data += c.toString()));
+        res.on('end', () => resolve(data));
+      }).on('error', reject);
+    });
+    expect(body).toBe('<h1>StudyAt</h1>');
   });
 
   it('serves index.html at /', async () => {
