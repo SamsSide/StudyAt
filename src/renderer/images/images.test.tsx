@@ -95,6 +95,31 @@ describe('Add image dialog', () => {
     expect(screen.getByRole('img', { name: 'Image 1' })).toHaveAttribute('src', 'studyat-media://image/7');
   });
 
+  it('a rejected add says "Couldn\'t add that image." in the alert', async () => {
+    const user = userEvent.setup();
+    const addUrl = vi.fn().mockRejectedValue(new Error('main unreachable'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await renderShell(shellApi({ images: { addUrl } }));
+    act(() => useImagesStore.getState().setAdding(true));
+    const dialog = screen.getByRole('dialog', { name: 'Add image' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Link' }), 'https://example.com/a.png');
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/^Couldn't add that image\.$/);
+    expect(screen.getByRole('dialog', { name: 'Add image' })).toBeInTheDocument();
+  });
+
+  it('the link form leaves checking to us, so a link without a scheme still reaches main', async () => {
+    const user = userEvent.setup();
+    const api = await renderShell(shellApi());
+    act(() => useImagesStore.getState().setAdding(true));
+    const dialog = screen.getByRole('dialog', { name: 'Add image' });
+    const field = within(dialog).getByRole('textbox', { name: 'Link' });
+    expect(field.closest('form')).toHaveAttribute('novalidate');
+    await user.type(field, 'example.com/a.png');
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(api.images.addUrl).toHaveBeenCalledWith('example.com/a.png'));
+  });
+
   it('a cancelled file dialog does nothing: no alert, the dialog stays', async () => {
     const user = userEvent.setup();
     const api = await renderShell(shellApi());
@@ -238,6 +263,18 @@ describe('Image widget', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     expect(api.images.remove).toHaveBeenCalledWith(1);
+  });
+
+  it('a thin missing image keeps a readable frame for its message and Remove', () => {
+    // 1000 × 100 fits to 240 × 24, too short for the message; the missing frame is at least 160 × 80.
+    renderImages([image({ width: 1000, height: 100 })]);
+    const img = screen.getByRole('img', { name: 'Image 1' });
+    expect(img.parentElement).toHaveStyle({ width: '240px', height: '24px' });
+    fireEvent.error(img);
+    const text = screen.getByText('Image missing');
+    const frame = text.parentElement!.parentElement!;
+    expect(frame).toHaveStyle({ width: '240px', height: '80px' });
+    expect(within(frame).getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
   it('in focus view the toolbar and corner fade with the chrome; the image stays', async () => {

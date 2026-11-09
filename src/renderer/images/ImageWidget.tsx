@@ -19,6 +19,9 @@ import { useImagesStore } from './imagesStore';
 /** The longest side of an image at scale 1 and layout scale 1, in px (spec §3.6). */
 export const IMAGE_BASE_PX = 240;
 
+/** The smallest box "Image missing" and its Remove are shown in, so a thin image stays readable. */
+export const MISSING_MIN = { w: 160, h: 80 };
+
 /** The image fitted inside 240 × 240, keeping its aspect ratio, in whole px. */
 export function baseSize(width: number, height: number): { w: number; h: number } {
   if (!(width > 0) || !(height > 0)) return { w: IMAGE_BASE_PX, h: IMAGE_BASE_PX };
@@ -63,7 +66,10 @@ export function ImageWidget({ image, n }: { image: ImageData; n: number }) {
   const label = `Image ${n}`;
   // A missing image shows in the glass, so its message and Remove sit on something readable.
   const bare = image.bare && !missing;
-  const size = baseSize(image.width, image.height);
+  const fitted = baseSize(image.width, image.height);
+  const size = missing
+    ? { w: Math.max(fitted.w, MISSING_MIN.w), h: Math.max(fitted.h, MISSING_MIN.h) }
+    : fitted;
 
   const ask = (): void => {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;

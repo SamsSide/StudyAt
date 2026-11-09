@@ -63,7 +63,8 @@ function AddImage() {
               Choose file…
             </button>
           </div>
-          <form className={styles.link} onSubmit={onSubmit}>
+          {/* noValidate: our own checks and copy answer a bad link, not Chromium's US-English bubble. */}
+          <form className={styles.link} onSubmit={onSubmit} noValidate>
             <label className={styles.label} htmlFor={linkId}>
               Link
             </label>
