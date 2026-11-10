@@ -5,28 +5,35 @@
 
 ## Where we are
 
-P0–P8 and the widgets addendum (W) are done and merged to `main`: the whole app, plus the
-Calendar, Weather, Quote and Notes widgets Sam asked for on 2026-11-09. Every task was reviewed and
-`./check.sh` is green. The build record is in `docs/planning/plans/2026-11-08-app-v1-verification.md`.
+P0–P8 and the widgets addendum (W) are done and released as **v1.0.0** on GitHub
+(`SamsSide/StudyAt`, `origin`), with the Windows installer attached to the release.
 
-Released as **v1.0.0** on GitHub (`SamsSide/StudyAt`, `origin`), with the Windows installer
-attached to the release.
+**V1.1 polish is done and merged to `main`** (version 1.1.0). It adds:
+- an away-prompt off switch and a Countdown mode;
+- a task on the timer, with By task stats;
+- focus view (`H`) and proportional, resizable widgets;
+- image and GIF widgets;
+- a pop-out Spotify widget and the YouTube embed fix.
+
+Every task was reviewed, `./check.sh` is green (1160 tests) and 29/29 e2e tests pass on Windows.
+The build record is `docs/planning/plans/2026-11-09-v1-1-polish-verification.md`. The 1.1.0
+installer is built in `C:\Users\samue\Downloads\StudyAt-1.1.0\` but **not yet released on
+GitHub**: Sam reviews it first.
 
 ## Up next
 
-1. **Sam's hand-walk** (spec §10): run `scripts/win.sh npm run dev` or the installed StudyAt; pick
-   and add spaces (one of your videos, a YouTube link); mix rain + brown noise and save it; run a
-   Pomodoro tagged COMP2261 and listen to both chimes; lock the PC mid-focus; close the window
-   (mini timer, Ctrl+Alt+P); open Stats; set up Spotify; add and tick a few tasks. Then also:
-   - **Calendar**: paste your Google Calendar "Secret address in iCal format" in Settings →
-     Calendar and check today's events.
-   - **Weather**: choose your town in Settings → Weather.
-   - **Notes** and **Quote**: write a note, relaunch, check it's still there; try "Another".
-   - **The look**: judge the glass (tint, text, layout); the tint is tunable in `tokens.css`.
-   - Read the rulings made while you were asleep (verification record), especially the
-     accounting ones (R39) and the glass tint (R35, R36, R41).
-2. Fix what the hand-walk turns up, as new rows here.
-3. Ship fixes as new releases (bump `package.json`, `npm run dist` on Windows, tag `vX.Y.Z`).
+1. **Sam's v1.1 hand-walk and look calls** (verification record §5, §6), then publish the
+   v1.1.0 GitHub release with the installer attached, if it holds up.
+2. The v1.0 hand-walk items below, if not done yet:
+   - pick and add spaces (one of your videos, a YouTube link);
+   - mix rain + brown noise and save it;
+   - run a Pomodoro tagged COMP2261 and listen to both chimes;
+   - lock the PC mid-focus;
+   - close the window (mini timer, Ctrl+Alt+P);
+   - Stats; Spotify; tasks; Calendar (Google iCal secret address); Weather (your town);
+     Notes and Quote; the glass look (`tokens.css`).
+3. Fix what the hand-walk turns up, as new rows here.
+4. Ship fixes as new releases (bump `package.json`, `npm run dist` on Windows, tag `vX.Y.Z`).
 
 ## Rows
 
@@ -42,4 +49,4 @@ attached to the release.
 | P7 | Spotify widget: PKCE setup flow with instructions, now playing, controls, playlists, devices | §4.6 | done (v1.0.0) | as P1 |
 | P8 | Settings + data: all settings, export JSON/CSV, restore from backup, launch at start-up, packaged installer polish | §4.9, §6.4 | done (v1.0.0) | as P1 |
 | W | Widgets addendum: dock Widgets popover, Calendar (read-only, Google iCal secret address, encrypted), Weather (Open-Meteo), Quote (public-domain, one per day), Notes (autosaving sticky notes, migration v2) | §4.10, §6.2, §6.4 | done (v1.0.0) | addendum `docs/planning/specs/2026-11-09-widgets-addendum.md` (Sam's request, 2026-11-09), built in the P1–P8 plan's run; verification as P1; branch `feat/app-v1` |
-| V1.1 | v1.1 polish (Sam, 2026-11-09): away-prompt off switch, Countdown mode, task on the timer + By task stats, focus view (`H`), proportional and resizable widgets, image/GIF widgets (file or link, bare mode), pop-out Spotify widget, YouTube embed fix | §4.1, §4.2, §4.4, §4.6, §4.7, §4.10, §5 | planned | spec `docs/planning/specs/2026-11-09-v1-1-polish-design.md`, plan `docs/planning/plans/2026-11-09-v1-1-polish.md`; branch `feat/v1-1-polish` |
+| V1.1 | v1.1 polish (Sam, 2026-11-09): away-prompt off switch, Countdown mode, task on the timer + By task stats, focus view (`H`), proportional and resizable widgets, image/GIF widgets (file or link, bare mode), pop-out Spotify widget, YouTube embed fix | §4.1, §4.2, §4.4, §4.6, §4.7, §4.10, §5 | done (1.1.0, merged; GitHub release pending Sam's review) | spec `docs/planning/specs/2026-11-09-v1-1-polish-design.md`, plan `docs/planning/plans/2026-11-09-v1-1-polish.md`, verification `docs/planning/plans/2026-11-09-v1-1-polish-verification.md`; commits f4d8dc6…6aee436 on branch `feat/v1-1-polish` |
