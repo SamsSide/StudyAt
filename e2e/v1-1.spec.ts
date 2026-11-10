@@ -415,7 +415,7 @@ test('Images: file, link, errors, background toggle, drag and remove', async ({ 
   const count = linked ? 2 : 1;
   expect(imagesOnDisk()).toHaveLength(count);
 
-  // New images all start at the same spot and stack: drag the top (second) one aside by its header.
+  // New images cascade slightly; drag the second one well aside by its header.
   if (linked) {
     const handle = win.getByRole('button', { name: 'Move Image', exact: true }).last();
     const hb = await handle.boundingBox();
@@ -548,15 +548,15 @@ test('Images: a link without a scheme, the bare toolbar on Tab and in focus view
   await win.keyboard.press('h');
   await expect(shell(win)).toHaveAttribute('data-focus-view', 'off');
 
-  // A look call for Sam, not asserted: click the bare image, move well away, does the toolbar stay?
+  // Sam's ruling: a mouse click doesn't pin the bare toolbar. Click the image, move well away, and
+  // the toolbar goes (it shows on hover or keyboard focus only).
   const bb = await body.boundingBox();
   if (!bb) throw new Error('no bare image box');
   await win.mouse.click(bb.x + bb.width / 2, bb.y + bb.height / 2);
   await win.mouse.move(1260, 790, { steps: 6 });
-  await sleep(800);
-  const afterClick = await toolsOpacity();
+  await expect.poll(toolsOpacity).toBe('0');
   const focused = await body.evaluate((el) => el === document.activeElement);
-  test.info().annotations.push({ type: 'bare toolbar after click', description: `opacity=${afterClick} bodyFocused=${focused}` });
+  test.info().annotations.push({ type: 'bare toolbar after click', description: `opacity=0 bodyFocused=${focused}` });
   await shot(win, 'v11-fix9-bare-after-click.png');
 
   // Make it missing: quit, delete its stored file, relaunch on the same data. (A reload alone can
@@ -605,8 +605,68 @@ test('Images: a link without a scheme, the bare toolbar on Tab and in focus view
   }
   await shot(win2, 'v11-fix9-thin-image-missing.png');
 
+  // Remove asks first here too (a load error can also be a file that won't decode).
   await remove.click();
+  const ask = win2.getByRole('group', { name: 'Remove this image?' });
+  await expect(ask).toBeVisible();
+  expect((await win2.evaluate(() => window.studyat.images.list())).length).toBe(1);
+  await shot(win2, 'v11-final-missing-confirm.png');
+  await ask.getByRole('button', { name: 'Remove', exact: true }).click();
   await expect.poll(async () => (await win2.evaluate(() => window.studyat.images.list())).length).toBe(0);
+  await expect.poll(() => imagesOnDisk().length).toBe(0);
+});
+
+test('Images: a second new image cascades off the first', async ({ launch, dataDir }) => {
+  const gif = join(dataDir, 'stripes.gif');
+  makeGif(gif);
+  const { app, win } = await launch();
+  await prepare(win);
+  await app.evaluate(({ dialog }, f) => {
+    const pick = async (): Promise<Electron.OpenDialogReturnValue> => ({ canceled: false, filePaths: [f] });
+    dialog.showOpenDialog = pick as typeof dialog.showOpenDialog;
+  }, gif);
+  for (const n of [1, 2]) {
+    await dock(win, 'Widgets').click();
+    await win.getByRole('dialog', { name: 'Widgets' }).getByRole('button', { name: /Add image/ }).click();
+    const d = win.getByRole('dialog', { name: 'Add image' });
+    await d.getByRole('button', { name: 'Choose file…' }).click();
+    await expect(d).toBeHidden();
+    await expect.poll(async () => (await win.evaluate(() => window.studyat.images.list())).length).toBe(n);
+  }
+  const [a, b] = await win.evaluate(() => window.studyat.images.list());
+  test.info().annotations.push({ type: 'positions', description: JSON.stringify([[a?.x, a?.y], [b?.x, b?.y]]) });
+  expect([b?.x, b?.y]).not.toEqual([a?.x, a?.y]);
+  await calm(win);
+  await shot(win, 'v11-final-images-cascade.png');
+  // Provenance: the database file holds both positions. It is written on a debounce, so quit
+  // (which saves) before reading it.
+  expect(await quitApp(app)).toBe(0);
+  const rows = await queryDb(dataDir, 'SELECT x, y FROM images ORDER BY id');
+  expect(rows).toHaveLength(2);
+  expect([rows[1]?.x, rows[1]?.y]).not.toEqual([rows[0]?.x, rows[0]?.y]);
+  expect([rows[0]?.x, rows[0]?.y]).toEqual([a?.x, a?.y]);
+  expect([rows[1]?.x, rows[1]?.y]).toEqual([b?.x, b?.y]);
+});
+
+test('A held task ticked off while idle leaves the timer on No task', async ({ launch }) => {
+  const { win } = await launch();
+  await prepare(win);
+  const text = 'Revise the pumping lemma';
+  await win.evaluate((t) => window.studyat.tasks.create({ text: t, colour: 'green' }), text);
+  const picker = win.getByRole('combobox', { name: 'Task' });
+  await picker.click();
+  await win.getByRole('option', { name: text }).click();
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.timer.get())).taskText).toBe(text);
+  await expect(picker).toContainText(text);
+  expect((await win.evaluate(() => window.studyat.timer.get())).status).toBe('idle');
+
+  await dock(win, 'Tasks').click();
+  await win.getByRole('checkbox', { name: `Mark "${text}" as done` }).click();
+  // Main lets go of the done task and broadcasts it; the picker follows.
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.timer.get())).taskId).toBeNull();
+  await expect(picker).toHaveText('No task');
+  await calm(win);
+  await shot(win, 'v11-final-held-task-cleared.png');
 });
 
 test('YouTube: dQw4w9WgXcQ plays, jfKfPfyJRdk cannot be embedded, starter spaces load', async ({ launch }) => {
