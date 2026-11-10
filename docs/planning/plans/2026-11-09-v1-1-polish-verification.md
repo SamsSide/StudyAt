@@ -5,7 +5,8 @@ Plan: [2026-11-09-v1-1-polish.md](2026-11-09-v1-1-polish.md) · Spec:
 `feat/v1-1-polish`, verified at **6aee436** (version 1.1.0).
 
 The short version: every automated gate is green and all 29 end-to-end tests pass on Windows. The
-1.1.0 installer is in your Downloads folder, **not** on GitHub. What's left is your hand-walk (§5)
+1.1.0 installer is in your Downloads folder and was released on GitHub as v1.1.0 on 2026-11-10,
+at your request. What's left is your hand-walk (§5)
 and the look calls (§6).
 
 ## 1. How the gates were run
