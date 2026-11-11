@@ -21,7 +21,7 @@ export function dueReminders(
   for (const t of tasks) {
     if (t.done || t.day === null || t.reminder === null || t.remindedDay === t.day) continue;
     const late = now - reminderAt(t.day, t.reminder, rolloverHour);
-    if (late < 0) continue;
+    if (!Number.isFinite(late) || late < 0) continue;
     (late <= REMINDER_LATE_MS ? fire : drop).push(t.id);
   }
   return { fire, drop };

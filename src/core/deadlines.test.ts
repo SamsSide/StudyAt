@@ -4,6 +4,9 @@ import { DEADLINE_DEFAULT_TIME, formatCountdown } from './deadlines';
 const at = (y: number, mo: number, d: number, h = 0) => new Date(y, mo - 1, d, h).getTime();
 
 describe('deadlines', () => {
+  it('formatCountdown shows a dash for a non-numeric due time', () => {
+    expect(formatCountdown(NaN, 1_000)).toBe('—');
+  });
   it('formatCountdown at each boundary', () => {
     const now = at(2026, 11, 11, 12);
     const H = 3_600_000, M = 60_000;

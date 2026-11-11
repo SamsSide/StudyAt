@@ -5,6 +5,7 @@ export const DEADLINE_DEFAULT_TIME: Record<DeadlineKind, string> = { exam: '09:0
 /** ≥ 48 h "23d 4h"; < 48 h "31h 12m"; < 1 h "42m 08s"; due or past "Due" (spec §3.10). */
 export function formatCountdown(dueMs: number, now: number): string {
   const diff = dueMs - now;
+  if (Number.isNaN(diff)) return '—';
   if (diff <= 0) return 'Due';
   const mins = Math.floor(diff / 60_000);
   const hours = Math.floor(mins / 60);
