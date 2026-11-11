@@ -618,6 +618,16 @@ describe('SettingsOverlay', () => {
     expect(api.settings.set).toHaveBeenCalledWith({ chimeFocusEnd: 'file:3' });
   });
 
+  it('chimes: "Count down the last 3 seconds" is on by default, saves, and has a Preview', async () => {
+    const api = setup();
+    await openSection('Chimes');
+    const sw = screen.getByRole('switch', { name: 'Count down the last 3 seconds' });
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    await userEvent.click(sw);
+    expect(api.settings.set).toHaveBeenCalledWith({ countdownPips: false });
+  });
+
   it('Home and End jump to the first and last section', async () => {
     setup();
     screen.getByRole('tab', { name: 'Timer' }).focus();

@@ -10,6 +10,28 @@ export const chimeUrl = (id: ChimeId): string | undefined =>
   id.startsWith('file:') ? `studyat-media://chime/${id.slice('file:'.length)}` : undefined;
 
 const LAST_MINUTE_MS = 60_000;
+const PIP_SECONDS = 3;
+const PREVIEW_GAP_MS = 1000;
+
+/** Settings → Chimes preview (spec §3.5): pip, pip, pip, then the focus-end chime, 1 s apart. Returns a cancel. */
+export function playCountdownPreview(s: PublicSettings): () => void {
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  for (let i = 0; i < PIP_SECONDS; i++) {
+    timers.push(setTimeout(() => audioEngine.pip(s.chimeVolume), i * PREVIEW_GAP_MS));
+  }
+  timers.push(
+    setTimeout(() => {
+      void audioEngine
+        .playChime(s.chimeFocusEnd, {
+          volume: s.chimeVolume,
+          repeat: 1,
+          customUrl: chimeUrl(s.chimeFocusEnd),
+        })
+        .catch(() => undefined);
+    }, PIP_SECONDS * PREVIEW_GAP_MS),
+  );
+  return () => timers.forEach(clearTimeout);
+}
 
 export function useChimes(): void {
   useEffect(() => {
@@ -67,12 +89,27 @@ export function useChimes(): void {
       prev = s;
       const running = s.status === 'running';
 
-      // Soft tick, once per remaining second, in the final minute of a focus segment (Pomodoro or Countdown).
+      // Countdown pip (spec §3.5): a running segment of the same mode crossing 3, 2, 1 in consecutive
+      // displayed seconds. A jump, a pause, Reset or Skip never satisfies "exactly one second more".
+      const second = Math.ceil(s.remainingMs / 1000);
+      const pipsOn = settings?.countdownPips === true;
+      const crossed =
+        running &&
+        before !== null &&
+        before.status === 'running' &&
+        before.mode === s.mode &&
+        second >= 1 &&
+        second <= PIP_SECONDS &&
+        Math.ceil(before.remainingMs / 1000) === second + 1;
+      if (pipsOn && crossed && settings) audioEngine.pip(settings.chimeVolume);
+
+      // Soft tick, once per remaining second, in the final minute of a focus segment (Pomodoro or
+      // Countdown). With pips on, the last three seconds belong to the pips: never both.
       if (running && isFocusMode(s.mode) && s.remainingMs > 0 && s.remainingMs <= LAST_MINUTE_MS) {
-        const second = Math.ceil(s.remainingMs / 1000);
         if (second !== lastTickSecond) {
           lastTickSecond = second;
-          if (settings?.tickLastMinute) audioEngine.tick(settings.chimeVolume);
+          if (settings?.tickLastMinute && !(pipsOn && second <= PIP_SECONDS))
+            audioEngine.tick(settings.chimeVolume);
         }
       } else {
         lastTickSecond = -1;

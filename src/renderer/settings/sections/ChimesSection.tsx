@@ -3,7 +3,7 @@
 import { type CSSProperties, useEffect, useId, useRef, useState } from 'react';
 import { BUILTIN_CHIME_IDS, CHIME_NAMES } from '../../audio/chimes';
 import { audioEngine } from '../../audio/engine';
-import { chimeUrl } from '../../audio/useChimes';
+import { chimeUrl, playCountdownPreview } from '../../audio/useChimes';
 import { logIpcError } from '../../lib/ipcError';
 import { useStudyStore } from '../../shell/store';
 import type { ChimeId, Sound } from '../../../shared/types';
@@ -220,6 +220,20 @@ export function ChimesSection({ settings, update }: SectionProps) {
         checked={settings.tickLastMinute}
         onChange={(v) => update({ tickLastMinute: v })}
       />
+      <Toggle
+        label="Count down the last 3 seconds"
+        checked={settings.countdownPips}
+        onChange={(v) => update({ countdownPips: v })}
+      />
+      <Row label="Preview countdown" hint="Three pips, then the focus-end chime">
+        <button
+          type="button"
+          className={styles.button}
+          onClick={() => playCountdownPreview({ ...settings, chimeVolume: volume })}
+        >
+          Preview
+        </button>
+      </Row>
       <Toggle
         label="Chime when focus starts"
         checked={settings.chimeOnStart}

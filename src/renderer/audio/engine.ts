@@ -1,7 +1,7 @@
 // The renderer's Web Audio engine (spec §3.9, appplan §4.3/§4.4): master gain -> destination for the
 // soundboard, and a separate chime gain -> destination so chimes ignore the master slider.
 import type { ChimeId, Sound } from '../../shared/types';
-import { CHIMES, tickVoice, type BuiltinChimeId, type ChimeVoice } from './chimes';
+import { CHIMES, pipVoice, tickVoice, type BuiltinChimeId, type ChimeVoice } from './chimes';
 import { makeNoise, type NoiseColour } from './noise';
 
 /** Seconds between repeats of a chime (spec §3.9). */
@@ -228,6 +228,13 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (ctx.state === 'suspended') return; // never queue ticks behind a suspended context
     tickVoice(ctx, ctx.currentTime, this.voiceGain(volume));
+  }
+
+  /** One countdown pip (spec §3.5), at the chime volume; skipped while the context is suspended. */
+  pip(volume: number): void {
+    const ctx = this.ctx;
+    if (ctx.state === 'suspended') return;
+    pipVoice(ctx, ctx.currentTime, this.voiceGain(volume));
   }
 }
 

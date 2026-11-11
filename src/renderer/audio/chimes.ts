@@ -87,3 +87,6 @@ export const CHIMES: Record<BuiltinChimeId, ChimeVoice> = {
 
 /** The soft once-a-second tick for the last minute of focus (spec §3.9). */
 export const tickVoice: ChimeVoice = voice([{ freq: 1800, peak: 0.25, decay: 0.03, attack: 0.001 }]);
+
+/** The countdown pip (spec §3.5): 1000 Hz, about 120 ms. */
+export const pipVoice: ChimeVoice = voice([{ freq: 1000, peak: 0.35, decay: 0.12, attack: 0.003 }]);
