@@ -110,7 +110,19 @@ describe('dataService', () => {
     expect(json.exportedAt).toBe(NOW);
     expect(json.schemaVersion).toBe(3);
     expect(json.notes).toEqual([
-      { id: note!.id, text: 'Bring calculator', colour: 'blue', sort: 0, createdAt: NOW, updatedAt: NOW + 1 },
+      {
+        id: note!.id,
+        text: 'Bring calculator',
+        colour: 'blue',
+        sort: 0,
+        createdAt: NOW,
+        updatedAt: NOW + 1,
+        popped: false,
+        x: null,
+        y: null,
+        scale: 1,
+        bare: false,
+      },
     ]);
     expect(json.settings).not.toHaveProperty('spotifyTokens');
     for (const key of ['calendarUrls', 'calendarCache', 'weatherCache'])

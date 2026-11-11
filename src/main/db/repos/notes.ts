@@ -35,6 +35,12 @@ const toNote = (r: Row): Note => ({
   sort: int(r.sort),
   createdAt: int(r.created_at),
   updatedAt: int(r.updated_at),
+  // Stored from Task 3 on.
+  popped: false,
+  x: null,
+  y: null,
+  scale: 1,
+  bare: false,
 });
 
 export function notesRepo(db: Db): NotesRepo {

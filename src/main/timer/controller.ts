@@ -220,6 +220,8 @@ export class TimerController {
       todayFocusMs,
       taskId: this.taskId,
       taskText: this.taskText,
+      intention: null,
+      askOutcome: null,
     };
   }
 

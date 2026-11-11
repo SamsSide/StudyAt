@@ -90,6 +90,8 @@ const session = (s: Partial<Session> = {}): Session => ({
   status: 'done',
   taskId: null,
   taskText: null,
+  intention: null,
+  outcome: null,
   ...s,
 });
 

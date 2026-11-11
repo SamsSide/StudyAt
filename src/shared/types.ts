@@ -16,6 +16,8 @@ export interface TimerState {
   todayFocusMs: number;
   taskId: number | null;
   taskText: string | null;
+  intention: string | null;
+  askOutcome: OutcomeAsk | null;
 }
 
 export interface AwayPrompt {
@@ -49,6 +51,15 @@ export interface Session {
   status: 'running' | 'done';
   taskId: number | null;
   taskText: string | null;
+  intention: string | null;
+  outcome: SessionOutcome | null;
+}
+
+export type SessionOutcome = 'done' | 'partly' | 'not';
+/** The focus segment that just ended and its intention, until answered or the next focus starts. */
+export interface OutcomeAsk {
+  pomodoroId: string;
+  intention: string;
 }
 
 export type TaskColour = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'grey';
@@ -61,6 +72,11 @@ export interface Note {
   sort: number;
   createdAt: number;
   updatedAt: number;
+  popped: boolean;
+  x: number | null;
+  y: number | null;
+  scale: number;
+  bare: boolean;
 }
 
 export interface Task {
@@ -72,6 +88,197 @@ export interface Task {
   createdAt: number;
   doneAt: number | null;
 }
+
+export type RepeatRule =
+  { kind: 'daily' } | { kind: 'weekdays' } | { kind: 'weekly' } | { kind: 'every'; days: number };
+export type TaskKind = 'task' | 'revision';
+export interface Subtask {
+  id: number;
+  taskId: number;
+  text: string;
+  done: boolean;
+  sort: number;
+}
+export interface PlannerTask {
+  id: number;
+  title: string;
+  note: string;
+  done: boolean;
+  doneAt: number | null;
+  colour: TaskColour | null;
+  /** Study-day key, or null when the task is in a list. Exactly one of day / listId is set. */
+  day: string | null;
+  listId: number | null;
+  subjectId: number | null;
+  /** Its own subject, else its list's subject (spec §3.6). */
+  effectiveSubjectId: number | null;
+  estimateMin: number | null;
+  tags: string[];
+  subtasks: Subtask[];
+  repeat: RepeatRule | null;
+  reminder: string | null;
+  kind: TaskKind;
+  originTaskId: number | null;
+  rolledFrom: string | null;
+  sort: number;
+  createdAt: number;
+  updatedAt: number;
+  /** Focus ms of sessions with this task id, the running row live (spec §3.8). */
+  actualMs: number;
+}
+export interface TaskList {
+  id: number;
+  name: string;
+  subjectId: number | null;
+  sort: number;
+  createdAt: number;
+}
+export type DeadlineKind = 'exam' | 'coursework';
+export interface Deadline {
+  id: number;
+  title: string;
+  kind: DeadlineKind;
+  subjectId: number | null;
+  /** Local wall clock `YYYY-MM-DDTHH:MM`. */
+  due: string;
+  note: string;
+  done: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+/** A planner query: the tasks dated `from..to` (inclusive), deadlines due those days, focus per day. */
+export interface PlannerRange {
+  from: string;
+  to: string;
+  tasks: PlannerTask[];
+  deadlines: Deadline[];
+  studiedMs: Record<string, number>;
+}
+export interface ListsView {
+  lists: TaskList[];
+  tasks: PlannerTask[];
+  deadlines: Deadline[];
+}
+/** Every task a write created or changed (full), and the ids it removed. */
+export interface TaskChange {
+  tasks: PlannerTask[];
+  removed: number[];
+}
+export interface ListsChange {
+  lists: TaskList[];
+  removed: number[];
+}
+export interface DeadlinesView {
+  upcoming: Deadline[];
+  past: Deadline[];
+}
+/** Write inputs (validated in main by Tasks 14-15, applied by Tasks 11-12). */
+export interface TaskInput {
+  title: string;
+  day?: string;
+  listId?: number;
+  subjectId?: number | null;
+  estimateMin?: number | null;
+  tags?: string[];
+  note?: string;
+  colour?: TaskColour | null;
+}
+export interface TaskUpdate {
+  title?: string;
+  note?: string;
+  done?: boolean;
+  colour?: TaskColour | null;
+  subjectId?: number | null;
+  estimateMin?: number | null;
+  tags?: string[];
+  repeat?: RepeatRule | null;
+  reminder?: string | null;
+}
+export type TaskMove = { day: string; index: number } | { listId: number; index: number };
+export interface ListInput {
+  name: string;
+  subjectId?: number | null;
+}
+export interface ListPatch {
+  name?: string;
+  subjectId?: number | null;
+}
+export interface DeadlineInput {
+  title: string;
+  kind: DeadlineKind;
+  subjectId: number | null;
+  due: string;
+  note?: string;
+}
+export interface DeadlinePatch {
+  title?: string;
+  kind?: DeadlineKind;
+  subjectId?: number | null;
+  due?: string;
+  note?: string;
+  done?: boolean;
+}
+
+export type StatCard = 'total' | 'subjects' | 'goal' | 'estimates';
+export type StatRange = 'today' | 'week' | 'month';
+export interface StatWidget {
+  id: number;
+  card: StatCard;
+  range: StatRange;
+  x: number;
+  y: number;
+  scale: number;
+  bare: boolean;
+}
+export interface StatWidgetPatch {
+  card?: StatCard;
+  range?: StatRange;
+  x?: number;
+  y?: number;
+  scale?: number;
+  bare?: boolean;
+}
+export interface SubjectBar {
+  key: string;
+  name: string;
+  colour: string;
+  ms: number;
+}
+export interface TotalCardData {
+  card: 'total';
+  range: StatRange;
+  totalMs: number;
+  previousMs: number;
+  deltaPct: number | null;
+  todayMs: number;
+}
+export interface SubjectsCardData {
+  card: 'subjects';
+  range: StatRange;
+  bars: SubjectBar[];
+}
+export interface GoalCardData {
+  card: 'goal';
+  range: StatRange;
+  goalMs: number;
+  todayMs: number;
+  days: { dayKey: string; hit: boolean; future: boolean }[];
+  hitDays: number;
+  elapsedDays: number;
+  streak: number;
+}
+export interface EstimatesCardData {
+  card: 'estimates';
+  range: StatRange;
+  tasks: number;
+  plannedMs: number;
+  focusedMs: number;
+  /** focused / planned to 1 dp; null when nothing is estimated. */
+  ratio: number | null;
+  overruns: { taskId: number; title: string; estimateMs: number; actualMs: number }[];
+  bySubject: { subjectId: number | null; label: string; ratio: number }[];
+}
+export type CardData = TotalCardData | SubjectsCardData | GoalCardData | EstimatesCardData;
 
 export interface SpaceOpts {
   audio: boolean;
@@ -242,6 +449,11 @@ export interface Settings {
   trayNoticeShown: boolean;
   windowBounds: WindowBounds | null;
   miniPos: { x: number; y: number } | null;
+  countdownPips: boolean;
+  rollTasksForward: boolean;
+  sessionIntention: boolean;
+  revisionTags: string[];
+  revisionDays: number[];
 }
 
 /**

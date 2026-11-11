@@ -14,6 +14,11 @@ const note = (id: number, text: string, over: Partial<Note> = {}): Note => ({
   sort: id,
   createdAt: id,
   updatedAt: id,
+  popped: false,
+  x: null,
+  y: null,
+  scale: 1,
+  bare: false,
   ...over,
 });
 

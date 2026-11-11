@@ -78,6 +78,8 @@ const initialTimer = (): TimerState => ({
   todayFocusMs: 0,
   taskId: null,
   taskText: null,
+  intention: null,
+  askOutcome: null,
 });
 
 const initialData = () => ({

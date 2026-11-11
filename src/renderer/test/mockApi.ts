@@ -43,6 +43,8 @@ export const idleTimerState = (): TimerState => ({
   todayFocusMs: 0,
   taskId: null,
   taskText: null,
+  intention: null,
+  askOutcome: null,
 });
 
 export const seedSubjects = (): Subject[] =>

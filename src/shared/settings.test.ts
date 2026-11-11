@@ -282,8 +282,43 @@ describe('v1.1 settings and modes', () => {
     expect(p.widgets?.tasks?.scale).toBe(1);
   });
   it('isFocusMode is true for focus and countdown only', () => {
+    expect(['focus', 'short', 'long', 'countdown'].map((m) => isFocusMode(m as Mode))).toEqual([
+      true,
+      false,
+      false,
+      true,
+    ]);
+  });
+});
+
+describe('v1.2 settings', () => {
+  it('defaults the v1.2 keys (spec §5)', () => {
+    expect(DEFAULT_SETTINGS.countdownPips).toBe(true);
+    expect(DEFAULT_SETTINGS.rollTasksForward).toBe(false);
+    expect(DEFAULT_SETTINGS.sessionIntention).toBe(true);
+    expect(DEFAULT_SETTINGS.revisionTags).toEqual(['lecture']);
+    expect(DEFAULT_SETTINGS.revisionDays).toEqual([1, 3, 7, 21]);
+  });
+  it('accepts the three switches as booleans only', () => {
     expect(
-      ['focus', 'short', 'long', 'countdown'].map((m) => isFocusMode(m as Mode)),
-    ).toEqual([true, false, false, true]);
+      sanitiseSettingsPatch({ countdownPips: false, rollTasksForward: true, sessionIntention: false }),
+    ).toEqual({ countdownPips: false, rollTasksForward: true, sessionIntention: false });
+    expect(sanitiseSettingsPatch({ rollTasksForward: 'yes' })).toEqual({});
+  });
+  it('keeps revision tags that match the tag rule, lower-cased, at most 8', () => {
+    expect(sanitiseSettingsPatch({ revisionTags: ['Lecture', '#lab', 'bad tag'] }).revisionTags).toEqual([
+      'lecture',
+      'lab',
+    ]);
+    expect(sanitiseSettingsPatch({ revisionTags: Array.from({ length: 9 }, (_, i) => `t${i}`) })).toEqual({});
+    expect(sanitiseSettingsPatch({ revisionTags: [] }).revisionTags).toEqual([]);
+  });
+  it('accepts 1–4 revision days of 1–90, sorted and without repeats', () => {
+    expect(sanitiseSettingsPatch({ revisionDays: [7, 1, 3, 3] }).revisionDays).toEqual([1, 3, 7]);
+    expect(sanitiseSettingsPatch({ revisionDays: [] })).toEqual({});
+    expect(sanitiseSettingsPatch({ revisionDays: [1, 2, 3, 4, 5] })).toEqual({});
+    expect(sanitiseSettingsPatch({ revisionDays: [0] })).toEqual({});
+    expect(sanitiseSettingsPatch({ revisionDays: [91] })).toEqual({});
+    expect(sanitiseSettingsPatch({ revisionDays: [1.5] })).toEqual({});
   });
 });

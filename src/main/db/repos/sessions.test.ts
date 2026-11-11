@@ -63,6 +63,8 @@ describe('sessionsRepo', () => {
       status: 'running',
       taskId: null,
       taskText: null,
+      intention: null,
+      outcome: null,
     });
     expect(markDirty).toHaveBeenCalled();
     repo.checkpoint(s.id, 15_000, NOW + 15_000);

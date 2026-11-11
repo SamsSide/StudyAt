@@ -56,6 +56,9 @@ const toSession = (r: Row): Session => ({
   status: r.status === 'running' ? 'running' : 'done',
   taskId: intOrNull(r.task_id),
   taskText: textOrNull(r.task_text),
+  // Stored from Task 3 on.
+  intention: null,
+  outcome: null,
 });
 
 const ORDER = 'ORDER BY started_at, id';

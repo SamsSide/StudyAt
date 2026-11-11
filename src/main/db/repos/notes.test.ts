@@ -22,7 +22,19 @@ describe('notesRepo', () => {
     expect(repo.list()).toEqual([]);
     const first = repo.create({}, NOW);
     expect(first).toEqual([
-      { id: first[0]!.id, text: '', colour: 'yellow', sort: 0, createdAt: NOW, updatedAt: NOW },
+      {
+        id: first[0]!.id,
+        text: '',
+        colour: 'yellow',
+        sort: 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+        popped: false,
+        x: null,
+        y: null,
+        scale: 1,
+        bare: false,
+      },
     ]);
     const second = repo.create({ colour: 'purple' }, NOW + 1);
     expect(second.map((n) => [n.colour, n.sort, n.createdAt])).toEqual([
@@ -36,7 +48,19 @@ describe('notesRepo', () => {
     const repo = notesRepo(db);
     const id = repo.create({}, NOW)[0]!.id;
     expect(repo.update(id, { text: 'Ask about lab 4' }, NOW + 10)).toEqual([
-      { id, text: 'Ask about lab 4', colour: 'yellow', sort: 0, createdAt: NOW, updatedAt: NOW + 10 },
+      {
+        id,
+        text: 'Ask about lab 4',
+        colour: 'yellow',
+        sort: 0,
+        createdAt: NOW,
+        updatedAt: NOW + 10,
+        popped: false,
+        x: null,
+        y: null,
+        scale: 1,
+        bare: false,
+      },
     ]);
     expect(repo.update(id, { colour: 'green' }, NOW + 20)![0]).toMatchObject({
       text: 'Ask about lab 4',
