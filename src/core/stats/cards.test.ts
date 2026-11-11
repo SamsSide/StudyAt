@@ -128,6 +128,31 @@ describe('totalCard', () => {
       deltaPct: 0,
     });
   });
+  it('month clamp leaves out the days after the previous month ends (28-day February)', () => {
+    const march31 = { ...ctx, now: new Date(2027, 2, 31, 15).getTime() };
+    const rows = [
+      row('2027-03-31', 0, 30, 1),
+      row('2027-02-28', 0, 30, 1),
+      row('2027-03-01', 0, 500, 1),
+      row('2027-03-02', 0, 500, 1),
+    ];
+    expect(totalCard(rows, 'month', march31).previousMs).toBe(30 * MIN);
+  });
+  it('month clamp: 31 May against 30-day April stops at 30 April', () => {
+    const may31 = { ...ctx, now: new Date(2027, 4, 31, 15).getTime() };
+    const rows = [
+      row('2027-05-31', 0, 30, 1),
+      row('2027-04-30', 0, 40, 1),
+      row('2027-05-01', 0, 500, 1),
+    ];
+    expect(totalCard(rows, 'month', may31).previousMs).toBe(40 * MIN);
+  });
+  it('today cut-off is a fixed 24 h, so on a 25 h DST day it is an hour later on the wall clock', () => {
+    // London 2026-10-25: clocks go back at 02:00, so 15:00 GMT; 24 h earlier is 16:00 BST on the 24th.
+    const london = { ...ctx, tz: 'Europe/London', now: Date.UTC(2026, 9, 25, 15) };
+    const rows = [row('2026-10-24', Date.UTC(2026, 9, 24, 14), 120, 1)]; // 15:00 BST, two hours
+    expect(totalCard(rows, 'today', london).previousMs).toBe(60 * MIN);
+  });
   it('null delta when the previous period is empty', () => {
     expect(totalCard([row('2026-11-11', 0, 10, 1)], 'week', ctx).deltaPct).toBeNull();
   });

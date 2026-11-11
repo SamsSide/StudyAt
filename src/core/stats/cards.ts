@@ -171,7 +171,7 @@ export interface EstimateTask {
   effectiveSubjectId: number | null;
 }
 
-/** `actualMs` maps a task id to its focus ms. */
+/** `actualMs` maps a task id to its focus ms. Callers pass done tasks only. */
 export function estimatesCard(
   tasks: EstimateTask[],
   actualMs: ReadonlyMap<number, number>,
