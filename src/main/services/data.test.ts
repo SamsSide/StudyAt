@@ -108,7 +108,7 @@ describe('dataService', () => {
       'settings',
     ]);
     expect(json.exportedAt).toBe(NOW);
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(4);
     expect(json.notes).toEqual([
       {
         id: note!.id,

@@ -3,7 +3,7 @@ import type { AwayPrompt, SegmentEnd, TimerState } from '../../shared/types';
 import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
-import { tasksRepo } from '../db/repos/tasks';
+import { LEGACY_TASKS_TABLE, tasksRepo } from '../db/repos/tasks';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { one } from '../db/sql';
 import { AWAY_MARKER_KEY, readAwayMarker } from './away-marker';
@@ -1111,7 +1111,7 @@ describe('TimerController', () => {
     c.start();
     at(FOCUS + MIN);
     // Gone without the repo noticing (as if by another writer): only the segment end can see it.
-    db.raw.run('DELETE FROM tasks WHERE id = ?', [a]);
+    db.raw.run(`DELETE FROM ${LEGACY_TASKS_TABLE} WHERE id = ?`, [a]);
     expect(c.getState()).toMatchObject({ mode: 'short', taskId: a });
     at(FOCUS + 5 * MIN + 2 * MIN);
     expect(rows().map((r) => [r.pomodoroId, r.taskId, r.focusMs])).toEqual([
@@ -1168,7 +1168,7 @@ describe('TimerController', () => {
     expect(states.length).toBeGreaterThan(before);
     expect(states.at(-1)).toMatchObject({ taskId: null, taskText: null });
     c.setTask(b, 'B');
-    db.raw.run('UPDATE tasks SET done = 1 WHERE id = ?', [b]);
+    db.raw.run(`UPDATE ${LEGACY_TASKS_TABLE} SET done = 1 WHERE id = ?`, [b]);
     tasksRepo(db).clearDone();
     expect(c.getState()).toMatchObject({ taskId: null, taskText: null });
     expect(rows()).toEqual([]);

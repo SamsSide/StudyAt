@@ -1,13 +1,15 @@
 // First-run seeding (spec §3.3): the six subjects of §3.12, the built-in spaces (§3.8) and sounds
 // (§3.9) from assets/builtin.json, the timer and accounting settings, and the active space. Each
-// table is seeded only while empty; a stored setting is never overwritten.
+// table is seeded only while empty; a stored setting is never overwritten. Seeded subjects also get
+// one planner list each (v1.2 Plan notes 2).
+import { LIST_NAME_MAX } from '../../shared/planner';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
 import type { Settings } from '../../shared/types';
 import type { Db } from './db';
 import { settingsRepo } from './repos/settings';
 import { DEFAULT_SPACE_OPTS, youTubeThumb } from './repos/spaces';
-import { one, transaction } from './sql';
+import { insert, one, transaction } from './sql';
 
 /** The shape of `assets/builtin.json`. Paths are relative to the assets folder, stored as given. */
 export interface BuiltinAssets {
@@ -43,11 +45,19 @@ export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
   const raw = db.raw;
   transaction(raw, () => {
     if (isEmpty(db, 'subjects')) {
+      // One planner list per seeded subject, as migration v4 gives an existing database: on a
+      // fresh install v4 ran before there were subjects (v1.2 Plan notes 2).
       SEED_SUBJECTS.forEach((s, i) => {
-        raw.run('INSERT INTO subjects (name, colour, archived, sort) VALUES (?, ?, 0, ?)', [
-          s.name,
-          s.colour,
+        const subjectId = insert(
+          raw,
+          'INSERT INTO subjects (name, colour, archived, sort) VALUES (?, ?, 0, ?)',
+          [s.name, s.colour, i],
+        );
+        raw.run('INSERT INTO task_lists (name, subject_id, sort, created_at) VALUES (?, ?, ?, ?)', [
+          s.name.slice(0, LIST_NAME_MAX),
+          subjectId,
           i,
+          now,
         ]);
       });
     }

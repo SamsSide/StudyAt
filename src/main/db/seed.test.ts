@@ -58,6 +58,23 @@ describe('seedIfEmpty', () => {
     expect(settingsRepo(db).get().activeSpaceId).toBe(spaces[0]!.id);
   });
 
+  // v1.2 Plan notes 2: migrations run before the first seed, so a fresh install gets its lists here,
+  // the same result migration v4 gives an existing database.
+  it('a fresh install has one list per seeded subject', () => {
+    const subjects = subjectsRepo(db).list();
+    const lists = () =>
+      all(db.raw, 'SELECT name, subject_id, sort, created_at FROM task_lists ORDER BY sort, id');
+    expect(lists()).toEqual(
+      SEED_SUBJECTS.map((s, i) => ({ name: s.name, subject_id: subjects[i]!.id, sort: i, created_at: NOW })),
+    );
+    // Subjects already there: no extra lists, even with none left.
+    seedIfEmpty(db, builtin, NOW + 1000);
+    expect(lists()).toHaveLength(6);
+    db.raw.run('DELETE FROM task_lists');
+    seedIfEmpty(db, builtin, NOW + 2000);
+    expect(lists()).toEqual([]);
+  });
+
   it('keeps a chosen active space', () => {
     const spaces = spacesRepo(db).list();
     settingsRepo(db).set({ activeSpaceId: spaces[2]!.id });

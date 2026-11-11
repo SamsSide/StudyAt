@@ -129,6 +129,78 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v4 (v1.2 spec §5): the planner, deadlines, stats widgets, note stickies and the session
+    // intention and outcome. The old sticky-note tasks are kept, untouched, as `tasks_v1_archive`
+    // (the legacy widget reads it until Task 33; JSON export carries it as `tasksV1`). One list per
+    // unarchived subject, at most 20 (the list limit). Existing sessions and notes keep every value;
+    // the new columns are NULL or their defaults. `"range"` is quoted: RANGE is an SQL keyword.
+    version: 4,
+    up(db) {
+      db.exec(`
+        ALTER TABLE tasks RENAME TO tasks_v1_archive;
+        CREATE TABLE task_lists (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, subject_id INTEGER NULL,
+          sort INTEGER NOT NULL, created_at INTEGER NOT NULL);
+        INSERT INTO task_lists (name, subject_id, sort, created_at)
+          SELECT substr(name, 1, 60), id, row_number() OVER (ORDER BY sort, id) - 1,
+                 CAST(strftime('%s', 'now') AS INTEGER) * 1000
+          FROM subjects WHERE archived = 0 ORDER BY sort, id LIMIT 20;
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+          done INTEGER NOT NULL DEFAULT 0, done_at INTEGER NULL,
+          colour TEXT NULL CHECK (colour IS NULL OR colour IN ('yellow', 'pink', 'blue', 'green', 'purple', 'grey')),
+          day TEXT NULL, list_id INTEGER NULL, subject_id INTEGER NULL, estimate_min INTEGER NULL,
+          repeat TEXT NULL, reminder TEXT NULL, reminded_day TEXT NULL,
+          kind TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('task', 'revision')),
+          origin_task_id INTEGER NULL, rolled_from TEXT NULL,
+          sort INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+          CHECK ((day IS NULL) <> (list_id IS NULL)));
+        CREATE INDEX tasks_day ON tasks (day);
+        CREATE INDEX tasks_list ON tasks (list_id);
+        CREATE TABLE task_tags (task_id INTEGER NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (task_id, tag));
+        CREATE TABLE subtasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL, text TEXT NOT NULL,
+          done INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL);
+        CREATE INDEX subtasks_task ON subtasks (task_id);
+        ALTER TABLE notes ADD COLUMN popped INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE notes ADD COLUMN x REAL NULL;
+        ALTER TABLE notes ADD COLUMN y REAL NULL;
+        ALTER TABLE notes ADD COLUMN scale REAL NOT NULL DEFAULT 1;
+        ALTER TABLE notes ADD COLUMN bare INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE deadlines (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('exam', 'coursework')), subject_id INTEGER NULL,
+          due TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+        CREATE TABLE stat_widgets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          card TEXT NOT NULL CHECK (card IN ('total', 'subjects', 'goal', 'estimates')),
+          "range" TEXT NOT NULL CHECK ("range" IN ('today', 'week', 'month')),
+          x REAL NOT NULL, y REAL NOT NULL, scale REAL NOT NULL DEFAULT 1, bare INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL);
+        ALTER TABLE sessions ADD COLUMN intention TEXT NULL;
+        ALTER TABLE sessions ADD COLUMN outcome TEXT NULL CHECK (outcome IN ('done', 'partly', 'not'));
+      `);
+      // The new tasks' ids start above every id an old task ever had (the archive's highest id and
+      // its AUTOINCREMENT counter, which the rename carried over to `tasks_v1_archive`) and every
+      // `sessions.task_id`, so no session row's old focus time is ever read as a new task's
+      // "actual" (spec §5, Plan notes 3).
+      const seq = Number(
+        one(
+          db,
+          `SELECT max(
+             coalesce((SELECT max(id) FROM tasks_v1_archive), 0),
+             coalesce((SELECT max(seq) FROM sqlite_sequence WHERE name = 'tasks_v1_archive'), 0),
+             coalesce((SELECT max(task_id) FROM sessions), 0),
+             0) AS seq`,
+        )!.seq,
+      );
+      db.run("DELETE FROM sqlite_sequence WHERE name = 'tasks'");
+      db.run("INSERT INTO sqlite_sequence (name, seq) VALUES ('tasks', ?)", [seq]);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

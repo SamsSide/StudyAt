@@ -1,8 +1,12 @@
-// Sticky-note tasks (spec §3.10).
+// Sticky-note tasks (spec §3.10): the old Tasks widget. Migration v4 moved its table to
+// `tasks_v1_archive` (v1.2 spec §5), and it runs there until Task 33 removes it (v1.2 Plan notes 1).
 import type { TaskPatch } from '../../../shared/ipc';
 import type { Task, TaskColour } from '../../../shared/types';
 import type { Db } from '../db';
 import { all, bool, insert, int, intOrNull, one, text, transaction, type Row } from '../sql';
+
+/** Where the old sticky-note tasks live from migration v4 on. */
+export const LEGACY_TASKS_TABLE = 'tasks_v1_archive';
 
 export interface TasksRepo {
   /** By `sort` then id. */
@@ -54,17 +58,17 @@ const toTask = (r: Row): Task => ({
 
 export function tasksRepo(db: Db): TasksRepo {
   const byId = (id: number): Task | null => {
-    const r = one(db.raw, 'SELECT * FROM tasks WHERE id = ?', [id]);
+    const r = one(db.raw, `SELECT * FROM ${LEGACY_TASKS_TABLE} WHERE id = ?`, [id]);
     return r ? toTask(r) : null;
   };
 
   return {
-    list: () => all(db.raw, 'SELECT * FROM tasks ORDER BY sort, id').map(toTask),
+    list: () => all(db.raw, `SELECT * FROM ${LEGACY_TASKS_TABLE} ORDER BY sort, id`).map(toTask),
     create(input, now) {
       const id = insert(
         db.raw,
-        `INSERT INTO tasks (text, colour, done, sort, created_at, done_at)
-         VALUES (?, ?, 0, (SELECT coalesce(max(sort) + 1, 0) FROM tasks), ?, NULL)`,
+        `INSERT INTO ${LEGACY_TASKS_TABLE} (text, colour, done, sort, created_at, done_at)
+         VALUES (?, ?, 0, (SELECT coalesce(max(sort) + 1, 0) FROM ${LEGACY_TASKS_TABLE}), ?, NULL)`,
         [input.text, input.colour, now],
       );
       db.markDirty();
@@ -75,25 +79,24 @@ export function tasksRepo(db: Db): TasksRepo {
       if (!current) return null;
       const done = patch.done ?? current.done;
       const doneAt = done === current.done ? current.doneAt : done ? now : null;
-      db.raw.run('UPDATE tasks SET text = ?, colour = ?, done = ?, done_at = ? WHERE id = ?', [
-        patch.text ?? current.text,
-        patch.colour ?? current.colour,
-        done ? 1 : 0,
-        doneAt,
-        id,
-      ]);
+      db.raw.run(
+        `UPDATE ${LEGACY_TASKS_TABLE} SET text = ?, colour = ?, done = ?, done_at = ? WHERE id = ?`,
+        [patch.text ?? current.text, patch.colour ?? current.colour, done ? 1 : 0, doneAt, id],
+      );
       db.markDirty();
       if (done !== current.done) notify(db);
       return byId(id);
     },
     reorder(ids) {
       transaction(db.raw, () => {
-        ids.forEach((id, sort) => db.raw.run('UPDATE tasks SET sort = ? WHERE id = ?', [sort, id]));
+        ids.forEach((id, sort) =>
+          db.raw.run(`UPDATE ${LEGACY_TASKS_TABLE} SET sort = ? WHERE id = ?`, [sort, id]),
+        );
       });
       db.markDirty();
     },
     clearDone() {
-      db.raw.run('DELETE FROM tasks WHERE done = 1');
+      db.raw.run(`DELETE FROM ${LEGACY_TASKS_TABLE} WHERE done = 1`);
       db.markDirty();
       notify(db);
     },

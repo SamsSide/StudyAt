@@ -61,14 +61,26 @@ describe('migrations', () => {
     await db.close();
   });
 
-  it('a fresh install goes straight to v3 with the notes and images tables and no backup', async () => {
+  it('a fresh install goes straight to v4 with the planner, notes, images and widget tables and no backup', async () => {
     const db = await openTestDb(dir);
-    expect(schemaVersion(db.raw)).toBe(3);
+    expect(schemaVersion(db.raw)).toBe(4);
     expect(
       db.raw.exec(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('notes', 'images') ORDER BY name",
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN
+           ('deadlines', 'images', 'notes', 'stat_widgets', 'subtasks', 'task_lists', 'task_tags', 'tasks', 'tasks_v1_archive')
+         ORDER BY name`,
       )[0]!.values,
-    ).toEqual([['images'], ['notes']]);
+    ).toEqual([
+      ['deadlines'],
+      ['images'],
+      ['notes'],
+      ['stat_widgets'],
+      ['subtasks'],
+      ['task_lists'],
+      ['task_tags'],
+      ['tasks'],
+      ['tasks_v1_archive'],
+    ]);
     expect(existsSync(join(dir, 'backups'))).toBe(false);
     await db.close();
   });
@@ -114,7 +126,9 @@ describe('migrations', () => {
     expect(db.raw.exec('SELECT pomodoro_id, focus_ms, day_key, status FROM sessions')[0]!.values).toEqual([
       ['p1', 1500000, '2026-11-07', 'done'],
     ]);
-    expect(db.raw.exec('SELECT text, colour FROM tasks')[0]!.values).toEqual([['Read chapter 3', 'pink']]);
+    expect(db.raw.exec('SELECT text, colour FROM tasks_v1_archive')[0]!.values).toEqual([
+      ['Read chapter 3', 'pink'],
+    ]);
     expect(db.raw.exec("SELECT value FROM settings WHERE key = 'streakThresholdMin'")[0]!.values).toEqual([
       ['30'],
     ]);
@@ -131,7 +145,6 @@ describe('migrations', () => {
   // v1.1 spec §5: a v2 database gains the session task columns and `images`, keeps its session row
   // unchanged with a NULL task, and is backed up durably first (study-dev rule 2).
   it('v3 adds task_id and task_text to sessions and the images table, keeps v2 rows', async () => {
-    expect(LATEST_VERSION).toBe(3);
     const file = join(dir, DB_FILE);
     const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
     const v2 = new SQL.Database();
@@ -153,7 +166,7 @@ describe('migrations', () => {
     const { fs, log } = recordingFs();
     const db = await openTestDb(dir, NOW, fs);
     expect(db.recovered).toBe('ok');
-    expect(schemaVersion(db.raw)).toBe(3);
+    expect(schemaVersion(db.raw)).toBe(LATEST_VERSION);
 
     const backup = join(dir, 'backups', 'pre-migration-v2-2026-11-08-120000.sqlite');
     expect(readFileSync(backup).equals(v2Bytes)).toBe(true);
@@ -170,6 +183,237 @@ describe('migrations', () => {
     ).toEqual([[1, 'p1', null, 1000, 1500001, 1500001, 1500000, 2000, '2026-11-07', 'done', 1, 1]]);
     expect(db.raw.exec('SELECT count(*) FROM images')[0]!.values).toEqual([[0]]);
     await db.close();
+  });
+
+  // v1.2 spec §5 (Plan notes 3): the old tasks move to `tasks_v1_archive`; the new `tasks` sequence
+  // starts above every id an old task or a session row could name, so a new task never inherits
+  // old focus time as its "actual". A v3 database is backed up durably first (study-dev rule 2).
+  it('v4 archives old tasks, seeds a list per subject, seeds the task sequence above old ids, adds the v1.2 columns, keeps v3 rows', async () => {
+    expect(LATEST_VERSION).toBe(4);
+    const file = join(dir, DB_FILE);
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    // A v3 database: two subjects (one archived), three old tasks (ids 1..3, then id 3 deleted so
+    // the archive's AUTOINCREMENT counter is 3 but max(id) is 2), a session with task_id 7, a note.
+    const v3 = new SQL.Database();
+    await migrate(
+      v3,
+      null,
+      NOW,
+      MIGRATIONS.filter((m) => m.version <= 3),
+    );
+    expect(schemaVersion(v3)).toBe(3);
+    v3.exec(`
+      INSERT INTO subjects (name, colour, archived, sort) VALUES ('COMP2221 Programming Paradigms', '#f2b45c', 0, 0);
+      INSERT INTO subjects (name, colour, archived, sort) VALUES ('Old module', '#888888', 1, 1);
+      INSERT INTO tasks (text, colour, done, sort, created_at) VALUES ('A', 'yellow', 0, 0, 1), ('B', 'pink', 1, 1, 1), ('C', 'blue', 0, 2, 1);
+      DELETE FROM tasks WHERE id = 3;
+      INSERT INTO sessions (pomodoro_id, subject_id, task_id, task_text, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status)
+        VALUES ('p1', 1, 7, 'Lab 7', 1000, 1500001, 1500001, 1500000, 0, '2026-11-07', 'done');
+      INSERT INTO notes (text, colour, sort, created_at, updated_at) VALUES ('hello', 'yellow', 0, 1, 1);
+    `);
+    const v3Bytes = Buffer.from(v3.export());
+    v3.close();
+    writeFileSync(file, v3Bytes);
+
+    const { fs, log } = recordingFs();
+    const db = await openTestDb(dir, NOW, fs);
+    expect(db.recovered).toBe('ok');
+    expect(schemaVersion(db.raw)).toBe(4);
+
+    const backup = join(dir, 'backups', 'pre-migration-v3-2026-11-08-120000.sqlite');
+    expect(readFileSync(backup).equals(v3Bytes)).toBe(true);
+    const sync = log.indexOf(`syncFile ${backup}.tmp`);
+    const publish = log.indexOf(`rename ${backup}.tmp -> ${backup}`);
+    expect(sync).toBeGreaterThanOrEqual(0);
+    expect(publish).toBeGreaterThan(sync);
+    expect(log.indexOf(`rename ${file}.tmp -> ${file}`)).toBeGreaterThan(publish);
+
+    expect(db.raw.exec('SELECT id, text, colour, done FROM tasks_v1_archive ORDER BY id')[0]!.values).toEqual(
+      [
+        [1, 'A', 'yellow', 0],
+        [2, 'B', 'pink', 1],
+      ],
+    );
+    expect(db.raw.exec('SELECT name, subject_id, sort FROM task_lists')[0]!.values).toEqual([
+      ['COMP2221 Programming Paradigms', 1, 0],
+    ]);
+    expect(db.raw.exec("SELECT seq FROM sqlite_sequence WHERE name = 'tasks'")[0]!.values).toEqual([[7]]);
+    db.raw.run(
+      "INSERT INTO tasks (title, day, sort, created_at, updated_at) VALUES ('new', '2026-11-08', 0, 1, 1)",
+    );
+    expect(db.raw.exec("SELECT id FROM tasks WHERE title = 'new'")[0]!.values).toEqual([[8]]);
+    expect(db.raw.exec('SELECT intention, outcome, task_id FROM sessions')[0]!.values).toEqual([
+      [null, null, 7],
+    ]);
+    expect(
+      db.raw.exec(
+        'SELECT id, pomodoro_id, subject_id, started_at, ended_at, checkpoint_at, focus_ms, discarded_ms, day_key, status, task_text FROM sessions',
+      )[0]!.values,
+    ).toEqual([[1, 'p1', 1, 1000, 1500001, 1500001, 1500000, 0, '2026-11-07', 'done', 'Lab 7']]);
+    expect(db.raw.exec('SELECT text, colour, popped, x, y, scale, bare FROM notes')[0]!.values).toEqual([
+      ['hello', 'yellow', 0, null, null, 1, 0],
+    ]);
+    await db.close();
+  });
+
+  it('v4 seeds the task sequence from the archive counter when no session names a higher id', async () => {
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const v3 = MIGRATIONS.filter((m) => m.version <= 3);
+    const raw = new SQL.Database();
+    await migrate(raw, null, NOW, v3);
+    // Counter 5 (ids 4 and 5 deleted), max(id) 3, a session naming task 2.
+    raw.exec(`
+      INSERT INTO tasks (text, colour, sort, created_at)
+        VALUES ('a', 'yellow', 0, 1), ('b', 'yellow', 1, 1), ('c', 'yellow', 2, 1), ('d', 'yellow', 3, 1), ('e', 'yellow', 4, 1);
+      DELETE FROM tasks WHERE id IN (4, 5);
+      INSERT INTO sessions (pomodoro_id, task_id, started_at, checkpoint_at, day_key, status)
+        VALUES ('p1', 2, 1, 1, '2026-11-07', 'done');
+    `);
+    await migrate(raw, null, NOW);
+    expect(raw.exec("SELECT seq FROM sqlite_sequence WHERE name = 'tasks'")[0]!.values).toEqual([[5]]);
+    raw.close();
+
+    // An empty v3 database starts the new tasks at 1.
+    const empty = new SQL.Database();
+    await migrate(empty, null, NOW, v3);
+    await migrate(empty, null, NOW);
+    expect(empty.exec("SELECT seq FROM sqlite_sequence WHERE name = 'tasks'")[0]!.values).toEqual([[0]]);
+    empty.run("INSERT INTO tasks (title, list_id, sort, created_at, updated_at) VALUES ('t', 1, 0, 1, 1)");
+    expect(empty.exec('SELECT id FROM tasks')[0]!.values).toEqual([[1]]);
+    empty.close();
+  });
+
+  it('v4 seeds at most 20 lists, from unarchived subjects in sort order, names cut to 60 chars', async () => {
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const raw = new SQL.Database();
+    await migrate(
+      raw,
+      null,
+      NOW,
+      MIGRATIONS.filter((m) => m.version <= 3),
+    );
+    for (let i = 0; i < 25; i++) {
+      raw.run('INSERT INTO subjects (name, colour, archived, sort) VALUES (?, ?, ?, ?)', [
+        i === 24 ? 'x'.repeat(80) : `S${i}`,
+        '#000000',
+        i === 1 ? 1 : 0,
+        i === 24 ? -1 : i,
+      ]);
+    }
+    await migrate(raw, null, NOW);
+    const rows = raw.exec('SELECT name, subject_id, sort FROM task_lists ORDER BY sort')[0]!.values;
+    expect(rows).toHaveLength(20);
+    expect(rows.slice(0, 3)).toEqual([
+      ['x'.repeat(60), 25, 0],
+      ['S0', 1, 1],
+      ['S2', 3, 2],
+    ]);
+    expect(rows.map((r) => r[2])).toEqual([...Array(20).keys()]);
+    raw.close();
+  });
+
+  it('the v4 tasks table enforces one placement, kind and colour; outcome is checked', async () => {
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const raw = new SQL.Database();
+    await migrate(raw, null, NOW);
+    const task = (cols: string, vals: string) =>
+      raw.run(
+        `INSERT INTO tasks (title, sort, created_at, updated_at, ${cols}) VALUES ('t', 0, 1, 1, ${vals})`,
+      );
+    task('day', "'2026-11-08'");
+    task('list_id', '1');
+    task('day, kind, colour', "'2026-11-08', 'revision', 'green'");
+    expect(raw.exec('SELECT kind, colour, note, done FROM tasks ORDER BY id')[0]!.values).toEqual([
+      ['task', null, '', 0],
+      ['task', null, '', 0],
+      ['revision', 'green', '', 0],
+    ]);
+    expect(() => task('day, list_id', "'2026-11-08', 1")).toThrow();
+    expect(() =>
+      raw.run("INSERT INTO tasks (title, sort, created_at, updated_at) VALUES ('t', 0, 1, 1)"),
+    ).toThrow();
+    expect(() => task('day, kind', "'2026-11-08', 'x'")).toThrow();
+    expect(() => task('day, colour', "'2026-11-08', 'orange'")).toThrow();
+
+    raw.run(
+      "INSERT INTO sessions (pomodoro_id, started_at, checkpoint_at, day_key, status) VALUES ('p', 1, 1, '2026-11-08', 'done')",
+    );
+    raw.run("UPDATE sessions SET outcome = 'partly'");
+    expect(() => raw.run("UPDATE sessions SET outcome = 'maybe'")).toThrow();
+    expect(raw.exec('SELECT outcome FROM sessions')[0]!.values).toEqual([['partly']]);
+
+    const widget = (card: string, range: string) =>
+      raw.run(
+        `INSERT INTO stat_widgets (card, "range", x, y, created_at) VALUES ('${card}', '${range}', 0.5, 0.5, 1)`,
+      );
+    widget('goal', 'month');
+    expect(raw.exec('SELECT card, "range", scale, bare FROM stat_widgets')[0]!.values).toEqual([
+      ['goal', 'month', 1, 0],
+    ]);
+    expect(() => widget('total', 'year')).toThrow();
+    expect(() => widget('x', 'week')).toThrow();
+
+    const deadline = (kind: string) =>
+      raw.run(
+        `INSERT INTO deadlines (title, kind, due, created_at, updated_at) VALUES ('d', '${kind}', '2026-12-01', 1, 1)`,
+      );
+    deadline('exam');
+    deadline('coursework');
+    expect(raw.exec('SELECT note, done, subject_id FROM deadlines')[0]!.values).toEqual([
+      ['', 0, null],
+      ['', 0, null],
+    ]);
+    expect(() => deadline('essay')).toThrow();
+    raw.close();
+  });
+
+  it('a v4 that fails after its last step leaves the v3 database as it was', async () => {
+    const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
+    const raw = new SQL.Database();
+    await migrate(
+      raw,
+      null,
+      NOW,
+      MIGRATIONS.filter((m) => m.version <= 3),
+    );
+    raw.exec(`
+      INSERT INTO subjects (name, colour, archived, sort) VALUES ('Maths', '#ff0000', 0, 0);
+      INSERT INTO tasks (text, colour, sort, created_at) VALUES ('A', 'yellow', 0, 1);
+      INSERT INTO notes (text, colour, sort, created_at, updated_at) VALUES ('hello', 'yellow', 0, 1, 1);
+    `);
+    const v4 = MIGRATIONS.find((m) => m.version === 4)!;
+    const failing = [
+      ...MIGRATIONS.filter((m) => m.version <= 3),
+      {
+        version: 4,
+        up(d: typeof raw) {
+          v4.up(d);
+          throw new Error('boom');
+        },
+      },
+    ];
+    await expect(migrate(raw, null, NOW, failing)).rejects.toThrow('boom');
+    expect(schemaVersion(raw)).toBe(3);
+    expect(
+      raw.exec(
+        "SELECT name FROM sqlite_master WHERE name IN ('tasks_v1_archive', 'task_lists', 'task_tags', 'subtasks', 'deadlines', 'stat_widgets')",
+      ),
+    ).toEqual([]);
+    expect(raw.exec('SELECT text, colour FROM tasks')[0]!.values).toEqual([['A', 'yellow']]);
+    expect(raw.exec("SELECT name, seq FROM sqlite_sequence WHERE name LIKE 'tasks%'")[0]!.values).toEqual([
+      ['tasks', 1],
+    ]);
+    expect(
+      raw.exec(
+        "SELECT name FROM pragma_table_info('notes') WHERE name = 'popped' UNION ALL SELECT name FROM pragma_table_info('sessions') WHERE name = 'intention'",
+      ),
+    ).toEqual([]);
+
+    // The untouched v3 database still migrates cleanly afterwards.
+    await migrate(raw, null, NOW);
+    expect(schemaVersion(raw)).toBe(4);
+    expect(raw.exec('SELECT text FROM tasks_v1_archive')[0]!.values).toEqual([['A']]);
+    raw.close();
   });
 
   it('the images table defaults scale 1 and bare 0, and rejects an unknown ext', async () => {
