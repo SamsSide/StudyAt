@@ -280,12 +280,16 @@ export interface EstimatesCardData {
 }
 export type CardData = TotalCardData | SubjectsCardData | GoalCardData | EstimatesCardData;
 
+/** What a YouTube space asks the player for: Auto leaves it to YouTube (spec §3.3). */
+export type SpaceQuality = 'auto' | '1080' | '1440' | '2160';
+
 export interface SpaceOpts {
   audio: boolean;
   volume: number;
   speed: number;
   dim: number;
   blur: number;
+  quality: SpaceQuality;
 }
 
 export interface Space {

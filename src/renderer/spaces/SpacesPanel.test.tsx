@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { installMockApi, mockApi, type MockApi } from '../test/mockApi';
 import { makeSpace, sampleSpaces } from './fixtures';
+import { useYouTubeQuality } from './qualityStore';
 import { resetSpacesStore, useSpacesStore } from './spacesStore';
 import { SpacesPanel } from './SpacesPanel';
 
@@ -27,7 +28,10 @@ const setup = (spaces = sampleSpaces(), overrides: Parameters<typeof mockApi>[0]
 
 const cards = () => screen.getAllByRole('listitem').filter((li) => li.closest('ul[role="menu"]') === null);
 
-beforeEach(() => resetSpacesStore());
+beforeEach(() => {
+  resetSpacesStore();
+  useYouTubeQuality.getState().clear();
+});
 
 describe('SpacesPanel', () => {
   it('the kind filter is a segmented control: pressed buttons filter by kind and favourites', async () => {
@@ -420,5 +424,17 @@ describe('SpacesPanel', () => {
       await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
       expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't remove that space. Try again.");
     });
+  });
+
+  it("the header row shows the active YouTube space's quality, and a dash while it isn't playing", async () => {
+    setup();
+    await screen.findByText('Rainy Window');
+    expect(screen.queryByRole('status', { name: 'Playing quality' })).not.toBeInTheDocument();
+    act(() => useSpacesStore.setState({ activeId: 3 }));
+    expect(screen.getByRole('status', { name: 'Playing quality' })).toHaveTextContent('—');
+    act(() => useYouTubeQuality.getState().report({ spaceId: 3, level: 'hd1080', playing: true }));
+    expect(screen.getByRole('status', { name: 'Playing quality' })).toHaveTextContent('Playing · 1080p');
+    act(() => useYouTubeQuality.getState().report({ spaceId: 3, playing: false }));
+    expect(screen.getByRole('status', { name: 'Playing quality' })).toHaveTextContent('—');
   });
 });

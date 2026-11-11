@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { Space } from '../../shared/types';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { makeSpace } from './fixtures';
+import { useYouTubeQuality } from './qualityStore';
 import { resetSpacesStore, useSpacesStore } from './spacesStore';
 import { spaceAudio } from './spaceAudio';
 import { SpaceBackground } from './SpaceBackground';
@@ -40,14 +41,19 @@ afterEach(() => {
 
 describe('SpaceBackground', () => {
   it('renders dim overlay with opts.dim opacity', async () => {
-    const s = makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 6 } });
+    const s = makeSpace({
+      id: 1,
+      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 6, quality: 'auto' },
+    });
     await mount([s]);
     const dim = await screen.findByTestId('space-dim');
     expect(dim).toHaveStyle({ opacity: '0.4' });
   });
 
   it('a local video uses the media protocol, muted, looping, at its speed', async () => {
-    await mount([makeSpace({ id: 7, opts: { audio: false, volume: 0.5, speed: 1.5, dim: 0, blur: 0 } })]);
+    await mount([
+      makeSpace({ id: 7, opts: { audio: false, volume: 0.5, speed: 1.5, dim: 0, blur: 0, quality: 'auto' } }),
+    ]);
     const v = (await screen.findByTestId('space-video')) as HTMLVideoElement;
     expect(v.getAttribute('src')).toBe('studyat-media://space/7');
     expect(v.loop).toBe(true);
@@ -90,7 +96,7 @@ describe('SpaceBackground', () => {
         id: 1,
         missing: true,
         thumb,
-        opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6 },
+        opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6, quality: 'auto' },
       }),
     ]);
     const button = screen.getByRole('button', { name: 'File moved — Relocate…' });
@@ -135,6 +141,8 @@ describe('SpaceBackground', () => {
         destroy: vi.fn(),
         unloadModule: vi.fn(),
         setOption: vi.fn(),
+        getPlaybackQuality: vi.fn(() => 'hd1080'),
+        setPlaybackQuality: vi.fn(),
       };
       class FakePlayer {
         constructor(_el: HTMLElement, o: YTPlayerOptions) {
@@ -183,6 +191,80 @@ describe('SpaceBackground', () => {
       act(() => h.opts()?.events.onReady?.());
       expect(h.player.unloadModule).toHaveBeenCalledWith('captions');
       expect(h.player.setOption).toHaveBeenCalledWith('captions', 'track', {});
+    });
+
+    describe('quality (spec §3.3)', () => {
+      const q = (quality: 'auto' | '2160') =>
+        makeSpace({
+          id: 3,
+          kind: 'youtube',
+          source: 'dQw4w9WgXcQ',
+          opts: { audio: false, volume: 0.5, speed: 1, dim: 0, blur: 0, quality },
+        });
+      beforeEach(() => {
+        useYouTubeQuality.getState().clear();
+        vi.stubGlobal('devicePixelRatio', 1);
+        vi.stubGlobal('innerWidth', 1920);
+        vi.stubGlobal('innerHeight', 1080);
+      });
+
+      it('4K sizes the player to 3840 x 2160 CSS px, covers the window and asks for hd2160', async () => {
+        const s = q('2160');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        const host = screen.getByTestId('space-youtube');
+        expect(host).toHaveStyle({ width: '3840px', height: '2160px' });
+        expect(host.style.transform).toBe('translate(-50%, -50%) scale(0.5)');
+        act(() => h.opts()?.events.onReady?.());
+        expect(h.player.setPlaybackQuality).toHaveBeenCalledWith('hd2160');
+      });
+
+      it('resizing recomputes the cover scale', async () => {
+        const s = q('2160');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        vi.stubGlobal('innerHeight', 1200);
+        act(() => void window.dispatchEvent(new Event('resize')));
+        expect(screen.getByTestId('space-youtube').style.transform).toBe(
+          `translate(-50%, -50%) scale(${(1200 / 2160).toFixed(6)})`,
+        );
+      });
+
+      it('Auto sets no size and never asks for a level', async () => {
+        const s = q('auto');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        act(() => h.opts()?.events.onReady?.());
+        const host = screen.getByTestId('space-youtube');
+        expect(host.style.width).toBe('');
+        expect(host.style.transform).toBe('');
+        expect(h.player.setPlaybackQuality).not.toHaveBeenCalled();
+      });
+
+      it('reads the playing level every 5 s and when the player reports a change', async () => {
+        const s = q('auto');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        vi.useFakeTimers();
+        try {
+          act(() => h.opts()?.events.onReady?.());
+          act(() => h.opts()?.events.onStateChange?.({ data: 1 }));
+          expect(h.player.getPlaybackQuality).not.toHaveBeenCalled();
+          act(() => void vi.advanceTimersByTime(5000));
+          expect(h.player.getPlaybackQuality).toHaveBeenCalledTimes(1);
+          expect(useYouTubeQuality.getState()).toMatchObject({ spaceId: 3, level: 'hd1080', playing: true });
+          act(() => void vi.advanceTimersByTime(5000));
+          expect(h.player.getPlaybackQuality).toHaveBeenCalledTimes(2);
+          act(() => h.opts()?.events.onPlaybackQualityChange?.({ data: 'hd1440' }));
+          expect(useYouTubeQuality.getState().level).toBe('hd1440');
+        } finally {
+          vi.useRealTimers();
+        }
+      });
     });
 
     it('coming back online retries a video that could not play', async () => {

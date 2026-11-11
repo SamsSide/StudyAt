@@ -13,7 +13,7 @@ const deferred = <T>() => {
 };
 
 const withDim = (dim: number): Space =>
-  makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim, blur: 0 } });
+  makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim, blur: 0, quality: 'auto' } });
 
 beforeEach(() => resetSpacesStore());
 

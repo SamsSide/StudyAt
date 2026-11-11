@@ -6,7 +6,14 @@ import type { Db } from '../db';
 import { all, bool, insert, int, json, one, run, text, textOrNull, type Row } from '../sql';
 
 /** Per-space option defaults (spec §3.8). */
-export const DEFAULT_SPACE_OPTS: SpaceOpts = { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0 };
+export const DEFAULT_SPACE_OPTS: SpaceOpts = {
+  audio: false,
+  volume: 0.5,
+  speed: 1,
+  dim: 0.15,
+  blur: 0,
+  quality: 'auto',
+};
 
 export const youTubeThumb = (id: string): string => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 

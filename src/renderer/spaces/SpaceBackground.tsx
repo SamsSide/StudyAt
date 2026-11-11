@@ -1,9 +1,10 @@
 // The full-window background (spec §3.8): local video/image through the media protocol, YouTube
 // through the IFrame API, dim overlay and blur. Paused while the window is hidden; under
 // reduced motion it stays on a still until Sam presses play on the footer.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
+import { useYouTubeQuality } from './qualityStore';
 import { mediaUrl, useSpacesStore } from './spacesStore';
 import { useWindowVisibility } from './windowVisibility';
 import {
@@ -12,7 +13,10 @@ import {
   EMBED_BLOCKED,
   loadYouTubeApi,
   PERSISTENT_ERRORS,
+  playerBox,
   playerVars,
+  QUALITY_POLL_MS,
+  QUALITY_TARGETS,
   type YTPlayer,
 } from './youtube';
 
@@ -98,13 +102,27 @@ function LocalVideo({ space, paused }: { space: Space; paused: boolean }) {
   );
 }
 
+/** Size of the window and the device pixel ratio, kept current on resize. */
+function useViewport(): { w: number; h: number; dpr: number } {
+  const read = () => ({ w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 });
+  const [v, setV] = useState(read);
+  useEffect(() => {
+    const on = () => setV(read());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return v;
+}
+
 function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
   const [ready, setReady] = useState(false);
   const markEmbedError = useSpacesStore((s) => s.markEmbedError);
   const clearVideoError = useSpacesStore((s) => s.clearVideoError);
-  const { audio, volume, speed } = space.opts;
+  const { audio, volume, speed, quality } = space.opts;
+  const viewport = useViewport();
+  const report = useYouTubeQuality((s) => s.report);
 
   useEffect(() => {
     let dead = false;
@@ -127,12 +145,18 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
               setReady(true);
             },
             onStateChange: (e) => {
-              if (dead || e.data !== YT_PLAYING) return;
+              if (dead) return;
+              report({ spaceId: space.id, playing: e.data === YT_PLAYING });
+              if (e.data !== YT_PLAYING) return;
               played = true;
               // It is playing, so any earlier mark was wrong.
               clearVideoError(space.id);
               // The player can bring captions back when a looped video starts again.
               if (player.current) captionsOff(player.current);
+            },
+            // The player reports the level it actually plays, which may sit below the target.
+            onPlaybackQualityChange: (e) => {
+              if (!dead) report({ spaceId: space.id, level: e.data });
             },
             // 101/150: the owner blocked embedding. 2 bad id, 5 HTML5 player and 100 removed or
             // private still leave a black frame, so they get a message too, but only while the
@@ -160,8 +184,33 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
       player.current?.destroy();
       player.current = null;
       el?.replaceChildren();
+      const q = useYouTubeQuality.getState();
+      if (q.spaceId === space.id) q.clear();
     };
-  }, [space.id, space.source, markEmbedError, clearVideoError]);
+  }, [space.id, space.source, markEmbedError, clearVideoError, report]);
+
+  // Ask for the target level (spec §3.3); Auto leaves the choice to YouTube.
+  useEffect(() => {
+    const p = player.current;
+    if (!p || !ready || quality === 'auto') return;
+    p.setPlaybackQuality?.(QUALITY_TARGETS[quality].level);
+  }, [ready, quality]);
+
+  // The badge: read the playing level every few seconds while it plays, and not while paused.
+  useEffect(() => {
+    const p = player.current;
+    if (!p || !ready) return;
+    if (paused) {
+      report({ spaceId: space.id, playing: false });
+      return;
+    }
+    const read = () => {
+      const level = p.getPlaybackQuality?.();
+      if (level !== undefined) report({ spaceId: space.id, level });
+    };
+    const id = setInterval(read, QUALITY_POLL_MS);
+    return () => clearInterval(id);
+  }, [ready, paused, space.id, report]);
 
   useEffect(() => {
     const p = player.current;
@@ -179,8 +228,17 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
     else p.playVideo();
   }, [ready, paused]);
 
-  // A 16:9 frame scaled to cover the window.
-  return <div ref={host} data-testid="space-youtube" className={styles.youtube} />;
+  // Auto: a 16:9 frame scaled to cover the window. A target: the player at that many device
+  // pixels (so YouTube picks that rendition), scaled down to cover, centred.
+  const box = playerBox(quality, { w: viewport.w, h: viewport.h }, viewport.dpr);
+  const style: CSSProperties | undefined = box
+    ? {
+        width: box.width,
+        height: box.height,
+        transform: `translate(-50%, -50%) scale(${box.scale})`,
+      }
+    : undefined;
+  return <div ref={host} data-testid="space-youtube" className={styles.youtube} style={style} />;
 }
 
 export function SpaceBackground() {

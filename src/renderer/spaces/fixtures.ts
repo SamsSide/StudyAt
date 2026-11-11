@@ -8,7 +8,7 @@ export const makeSpace = (over: Partial<Space> & { id: number }): Space => ({
   thumb: null,
   favourite: false,
   builtin: false,
-  opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0 },
+  opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0, quality: 'auto' },
   createdAt: 0,
   missing: false,
   ...over,

@@ -17,6 +17,16 @@ describe('spacesRepo', () => {
     cleanup();
   });
 
+  it("reads 'auto' for an old space whose stored opts lack quality", () => {
+    const repo = spacesRepo(db);
+    const made = repo.create({ kind: 'video', name: 'old', source: 'C:\\a.mp4', thumb: null }, NOW);
+    db.raw.run('UPDATE spaces SET opts = ? WHERE id = ?', [
+      JSON.stringify({ audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0 }),
+      made.id,
+    ]);
+    expect(repo.list().find((s) => s.id === made.id)?.opts.quality).toBe('auto');
+  });
+
   it('creates, updates (merging opts), removes and round-trips', async () => {
     const repo = spacesRepo(db);
     const made = repo.create(
@@ -36,7 +46,7 @@ describe('spacesRepo', () => {
       thumb: 'data:image/jpeg;base64,AA==',
       favourite: false,
       builtin: false,
-      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0 },
+      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0, quality: 'auto' },
       createdAt: NOW,
       missing: false,
     });
@@ -50,7 +60,7 @@ describe('spacesRepo', () => {
       name: 'Rain',
       favourite: true,
       source: 'D:\\rain.mp4',
-      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 0 },
+      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 0, quality: 'auto' },
     });
     expect(repo.update(9999, { name: 'x' })).toBeNull();
 

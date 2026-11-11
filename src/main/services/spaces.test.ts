@@ -112,6 +112,14 @@ describe('spacesService', () => {
     expect(() => svc.update(9999, { name: 'x' })).toThrow(IpcValidationError);
   });
 
+  it('update keeps a valid YouTube quality and rejects any other', () => {
+    const svc = spacesService({ db, now: () => NOW, assetsDir: assets });
+    const id = svc.addYouTube('https://youtu.be/dQw4w9WgXcQ').at(-1)!.id;
+    const s = svc.update(id, { opts: { quality: '2160' } }).find((x) => x.id === id)!;
+    expect(s.opts.quality).toBe('2160');
+    expect(() => svc.update(id, { opts: { quality: '720' } } as never)).toThrow(IpcValidationError);
+  });
+
   it('relocate keeps the id and needs a file of the same kind', () => {
     const svc = spacesService({ db, now: () => NOW, assetsDir: assets });
     const id = svc.addFiles([join(dir, 'old.mp4')]).at(-1)!.id;

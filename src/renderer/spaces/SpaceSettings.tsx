@@ -1,8 +1,11 @@
-// Per-space options (spec §3.8): audio, volume, speed, dim, blur. Saves through spaces.update.
+// Per-space options (spec §3.8, §3.3): audio, volume, speed, dim, blur and a YouTube space's
+// quality. Saves through spaces.update.
 import type { CSSProperties } from 'react';
 import type { Space, SpaceOpts } from '../../shared/types';
 import styles from './spaces.module.css';
+import { badgeText, useYouTubeQuality } from './qualityStore';
 import { useSpacesStore } from './spacesStore';
+import { QUALITY_HINT, QUALITY_OPTIONS } from './youtube';
 
 interface Slider {
   key: 'volume' | 'speed' | 'dim' | 'blur';
@@ -25,6 +28,16 @@ const YOUTUBE_SPEED_STEP = 0.25;
 /** How far along its track a slider is, for the accent fill. */
 const fill = (value: number, min: number, max: number): CSSProperties =>
   ({ '--fill': `${((value - min) / (max - min)) * 100}%` }) as CSSProperties;
+
+/** "Playing · 2160p" while this space plays on YouTube, else "—" (spec §3.3). */
+export function QualityBadge({ spaceId }: { spaceId: number }) {
+  const text = useYouTubeQuality((s) => badgeText(s, spaceId));
+  return (
+    <span className={styles.qualityBadge} role="status" aria-label="Playing quality">
+      {text}
+    </span>
+  );
+}
 
 export function SpaceSettings({ space, onClose }: { space: Space; onClose: () => void }) {
   const update = useSpacesStore((s) => s.update);
@@ -63,6 +76,28 @@ export function SpaceSettings({ space, onClose }: { space: Space; onClose: () =>
           />
         </label>
       ))}
+      {space.kind === 'youtube' && (
+        <div className={styles.field} role="group" aria-label="Quality">
+          <span className={styles.qualityHead}>
+            Quality
+            <QualityBadge spaceId={space.id} />
+          </span>
+          <div className={styles.tabs}>
+            {QUALITY_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                className={styles.tab}
+                aria-pressed={space.opts.quality === o.value}
+                onClick={() => save({ quality: o.value })}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <span className={styles.hint}>{QUALITY_HINT}</span>
+        </div>
+      )}
       <button type="button" className={styles.btn} onClick={onClose}>
         Done
       </button>
