@@ -36,7 +36,9 @@ export function markDragEnded(now: number): void {
   lastDragEnd = now;
 }
 export function justDragged(now: number): boolean {
-  return now - lastDragEnd < DRAG_CLICK_GUARD_MS;
+  const gap = now - lastDragEnd;
+  // A clock stepped backwards must not silence clicks.
+  return gap >= 0 && gap < DRAG_CLICK_GUARD_MS;
 }
 export function resetDragGuard(): void {
   lastDragEnd = Number.NEGATIVE_INFINITY;

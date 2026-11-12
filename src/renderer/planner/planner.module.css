@@ -456,7 +456,12 @@
   white-space: normal;
 }
 
-body:has([data-drag-overlay]) {
+/* While a drag is live (the board's overlay, or the widget's dimmed row) the whole body grabs, and
+   beats the row's own pointer cursor. */
+body:has([data-drag-overlay]),
+body:has([data-drag-overlay]) *,
+body:has([data-dragging='true']),
+body:has([data-dragging='true']) * {
   cursor: grabbing;
 }
 

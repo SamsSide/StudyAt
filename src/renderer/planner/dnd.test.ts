@@ -123,4 +123,8 @@ describe('the click-after-drag guard', () => {
     expect(justDragged(10_249)).toBe(true);
     expect(justDragged(10_250)).toBe(false);
   });
+  it('ignores a clock that stepped backwards', () => {
+    markDragEnded(10_000);
+    expect(justDragged(9_000)).toBe(false);
+  });
 });
