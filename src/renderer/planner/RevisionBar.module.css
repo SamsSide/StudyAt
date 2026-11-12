@@ -14,8 +14,11 @@
 .chips,
 .actions {
   display: flex;
+  flex: none;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--space-1);
+  white-space: nowrap;
 }
 
 .actions {
@@ -23,6 +26,7 @@
 }
 
 .button {
+  flex: none;
   min-height: 28px;
   padding: 0 var(--space-3);
   border: 0;

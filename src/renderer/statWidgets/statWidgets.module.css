@@ -94,12 +94,24 @@
 
 .barRow {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 3px var(--space-2);
   font-size: var(--text-sm);
 }
 
 .barName {
+  display: flex;
+  gap: 0.3em;
+  min-width: 0;
+}
+
+/* The module code never shrinks; the rest of the name takes the ellipsis (E15). */
+.barCode {
+  flex: none;
+}
+
+.barRest {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

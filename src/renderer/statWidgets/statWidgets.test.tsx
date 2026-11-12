@@ -268,6 +268,19 @@ describe('StatWidgets', () => {
     expect(rows.map((r) => r.textContent)).toEqual(['Maths3h', 'Physics1h 30m', 'Other40m']);
   });
 
+  it('By subject keeps the full name in a title and the module code visible', async () => {
+    renderWidgets(
+      [widget({ card: 'subjects' })],
+      () => ({
+        ...subjects(),
+        bars: [{ key: '9', name: 'COMP2221 Programming Paradigms', colour: '#e07a5f', ms: HOUR }],
+      }),
+    );
+    const list = await screen.findByRole('list', { name: 'By subject' });
+    expect(within(list).getByTitle('COMP2221 Programming Paradigms')).toBeInTheDocument();
+    expect(within(list).getByText('COMP2221')).toBeInTheDocument();
+  });
+
   it('By subject with no focus time says so, with no full stop', async () => {
     renderWidgets([widget({ card: 'subjects' })], () => ({ ...subjects(), bars: [] }));
     expect(await screen.findByText('No focus time in this range yet')).toBeInTheDocument();

@@ -22,7 +22,7 @@ export const chipCountdown = (dueMs: number, now: number): string => {
 function Countdown({ due }: { due: string }) {
   const [now, setNow] = useState(() => Date.now());
   const dueMs = parseDue(due);
-  const fast = dueMs - now < HOUR_MS;
+  const fast = dueMs - now > 0 && dueMs - now < HOUR_MS;
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), fast ? FAST_TICK_MS : TICK_MS);
     return () => window.clearInterval(id);

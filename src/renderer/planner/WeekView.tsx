@@ -1,6 +1,6 @@
 // The widget's Week view (v1.2 spec §3.7): Monday to Sunday of the week holding the chosen day,
 // each a collapsible section with its open count, rows you can drag between days, and a quick-add.
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays, weekStartOf } from '../../core/time';
 import { useStudyStore } from '../shell/store';
@@ -18,10 +18,17 @@ function DaySection({ day, today }: { day: string; today: string }) {
   const openCount = tasks.filter((t) => !t.done).length;
   const label = formatDayLabel(day);
   const bodyId = useId();
+  const ref = useRef<HTMLElement>(null);
+  const isToday = day === today;
+
+  // Today's section is open and scrolled into view when the week opens (E8).
+  useEffect(() => {
+    if (isToday) ref.current?.scrollIntoView?.({ block: 'start' });
+  }, [isToday]);
 
   return (
     <DropZone id={dayZone(day)} className={styles.weekDay} items={tasks.map((t) => t.id)}>
-      <section aria-label={label} data-today={day === today ? 'true' : undefined}>
+      <section ref={ref} aria-label={label} data-today={isToday ? 'true' : undefined}>
         <button
           type="button"
           className={styles.weekHead}

@@ -240,6 +240,21 @@ describe('PlannerWidget', () => {
     expect(screen.queryByRole('textbox', { name: 'Add to Mon 9 Nov' })).not.toBeInTheDocument();
   });
 
+  it('Week opens with today expanded and scrolled into view', async () => {
+    const user = userEvent.setup();
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    setup({ tasks: [] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    const head = (await screen.findAllByRole('button', { name: /open$/ })).find((h) =>
+      h.closest('section')?.hasAttribute('data-today'),
+    );
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    expect(scroll).toHaveBeenCalled();
+    expect(scroll.mock.contexts.at(-1)).toHaveAttribute('data-today', 'true');
+  });
+
   it('a Week quick add places the task on that day', async () => {
     const user = userEvent.setup();
     const api = setup();

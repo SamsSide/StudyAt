@@ -30,6 +30,10 @@
   box-shadow: var(--shadow-lg), var(--focus-ring);
 }
 
+.popover > * {
+  flex-shrink: 0;
+}
+
 .top,
 .titleRow,
 .inline,
@@ -83,6 +87,7 @@
 .input {
   min-height: var(--control-h);
   padding: 0 var(--space-3);
+  line-height: 1.4;
 }
 
 .titleInput {
@@ -105,7 +110,8 @@
 .subtaskText {
   flex: 1;
   min-height: 28px;
-  padding: 0 var(--space-2);
+  padding: 2px var(--space-2);
+  line-height: 1.4;
 }
 
 .input::placeholder,

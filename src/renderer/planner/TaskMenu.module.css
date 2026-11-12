@@ -14,9 +14,10 @@
   padding: var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--panel-strong);
-  backdrop-filter: var(--glass-filter-strong);
-  box-shadow: var(--shadow);
+  /* Opaque: the detail popover already holds a backdrop filter, so a glass menu inside it shows the
+     title behind it (E11). */
+  background: var(--glass-sheen), #1b1e26;
+  box-shadow: var(--shadow-lg);
 }
 
 .ask {

@@ -68,6 +68,21 @@ describe('DeadlineChip countdown', () => {
     expect(screen.getByText('· 2d 1h')).toBeInTheDocument();
   });
 
+  it('goes back to the slow tick once the deadline is past', () => {
+    const spy = vi.spyOn(window, 'setInterval');
+    render(<DeadlineChip deadline={deadline(stamp(NOW - 5 * 60 * SEC))} countdown />);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[1]).toBe(30_000);
+    spy.mockRestore();
+  });
+
+  it('ticks each second only while the deadline is ahead and within the hour', () => {
+    const spy = vi.spyOn(window, 'setInterval');
+    render(<DeadlineChip deadline={deadline(stamp(NOW + 30 * 60 * SEC))} countdown />);
+    expect(spy.mock.calls[0]?.[1]).toBe(1000);
+    spy.mockRestore();
+  });
+
   it('reads Due for a deadline already past', () => {
     render(<DeadlineChip deadline={deadline(stamp(NOW - 5 * 60 * SEC))} countdown />);
     expect(screen.getByText('· Due')).toBeInTheDocument();

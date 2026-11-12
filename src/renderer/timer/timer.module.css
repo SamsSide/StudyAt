@@ -244,7 +244,8 @@
   position: absolute;
   top: calc(100% + var(--space-1));
   left: 0;
-  z-index: 1;
+  /* Above floating widgets and stickies (--z-widget), below real overlays (E10). */
+  z-index: calc(var(--z-overlay) - 1);
   width: max-content;
   min-width: 100%;
   max-width: 300px;

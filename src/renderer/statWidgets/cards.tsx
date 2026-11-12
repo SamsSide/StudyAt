@@ -44,6 +44,18 @@ export function TotalCard({ data, liveMs }: { data: TotalCardData; liveMs: numbe
   );
 }
 
+/** A subject name with its module code ("COMP2221") kept whole; the rest may be cut with an ellipsis. */
+function BarName({ name }: { name: string }) {
+  const m = /^(\S+)\s+(.+)$/.exec(name);
+  if (!m || !/\d/.test(m[1] ?? '')) return <span className={styles.barRest}>{name}</span>;
+  return (
+    <>
+      <span className={styles.barCode}>{m[1]}</span>
+      <span className={styles.barRest}>{m[2]}</span>
+    </>
+  );
+}
+
 /** A bar per subject, largest first, "Other" last (main's order), in the subject's colour. */
 export function SubjectsCard({ data }: { data: SubjectsCardData }) {
   if (data.bars.length === 0) return <p className={styles.empty}>No focus time in this range yet</p>;
@@ -52,7 +64,9 @@ export function SubjectsCard({ data }: { data: SubjectsCardData }) {
     <ul className={styles.bars} aria-label="By subject">
       {data.bars.map((b) => (
         <li key={b.key} className={styles.barRow}>
-          <span className={styles.barName}>{b.name}</span>
+          <span className={styles.barName} title={b.name}>
+            <BarName name={b.name} />
+          </span>
           <span className={styles.barValue}>{formatGoal(b.ms)}</span>
           <span className={styles.barTrack} aria-hidden="true">
             <span
