@@ -51,7 +51,7 @@ function setup(
   usePlannerStore.setState({
     tasks: { [task.id]: task, ...Object.fromEntries(tasks.map((t) => [t.id, t])) },
   });
-  usePlannerStore.getState().openDetail(task.id);
+  usePlannerStore.getState().openDetail(task.id, 'full');
   render(<TaskDetail />);
   return { api, task };
 }
@@ -92,6 +92,12 @@ describe('TaskDetail', () => {
     expect(within(dialog).getByLabelText('Repeat')).toHaveValue('weekly');
     expect(within(dialog).getByLabelText('Reminder')).toHaveValue('18:30');
     expect(within(dialog).getByText('Focused: 32m')).toBeInTheDocument();
+  });
+
+  it('the full detail sits over the same backdrop', () => {
+    setup();
+    expect(screen.getByRole('dialog', { name: 'Task: Read chapter 4' })).toBeInTheDocument();
+    expect(document.querySelector('[data-detail-backdrop]')).not.toBeNull();
   });
 
   it('lists only non-archived subjects, and "No subject" first', () => {

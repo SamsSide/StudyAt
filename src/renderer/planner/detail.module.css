@@ -1,9 +1,10 @@
-/* The task detail popover (v1.2 spec §3.7): a frosted panel centred over the window, above the
-   widgets and the board. Motion uses the shared --duration tokens, which tokens.css zeroes under
+/* The task detail popover (v1.2 spec §3.7): a frosted panel top centre over the dimmed window,
+   above the widgets and the board, where the quick card sits (card.module.css), so Expand does not
+   jump it. Motion uses the shared --duration tokens, which tokens.css zeroes under
    prefers-reduced-motion. */
 .popover {
   position: fixed;
-  top: 50%;
+  top: 72px;
   left: 50%;
   z-index: calc(var(--z-overlay) + 1);
   display: flex;
@@ -11,10 +12,10 @@
   gap: var(--space-3);
   box-sizing: border-box;
   width: min(400px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 96px);
   overflow-y: auto;
   padding: var(--space-4);
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   background: var(--panel-strong);

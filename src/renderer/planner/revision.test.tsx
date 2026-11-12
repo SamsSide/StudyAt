@@ -146,7 +146,7 @@ describe('the task menu', () => {
   async function openMenu(t: PlannerTask): Promise<MockApi> {
     const api = setup([t]);
     usePlannerStore.setState({ tasks: { [t.id]: t } });
-    usePlannerStore.getState().openDetail(t.id);
+    usePlannerStore.getState().openDetail(t.id, 'full');
     render(<PlannerWidget />);
     await userEvent.click(await screen.findByRole('button', { name: 'Task menu' }));
     return api;

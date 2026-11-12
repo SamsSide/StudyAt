@@ -31,6 +31,18 @@ beforeEach(() => {
 });
 
 describe('plannerStore', () => {
+  it('opens a task as the card by default, expands to full, and closing resets to card', () => {
+    const s = usePlannerStore.getState();
+    s.openDetail(5);
+    expect(usePlannerStore.getState()).toMatchObject({ detailTaskId: 5, detailMode: 'card' });
+    usePlannerStore.getState().expandDetail();
+    expect(usePlannerStore.getState().detailMode).toBe('full');
+    usePlannerStore.getState().closeDetail();
+    expect(usePlannerStore.getState()).toMatchObject({ detailTaskId: null, detailMode: 'card' });
+    usePlannerStore.getState().openDetail(6, 'full');
+    expect(usePlannerStore.getState().detailMode).toBe('full');
+  });
+
   it('apply merges changed tasks and drops removed ids', () => {
     store().apply({ tasks: [task({ id: 1 }), task({ id: 2 })], removed: [] });
     store().apply({ tasks: [task({ id: 2, title: 'Two' })], removed: [1] });

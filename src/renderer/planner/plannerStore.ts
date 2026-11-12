@@ -24,6 +24,8 @@ import { useStudyStore } from '../shell/store';
 import { deadlineDayKey } from './format';
 
 export type PlannerTab = 'day' | 'week' | 'lists';
+/** The task dialog's two faces: the quick card, or the full detail behind its Expand. */
+export type DetailMode = 'card' | 'full';
 export interface PlannerFilter {
   subjectId: number | null;
   tag: string | null;
@@ -49,6 +51,8 @@ export interface PlannerState {
   listId: number | null;
   filter: PlannerFilter;
   detailTaskId: number | null;
+  /** The open task's dialog: the quick card or the full detail (Tweek board feel spec §3.3). */
+  detailMode: DetailMode;
   revisionOffer: { taskId: number; days: number[] } | null;
   /** A one-line status: NEXT_FOCUS_NOTE or TASK_GONE; cleared on the next action. */
   notice: string | null;
@@ -81,7 +85,11 @@ export interface PlannerState {
   setDay(day: string | null): void;
   setListId(id: number | null): void;
   setFilter(f: PlannerFilter): void;
-  openDetail(id: number): void;
+  /** Opens a task's dialog, as the quick card unless asked for the full detail. */
+  openDetail(id: number, mode?: DetailMode): void;
+  /** The card's Expand: the same dialog switches to the full detail. */
+  expandDetail(): void;
+  /** Closes the dialog; the next open is the card again. */
   closeDetail(): void;
   offerRevision(taskId: number): void;
   setOfferDays(days: number[]): void;
@@ -107,6 +115,7 @@ const initialData = () => ({
   listId: null as number | null,
   filter: { subjectId: null, tag: null } as PlannerFilter,
   detailTaskId: null as number | null,
+  detailMode: 'card' as DetailMode,
   revisionOffer: null as { taskId: number; days: number[] } | null,
   notice: null as string | null,
 });
@@ -300,7 +309,7 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
       const change = await act('tasks.remove', () => api().tasks.remove(id));
       if (!change) return;
       applyChange(change);
-      set((s) => ({ detailTaskId: s.detailTaskId === id ? null : s.detailTaskId }));
+      set((s) => (s.detailTaskId === id ? { detailTaskId: null, detailMode: 'card' } : {}));
     },
 
     async duplicate(id) {
@@ -380,8 +389,9 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
     setDay: (day) => set({ day }),
     setListId: (listId) => set({ listId }),
     setFilter: (filter) => set({ filter }),
-    openDetail: (id) => set({ detailTaskId: id }),
-    closeDetail: () => set({ detailTaskId: null }),
+    openDetail: (id, mode = 'card') => set({ detailTaskId: id, detailMode: mode }),
+    expandDetail: () => set({ detailMode: 'full' }),
+    closeDetail: () => set({ detailTaskId: null, detailMode: 'card' }),
     offerRevision: (taskId) => {
       const settings = useStudyStore.getState().settings;
       set({ revisionOffer: { taskId, days: [...(settings?.revisionDays ?? DEFAULT_SETTINGS.revisionDays)] } });

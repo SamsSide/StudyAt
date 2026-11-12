@@ -1,43 +1,36 @@
-// The task detail popover (v1.2 spec §3.7): every field of one task, saved as it is edited. It is
-// keyed on the store's detailTaskId, so a reminder click can open a task that is not on screen.
-// The task menu (Task 20) sits beside the close button.
+// The task dialog (v1.2 spec §3.7; Tweek board feel spec §3.3, §4.2): one dialog over a dimmed
+// backdrop, showing the quick card or, after its Expand, every field of the task, saved as it is
+// edited. It is keyed on the store's detailTaskId, so a reminder click can open a task that is not
+// on screen. The task menu (Task 20) sits beside the close button.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ESTIMATE_MAX,
   ESTIMATE_MIN,
   ESTIMATE_PRESETS,
-  REMINDER_RE,
   REPEAT_EVERY_MAX,
   REPEAT_EVERY_MIN,
   TASK_GONE,
   TASK_NOTE_MAX,
   TASK_TITLE_MAX,
 } from '../../shared/planner';
-import type { PlannerTask, RepeatRule, TaskUpdate } from '../../shared/types';
+import type { PlannerTask, RepeatRule } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { formatGoal } from '../shell/format';
 import { TASK_COLOURS } from '../tasks/taskColours';
 import { PlacementPicker } from './PlacementPicker';
-import { usePlannerStore } from './plannerStore';
+import { usePlannerStore, type DetailMode } from './plannerStore';
 import { SAVE_FAILED, SubtaskList } from './SubtaskList';
 import { TagInput } from './TagInput';
+import { TaskCard } from './TaskCard';
 import { TaskMenu } from './TaskMenu';
+import { cap, useTaskEditor } from './useTaskEditor';
+import card from './card.module.css';
 import styles from './detail.module.css';
 
 const MIN_MS = 60_000;
 const NONE = 'none';
 const CUSTOM = 'custom';
-
-/** Caps by code points, never UTF-16 units. */
-const cap = (s: string, max: number): string => [...s].slice(0, max).join('');
-
-/** A text field's draft: it belongs to the saved value it started from, so a change from main drops it. */
-function useDraft(value: string): [string, (text: string) => void, () => void] {
-  const [draft, setDraft] = useState<{ of: string; text: string } | null>(null);
-  const text = draft && draft.of === value ? draft.text : value;
-  return [text, (t) => setDraft({ of: value, text: t }), () => setDraft(null)];
-}
 
 const minutesLabel = (min: number): string => formatGoal(min * MIN_MS);
 
@@ -57,6 +50,7 @@ const FOCUSABLE =
 
 export function TaskDetail() {
   const id = usePlannerStore((s) => s.detailTaskId);
+  const mode = usePlannerStore((s) => s.detailMode);
   const task = usePlannerStore((s) => (s.detailTaskId === null ? undefined : s.tasks[s.detailTaskId]));
   const closeDetail = usePlannerStore((s) => s.closeDetail);
 
@@ -80,7 +74,7 @@ export function TaskDetail() {
     };
   }, [id, task]);
 
-  // Esc closes the popover from anywhere outside it too; inside, the dialog's own key handler does
+  // Esc closes the dialog from anywhere outside it too; inside, the dialog's own key handler does
   // (it stops keys reaching the shell). A child that used Esc already (a picker) has called preventDefault.
   useEffect(() => {
     if (id === null) return;
@@ -94,15 +88,23 @@ export function TaskDetail() {
   }, [id, closeDetail]);
 
   if (!task) return null;
-  return createPortal(<Popover key={task.id} task={task} />, document.body);
+  return createPortal(
+    <>
+      {/* Dims everything behind; a press on it is a press outside the dialog, which closes it. */}
+      <div className={card.backdrop} data-detail-backdrop="" />
+      <Dialog key={task.id} task={task} mode={mode} />
+    </>,
+    document.body,
+  );
 }
 
-function Popover({ task }: { task: PlannerTask }) {
-  const update = usePlannerStore((s) => s.update);
+/**
+ * The one dialog both modes share. Expand swaps what is inside it (keyed on the mode, so the card's
+ * unmount saves its pending edits) but not the dialog, so focus still goes back to the row on close.
+ */
+function Dialog({ task, mode }: { task: PlannerTask; mode: DetailMode }) {
   const closeDetail = usePlannerStore((s) => s.closeDetail);
-  const subjects = useStudyStore((s) => s.subjects);
   const root = useRef<HTMLDivElement>(null);
-  const dated = task.day !== null;
 
   // Focus moves in on open and back to where it was on close.
   useEffect(() => {
@@ -110,136 +112,13 @@ function Popover({ task }: { task: PlannerTask }) {
     root.current?.focus();
     return () => before?.focus?.();
   }, []);
-
-  const [title, setTitle, clearTitle] = useDraft(task.title);
-  const [note, setNote, clearNote] = useDraft(task.note);
-  const [reminder, setReminder, clearReminder] = useDraft(task.reminder ?? '');
-  const [customOpen, setCustomOpen] = useState(false);
-  const [customText, setCustomText] = useState('');
-  const [customBad, setCustomBad] = useState(false);
-  const [everyText, setEveryText] = useState<string | null>(null);
-  const [everyBad, setEveryBad] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
-
-  // Fields with typing not yet saved. Esc, Close and unmount deliver no blur, so they are saved on the
-  // way out (below).
-  const dirty = useRef(new Set<string>());
-  const touch = (key: string): void => {
-    dirty.current.add(key);
-    setSaveFailed(false);
-  };
-
-  /** Saves a patch; when main refuses it (the field is still as it was) say so rather than revert quietly. */
-  const save = (patch: TaskUpdate): void => {
-    setSaveFailed(false);
-    const read = (): Record<string, unknown> | undefined => {
-      const t: PlannerTask | undefined = usePlannerStore.getState().tasks[task.id];
-      return t ? { ...t } : undefined;
-    };
-    const before = read();
-    void update(task.id, patch).then(() => {
-      const now = read();
-      if (!before || !now) return;
-      const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
-      const patched = patch as Record<string, unknown>;
-      if (Object.keys(patched).some((k) => !same(now[k], patched[k]) && same(now[k], before[k]))) {
-        setSaveFailed(true);
-      }
-    });
-  };
-
-  const commitTitle = (): void => {
-    dirty.current.delete('title');
-    const next = title.trim();
-    // The draft stays until the store echoes the new title, so the field never flashes the old one.
-    if (next === '' || next === task.title) clearTitle();
-    else save({ title: next });
-  };
-  const commitNote = (): void => {
-    dirty.current.delete('note');
-    if (note === task.note) clearNote();
-    else save({ note });
-  };
-  const commitReminder = (): void => {
-    dirty.current.delete('reminder');
-    if (reminder === (task.reminder ?? '')) clearReminder();
-    else if (reminder === '') save({ reminder: null });
-    else if (REMINDER_RE.test(reminder)) save({ reminder });
-    else clearReminder();
-  };
-
-  const estimate = task.estimateMin;
-  const isPreset = estimate !== null && (ESTIMATE_PRESETS as readonly number[]).includes(estimate);
-  const showCustom = customOpen || (estimate !== null && !isPreset);
-  const estimateValue = showCustom ? CUSTOM : estimate === null ? NONE : String(estimate);
-
-  const onEstimate = (value: string): void => {
-    dirty.current.delete('custom');
-    setCustomBad(false);
-    if (value === CUSTOM) {
-      setCustomOpen(true);
-      setCustomText(estimate === null ? '' : String(estimate));
-      return;
-    }
-    setCustomOpen(false);
-    save({ estimateMin: value === NONE ? null : Number(value) });
-  };
-  const commitCustom = (): void => {
-    dirty.current.delete('custom');
-    const n = Number(customText);
-    if (!Number.isInteger(n) || n < ESTIMATE_MIN || n > ESTIMATE_MAX) {
-      setCustomBad(customText !== '');
-      return;
-    }
-    setCustomBad(false);
-    if (n !== estimate) save({ estimateMin: n });
-  };
-
-  const repeat = task.repeat;
-  const onRepeat = (value: string): void => {
-    dirty.current.delete('every');
-    setEveryBad(false);
-    setEveryText(null);
-    if (value === NONE) save({ repeat: null });
-    else if (value === 'every') save({ repeat: { kind: 'every', days: REPEAT_EVERY_MIN } });
-    else save({ repeat: { kind: value as 'daily' | 'weekdays' | 'weekly' } });
-  };
-  const commitEvery = (): void => {
-    dirty.current.delete('every');
-    if (everyText === null) return;
-    const n = Number(everyText);
-    if (!Number.isInteger(n) || n < REPEAT_EVERY_MIN || n > REPEAT_EVERY_MAX) {
-      setEveryBad(true);
-      return;
-    }
-    setEveryBad(false);
-    setEveryText(null);
-    if (!(repeat?.kind === 'every' && repeat.days === n)) {
-      save({ repeat: { kind: 'every', days: n } });
-    }
-  };
-
-  // Whatever is still pending when the dialog goes (Esc, Close, another task) is saved, not dropped.
-  const commits: Record<string, () => void> = {
-    title: commitTitle,
-    note: commitNote,
-    reminder: commitReminder,
-    custom: commitCustom,
-    every: commitEvery,
-  };
-  const latest = useRef(commits);
+  // Expand removes the button that had focus: keep focus in the dialog.
   useEffect(() => {
-    latest.current = commits;
-  });
-  useEffect(
-    () => () => {
-      for (const key of [...dirty.current]) latest.current[key]?.();
-    },
-    [],
-  );
+    if (root.current && !root.current.contains(document.activeElement)) root.current.focus();
+  }, [mode]);
 
-  // aria-modal, but nothing behind is inert: a press outside closes it, as Esc does (the unmount
-  // above saves whatever is pending).
+  // aria-modal, and the backdrop covers what is behind: a press outside closes it, as Esc does (the
+  // unmount of the fields saves whatever is pending).
   useEffect(() => {
     const onDown = (e: PointerEvent): void => {
       if (e.target instanceof Node && root.current && !root.current.contains(e.target)) closeDetail();
@@ -249,8 +128,8 @@ function Popover({ task }: { task: PlannerTask }) {
   }, [closeDetail]);
 
   // A dialog traps Tab and keeps its keys to itself: nothing behind it, shell shortcuts included,
-  // sees a key pressed inside it. Esc closes (and the unmount saves). A picker's own Esc has
-  // already stopped here.
+  // sees a key pressed inside it. Esc closes (and the unmount saves). A picker's or a menu's own Esc
+  // has already stopped here.
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
     if (e.key === 'Escape' && !e.defaultPrevented) {
       e.preventDefault();
@@ -273,8 +152,6 @@ function Popover({ task }: { task: PlannerTask }) {
     e.stopPropagation();
   };
 
-  const subjectOptions = subjects.filter((s) => !s.archived || s.id === task.subjectId);
-
   return (
     <div
       ref={root}
@@ -282,9 +159,84 @@ function Popover({ task }: { task: PlannerTask }) {
       aria-modal="true"
       aria-label={`Task: ${task.title}`}
       tabIndex={-1}
-      className={styles.popover}
+      className={mode === 'card' ? card.card : styles.popover}
+      data-mode={mode}
       onKeyDown={onKeyDown}
     >
+      {mode === 'card' ? <TaskCard key="card" task={task} /> : <FullDetail key="full" task={task} />}
+    </div>
+  );
+}
+
+/** Every field of the task: the popover behind the card's Expand. */
+function FullDetail({ task }: { task: PlannerTask }) {
+  const closeDetail = usePlannerStore((s) => s.closeDetail);
+  const subjects = useStudyStore((s) => s.subjects);
+  const dated = task.day !== null;
+  const editor = useTaskEditor(task);
+  const { title, setTitle, commitTitle, note, setNote, commitNote, reminder, setReminder, commitReminder } =
+    editor;
+  const { save, saveFailed, touch, register } = editor;
+
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const [customBad, setCustomBad] = useState(false);
+  const [everyText, setEveryText] = useState<string | null>(null);
+  const [everyBad, setEveryBad] = useState(false);
+
+  const estimate = task.estimateMin;
+  const isPreset = estimate !== null && (ESTIMATE_PRESETS as readonly number[]).includes(estimate);
+  const showCustom = customOpen || (estimate !== null && !isPreset);
+  const estimateValue = showCustom ? CUSTOM : estimate === null ? NONE : String(estimate);
+
+  const onEstimate = (value: string): void => {
+    setCustomBad(false);
+    if (value === CUSTOM) {
+      setCustomOpen(true);
+      setCustomText(estimate === null ? '' : String(estimate));
+      return;
+    }
+    setCustomOpen(false);
+    save({ estimateMin: value === NONE ? null : Number(value) });
+  };
+  // Only typing opens the custom draft, so a preset chosen after it leaves nothing to save.
+  const commitCustom = register('custom', () => {
+    if (!customOpen) return;
+    const n = Number(customText);
+    if (!Number.isInteger(n) || n < ESTIMATE_MIN || n > ESTIMATE_MAX) {
+      setCustomBad(customText !== '');
+      return;
+    }
+    setCustomBad(false);
+    if (n !== estimate) save({ estimateMin: n });
+  });
+
+  const repeat = task.repeat;
+  const onRepeat = (value: string): void => {
+    setEveryBad(false);
+    setEveryText(null);
+    if (value === NONE) save({ repeat: null });
+    else if (value === 'every') save({ repeat: { kind: 'every', days: REPEAT_EVERY_MIN } });
+    else save({ repeat: { kind: value as 'daily' | 'weekdays' | 'weekly' } });
+  };
+  const commitEvery = register('every', () => {
+    if (everyText === null) return;
+    const n = Number(everyText);
+    if (!Number.isInteger(n) || n < REPEAT_EVERY_MIN || n > REPEAT_EVERY_MAX) {
+      setEveryBad(true);
+      return;
+    }
+    setEveryBad(false);
+    setEveryText(null);
+    if (!(repeat?.kind === 'every' && repeat.days === n)) {
+      save({ repeat: { kind: 'every', days: n } });
+    }
+  });
+
+  const subjectOptions = subjects.filter((s) => !s.archived || s.id === task.subjectId);
+
+  return (
+    <>
       <div className={styles.top}>
         <PlacementPicker task={task} />
         <div className={styles.inline}>
@@ -494,6 +446,6 @@ function Popover({ task }: { task: PlannerTask }) {
       )}
 
       <p className={styles.focused}>Focused: {formatGoal(task.actualMs)}</p>
-    </div>
+    </>
   );
 }
