@@ -53,29 +53,57 @@ async function calm(win: Page): Promise<void> {
   await sleep(400);
 }
 
-/** A real-pointer drag from the centre of the row's title text (no grip): a nudge past the 6 px
- *  activation distance, then on to the point in steps, a settle, an optional shot, and release. */
-async function dragByTitle(win: Page, title: Locator, to: { x: number; y: number }, mid?: string): Promise<void> {
+interface DragOptions {
+  /** The drop point's depth below the target's top, kept 4 px inside its bottom edge. */
+  dy?: number;
+  /** A scroller both pointer points must sit inside (the widget's Week); the window always. */
+  within?: Locator;
+  /** The board draws the moving line as an overlay; the widget only marks the row. */
+  overlay?: boolean;
+  mid?: string;
+}
+
+/** A real-pointer drag from the centre of the title's first line of text (no grip) to `target`:
+ *  a nudge past the 6 px activation distance, then on to the point in steps, a settle, an optional
+ *  shot, and release. The target is scrolled into view, then the source, and only then are both
+ *  measured: a target measured before the source scrolled can sit off the window, where dnd-kit
+ *  autoscrolls and the drop misses (811cdf8). Both points are asserted on the window first. */
+async function dragByTitle(win: Page, title: Locator, target: Locator, { dy = 70, within, overlay = true, mid }: DragOptions = {}): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
   await title.scrollIntoViewIfNeeded();
-  const t = await title.boundingBox();
-  if (!t) throw new Error('no title box');
-  const x = t.x + t.width / 2;
-  const y = t.y + t.height / 2;
-  await win.mouse.move(x, y);
+  await sleep(300);
+  const start = await title.evaluate((n) => {
+    const r = n.getClientRects()[0]!;
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  const b = await target.boundingBox();
+  if (!b) throw new Error('no target box');
+  const to = { x: b.x + b.width / 2, y: b.y + Math.min(dy, b.height - 4) };
+  const view = await win.evaluate(() => ({ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }));
+  const areas = [view];
+  if (within) {
+    const s = await within.boundingBox();
+    if (!s) throw new Error('no scroller box');
+    areas.push(s);
+  }
+  for (const a of areas) {
+    for (const p of [start, to]) {
+      const inside = p.x > a.x && p.x < a.x + a.width && p.y > a.y && p.y < a.y + a.height;
+      expect(inside, `pointer ${JSON.stringify(p)} inside ${JSON.stringify(a)}`).toBe(true);
+    }
+  }
+  await win.mouse.move(start.x, start.y);
   await win.mouse.down();
-  await win.mouse.move(x + 8, y + 8, { steps: 4 });
+  await win.mouse.move(start.x + 8, start.y + 8, { steps: 4 });
+  // The drag is live before it moves on: the row is marked, and on the board the line follows the pointer.
+  await expect(win.locator('li[data-dragging="true"]').first()).toBeAttached();
+  if (overlay) await expect(win.locator('[data-drag-overlay]')).toBeVisible();
   await win.mouse.move(to.x, to.y, { steps: 20 });
   await sleep(400);
   if (mid) await shot(win, mid);
   await win.mouse.up();
   await sleep(500);
 }
-
-const centreOf = async (loc: Locator, dy = 70): Promise<{ x: number; y: number }> => {
-  const b = await loc.boundingBox();
-  if (!b) throw new Error('no box');
-  return { x: b.x + b.width / 2, y: b.y + dy };
-};
 
 interface Seed {
   title: string;
@@ -134,7 +162,7 @@ test('board: a task drags by its title, day to day, to the Inbox and back to a d
   const gripBox = await grip.boundingBox();
   test.info().annotations.push({ type: 'boxes', description: `title ${JSON.stringify(titleBox)} grip ${JSON.stringify(gripBox)}` });
 
-  await dragByTitle(win, titleOf(daySection(board, mon), 'Drag me'), await centreOf(daySection(board, thu)), '04-drag-mid.png');
+  await dragByTitle(win, titleOf(daySection(board, mon), 'Drag me'), daySection(board, thu), { mid: '04-drag-mid.png' });
   await expect.poll(async () => (await taskOf(win, id!))?.day).toBe(thu);
   expect(await dayTitles(win, thu)).toContain('Drag me');
   expect(await dayTitles(win, mon)).not.toContain('Drag me');
@@ -144,15 +172,13 @@ test('board: a task drags by its title, day to day, to the Inbox and back to a d
   // Thursday -> the Inbox list.
   const inbox = await listId(win, 'Inbox');
   const inboxCol = listColumn(board, 'Inbox');
-  await inboxCol.scrollIntoViewIfNeeded();
-  await dragByTitle(win, titleOf(daySection(board, thu), 'Drag me'), await centreOf(inboxCol, 40));
+  await dragByTitle(win, titleOf(daySection(board, thu), 'Drag me'), inboxCol, { dy: 40 });
   await expect.poll(async () => (await taskOf(win, id!))?.listId).toBe(inbox);
   expect((await taskOf(win, id!))?.day).toBeNull();
   await expect(rowOf(inboxCol, 'Drag me')).toBeVisible();
 
   // The Inbox -> Friday.
-  await daySection(board, fri).scrollIntoViewIfNeeded();
-  await dragByTitle(win, titleOf(inboxCol, 'Drag me'), await centreOf(daySection(board, fri)));
+  await dragByTitle(win, titleOf(inboxCol, 'Drag me'), daySection(board, fri));
   await expect.poll(async () => (await taskOf(win, id!))?.day).toBe(fri);
   expect((await taskOf(win, id!))?.listId).toBeNull();
   expect(await dayTitles(win, fri)).toContain('Drag me');
@@ -161,34 +187,52 @@ test('board: a task drags by its title, day to day, to the Inbox and back to a d
 // ---------------------------------------------------------------------------------------------
 // 3. The widget's Week (AC 2).
 
-test('widget Week: a task drags by its title to the next day; a click opens the card', async ({ launch }) => {
-  const { win } = await launch();
-  await prepare(win);
-  // From today on: the widget's Week scrolls past days out of reach (Sunday has no day after, so it drags the other way).
-  const today = studyDay(Date.now());
-  const wedAfter = addDays(today, 1);
-  const sameWeek = weekStartOf(wedAfter) === weekStartOf(today);
-  const tue = today;
-  const wed = sameWeek ? wedAfter : addDays(today, -1);
-  const [id] = await seed(win, [{ title: 'Widget drag', day: tue }]);
-  await reload(win);
-  const w = await openTasks(win, 'Week');
-  await expect(rowOf(daySection(w, tue), 'Widget drag')).toBeVisible();
-  const wedBox = await daySection(w, wed).boundingBox();
-  if (!wedBox) throw new Error('no target day box');
-  await dragByTitle(win, rowOf(daySection(w, tue), 'Widget drag').getByRole('button', { name: 'Widget drag', exact: true }), { x: wedBox.x + wedBox.width / 2, y: wedBox.y + Math.min(30, wedBox.height / 2) });
-  await expect.poll(async () => (await taskOf(win, id!))?.day).toBe(wed);
-  await expect(rowOf(daySection(w, wed), 'Widget drag')).toBeVisible();
-  await expect(win.getByRole('dialog', { name: 'Task: Widget drag' })).toBeHidden();
+// The drag runs in the week after today's, Monday to Tuesday: that week holds no today, so the Week
+// does not scroll itself to today (E8) and both days are in reach on every weekday. (In today's own
+// week a Sunday has no day after it, and the day before sits above the scroller, out of reach.) The
+// pinned runs prove it: Playwright's clock sets the renderer's "today" to noon on this week's
+// Sunday and on next Monday, neither before the real date, so main's own clock agrees with which
+// days are past.
+const thisMon = weekStartOf(studyDay(Date.now()));
+const pins = [
+  { name: '', day: null, weekday: null },
+  { name: ' (today pinned to a Sunday)', day: addDays(thisMon, 6), weekday: 0 },
+  { name: ' (today pinned to a Monday)', day: addDays(thisMon, 7), weekday: 1 },
+] as const;
 
-  // 09: a click on the widget row opens the same quick card.
-  await sleep(400);
-  await rowOf(daySection(w, wed), 'Widget drag').getByRole('button', { name: 'Widget drag', exact: true }).click();
-  const card = win.getByRole('dialog', { name: 'Task: Widget drag' });
-  await expect(card).toBeVisible();
-  await expect(card).toHaveAttribute('data-mode', 'card');
-  await shot(win, '09-widget-card.png');
-});
+for (const pin of pins) {
+  test(`widget Week: a task drags by its title to the next day; a click opens the card${pin.name}`, async ({ launch }) => {
+    const { app, win } = await launch();
+    await prepare(win);
+    if (pin.day) await app.context().clock.install({ time: new Date(`${pin.day}T12:00:00`) });
+    const today = pin.day ?? studyDay(Date.now());
+    const mon = addDays(weekStartOf(today), 7);
+    const tue = addDays(mon, 1);
+    const [id] = await seed(win, [{ title: 'Widget drag', day: mon }]);
+    await reload(win);
+    if (pin.day) expect(await win.evaluate(() => new Date().getDay())).toBe(pin.weekday);
+    const w = await openTasks(win, 'Week');
+    // Provenance: the Week opens on today's week (the pinned day when pinned), then steps on a week.
+    await expect(w.locator('section[data-today="true"]')).toHaveAttribute('aria-label', formatDayLabel(today));
+    await w.getByRole('button', { name: 'Next week', exact: true }).click();
+    await expect(w.locator('section[data-today="true"]')).toHaveCount(0);
+    await expect(rowOf(daySection(w, mon), 'Widget drag')).toBeVisible();
+    const scroller = w.locator('section[aria-label="Week"] > div').last();
+    const title = rowOf(daySection(w, mon), 'Widget drag').getByRole('button', { name: 'Widget drag', exact: true });
+    await dragByTitle(win, title, daySection(w, tue), { dy: 30, within: scroller, overlay: false });
+    await expect.poll(async () => (await taskOf(win, id!))?.day).toBe(tue);
+    await expect(rowOf(daySection(w, tue), 'Widget drag')).toBeVisible();
+    await expect(win.getByRole('dialog', { name: 'Task: Widget drag' })).toBeHidden();
+
+    // 09: a click on the widget row opens the same quick card.
+    await sleep(400);
+    await rowOf(daySection(w, tue), 'Widget drag').getByRole('button', { name: 'Widget drag', exact: true }).click();
+    const card = win.getByRole('dialog', { name: 'Task: Widget drag' });
+    await expect(card).toBeVisible();
+    await expect(card).toHaveAttribute('data-mode', 'card');
+    if (!pin.day) await shot(win, '09-widget-card.png');
+  });
+}
 
 // ---------------------------------------------------------------------------------------------
 // 4. No card after a drag (AC 4); a reorder does not focus the add line.
@@ -205,8 +249,8 @@ test('a drag released in its own column opens no card and does not focus the add
   const board = await openBoard(win);
   const col = daySection(board, mon);
   await expect(rowOf(col, 'Stay A')).toBeVisible();
-  const t = (await titleOf(col, 'Stay A').boundingBox())!;
-  await dragByTitle(win, titleOf(col, 'Stay A'), { x: t.x + t.width / 2, y: t.y + t.height / 2 + 40 });
+  // Released on Stay B's lower half: a reorder inside Monday, with the drag live first (the helper).
+  await dragByTitle(win, titleOf(col, 'Stay A'), rowOf(col, 'Stay B'), { dy: 1000 });
   await sleep(500);
   await expect(win.getByRole('dialog', { name: /^Task: / })).toBeHidden();
   const focused = await win.evaluate(() => {
@@ -216,7 +260,7 @@ test('a drag released in its own column opens no card and does not focus the add
   test.info().annotations.push({ type: 'focus after reorder', description: JSON.stringify(focused) });
   expect(focused.label.startsWith('Add to')).toBe(false);
   await expect(addLine(col)).not.toBeFocused();
-  test.info().annotations.push({ type: 'order after', description: (await dayTitles(win, mon)).join(',') });
+  await expect.poll(() => dayTitles(win, mon)).toEqual(['Stay B', 'Stay A']);
   expect([(await taskOf(win, a!))?.day, (await taskOf(win, b!))?.day]).toEqual([mon, mon]);
 });
 
@@ -340,6 +384,9 @@ test('a click on a blank line types a task: Friday twice in order, then the Inbo
   const blanks = col.locator('[data-rule="blank"]');
   const n = await blanks.count();
   expect(n).toBeGreaterThan(1);
+  // AC 14: the bare add line has no placeholder, and no blank line carries text.
+  expect((await addLine(col).getAttribute('placeholder')) ?? '').toBe('');
+  expect((await blanks.allTextContents()).filter((t) => t.trim() !== '')).toEqual([]);
   const last = blanks.nth(n - 1);
   await last.scrollIntoViewIfNeeded();
   await last.click();
