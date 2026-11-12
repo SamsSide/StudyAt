@@ -1,6 +1,6 @@
 // The task detail popover (v1.2 spec §3.7): every field of one task, saved as it is edited. It is
 // keyed on the store's detailTaskId, so a reminder click can open a task that is not on screen.
-// The menu (Start focus, Schedule revision, Duplicate, Delete) is Task 20's, beside the close button.
+// The task menu (Task 20) sits beside the close button.
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -22,6 +22,7 @@ import { PlacementPicker } from './PlacementPicker';
 import { usePlannerStore } from './plannerStore';
 import { SAVE_FAILED, SubtaskList } from './SubtaskList';
 import { TagInput } from './TagInput';
+import { TaskMenu } from './TaskMenu';
 import styles from './detail.module.css';
 
 const MIN_MS = 60_000;
@@ -276,10 +277,12 @@ function Popover({ task }: { task: PlannerTask }) {
     >
       <div className={styles.top}>
         <PlacementPicker task={task} />
-        {/* Task 20 adds the task menu here. */}
-        <button type="button" className={styles.iconButton} aria-label="Close" onClick={closeDetail}>
-          ×
-        </button>
+        <div className={styles.inline}>
+          <TaskMenu task={task} />
+          <button type="button" className={styles.iconButton} aria-label="Close" onClick={closeDetail}>
+            ×
+          </button>
+        </div>
       </div>
 
       <div className={styles.titleRow}>

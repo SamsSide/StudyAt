@@ -1,11 +1,12 @@
 // The Tasks widget body (v1.2 spec §3.7): tabs, a filter, a status line and the view. The shell's
 // WidgetFrame supplies the glass, the title and the drag header. Day and Week rows drag between days.
-import { useId } from 'react';
+import { useEffect, useId } from 'react';
 import { DayView } from './DayView';
 import { PlannerDnd } from './dnd';
 import { FilterButton } from './FilterButton';
 import { ListsView } from './ListsView';
 import { usePlannerStore, type PlannerTab } from './plannerStore';
+import { RevisionBar } from './RevisionBar';
 import { TaskDetail } from './TaskDetail';
 import { WeekView } from './WeekView';
 import styles from './planner.module.css';
@@ -21,6 +22,9 @@ export function PlannerWidget() {
   const setTab = usePlannerStore((s) => s.setTab);
   const notice = usePlannerStore((s) => s.notice);
   const panelId = useId();
+
+  // The offer lasts while the view is open (spec §3.9).
+  useEffect(() => () => usePlannerStore.getState().dismissOffer(), []);
 
   return (
     <div className={styles.widget}>
@@ -46,6 +50,7 @@ export function PlannerWidget() {
       <p role="status" aria-label="Task notice" className={styles.notice}>
         {notice}
       </p>
+      <RevisionBar />
       <div role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${tab}`}>
         <PlannerDnd>
           {tab === 'lists' ? <ListsView /> : tab === 'week' ? <WeekView /> : <DayView />}
