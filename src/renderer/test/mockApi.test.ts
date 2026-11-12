@@ -83,6 +83,37 @@ describe('mockApi', () => {
     expect(cb.mock.calls).toEqual([[next]]);
   });
 
+  it('emitOpenTask and emitPlannerChanged drive the planner events, and unsubscribe', async () => {
+    const api = mockApi();
+    const open = vi.fn();
+    const changed = vi.fn();
+    const offOpen = api.planner.onOpenTask(open);
+    const offChanged = api.planner.onChanged(changed);
+    api.emitOpenTask(7);
+    api.emitPlannerChanged();
+    offOpen();
+    offChanged();
+    api.emitOpenTask(8);
+    api.emitPlannerChanged();
+    expect(open.mock.calls).toEqual([[7]]);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledWith();
+  });
+
+  it('defaults the planner, task, subtask, list and timer additions', async () => {
+    const api = mockApi();
+    expect(await api.planner.week('2026-11-09')).toMatchObject({ tasks: [], deadlines: [], studiedMs: {} });
+    expect(await api.planner.lists()).toEqual({ lists: [], tasks: [], deadlines: [] });
+    expect(await api.tasks.create({ title: 'x' })).toEqual({ tasks: [], removed: [] });
+    expect((await api.subtasks.add(1, 'x')).subtasks).toEqual([]);
+    expect(await api.lists.remove(1)).toEqual({ lists: [], removed: [] });
+    expect(await api.lists.create({ name: 'x' })).toEqual([]);
+    expect(await api.timer.startTask(1)).toEqual(idleTimerState());
+    expect(await api.timer.setIntention(null)).toEqual(idleTimerState());
+    expect(await api.timer.setOutcome('p', 'done')).toEqual(idleTimerState());
+    expect(await api.legacyTasks.list()).toEqual([]);
+  });
+
   it('honours overrides and installs on window', () => {
     const start = vi.fn(() => Promise.resolve({ ...idleTimerState(), status: 'running' as const }));
     const api = mockApi({ timer: { start } });

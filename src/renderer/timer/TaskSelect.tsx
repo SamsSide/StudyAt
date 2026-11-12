@@ -42,7 +42,7 @@ export function TaskSelect() {
     setUpwards(rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight);
     setActive(selected);
     setOpen(true);
-    window.studyat.tasks
+    window.studyat.legacyTasks
       .list()
       .then(setTasks)
       .catch(() => undefined); // keep the last list; "No task" still works

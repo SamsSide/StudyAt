@@ -131,8 +131,8 @@ test('Countdown: one minute with a task records a session and By task lists it',
   await win.keyboard.press('Escape');
 
   const subject = (await win.evaluate(() => window.studyat.subjects.list())).find((s) => s.name === SUBJECT);
-  await win.evaluate((text) => window.studyat.tasks.create({ text, colour: 'yellow' }), LONG_TASK);
-  await win.evaluate(() => window.studyat.tasks.create({ text: 'Past paper Q3', colour: 'blue' }));
+  await win.evaluate((text) => window.studyat.legacyTasks.create({ text, colour: 'yellow' }), LONG_TASK);
+  await win.evaluate(() => window.studyat.legacyTasks.create({ text: 'Past paper Q3', colour: 'blue' }));
 
   await calm(win);
   await win.keyboard.press('4');
@@ -652,7 +652,7 @@ test('A held task ticked off while idle leaves the timer on No task', async ({ l
   const { win } = await launch();
   await prepare(win);
   const text = 'Revise the pumping lemma';
-  await win.evaluate((t) => window.studyat.tasks.create({ text: t, colour: 'green' }), text);
+  await win.evaluate((t) => window.studyat.legacyTasks.create({ text: t, colour: 'green' }), text);
   const picker = win.getByRole('combobox', { name: 'Task' });
   await picker.click();
   await win.getByRole('option', { name: text }).click();

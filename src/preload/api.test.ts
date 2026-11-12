@@ -58,6 +58,47 @@ describe('preload api', () => {
     expect(ipc.invoke).toHaveBeenCalledWith('stats:byTask', 'month');
   });
 
+  it('exposes the planner, task, subtask, list and legacy groups on their channels', async () => {
+    const { ipc } = fakeIpc();
+    const api = buildApi(ipc);
+    await api.planner.week('2026-11-09');
+    await api.tasks.move(3, { day: '2026-11-10', index: 0 });
+    await api.subtasks.reorder(3, [2, 1]);
+    await api.lists.clearDone(4);
+    await api.legacyTasks.list();
+    await api.timer.startTask(5);
+    await api.timer.setIntention(null);
+    await api.timer.setOutcome('p1', 'partly');
+    expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
+      ['planner:week', '2026-11-09'],
+      ['tasks:move', 3, { day: '2026-11-10', index: 0 }],
+      ['subtasks:reorder', 3, [2, 1]],
+      ['lists:clearDone', 4],
+      ['legacyTasks:list'],
+      ['timer:startTask', 5],
+      ['timer:setIntention', null],
+      ['timer:setOutcome', 'p1', 'partly'],
+    ]);
+  });
+
+  it('planner.onOpenTask passes only the task id; onChanged unsubscribes', () => {
+    const { ipc, emit, listeners } = fakeIpc();
+    const api = buildApi(ipc);
+    const open = vi.fn();
+    const off = api.planner.onOpenTask(open);
+    emit(CHANNELS.events.plannerOpenTask, 12);
+    off();
+    emit(CHANNELS.events.plannerOpenTask, 13);
+    expect(open.mock.calls).toEqual([[12]]);
+    expect(listeners.get('planner:openTask')?.size).toBe(0);
+    const changed = vi.fn();
+    const offChanged = api.planner.onChanged(changed);
+    emit(CHANNELS.events.plannerChanged, undefined);
+    offChanged();
+    emit(CHANNELS.events.plannerChanged, undefined);
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
   it('exposes the five images channels (v1.1 spec §5)', async () => {
     const { ipc } = fakeIpc();
     const api = buildApi(ipc);

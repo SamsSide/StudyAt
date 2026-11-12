@@ -22,22 +22,22 @@ test('tasks add, tick, reorder and clear done, and persist', async ({ launch }) 
   // A ticked task moves to the collapsed "Done" section.
   await win.getByRole('button', { name: 'Done (1)' }).click();
   await expect(win.getByRole('checkbox', { name: `Mark "${B}" as not done` })).toBeChecked();
-  expect((await win.evaluate(() => window.studyat.tasks.list())).find((t) => t.text === B)?.done).toBe(true);
+  expect((await win.evaluate(() => window.studyat.legacyTasks.list())).find((t) => t.text === B)?.done).toBe(true);
   await sleep(600);
   await shot(win, 'tasks.png');
 
   await win.getByRole('checkbox', { name: `Mark "${C}" as done` }).focus();
   await win.keyboard.press('Alt+ArrowUp');
   const openTexts = async (): Promise<string[]> =>
-    (await win.evaluate(() => window.studyat.tasks.list())).filter((t) => !t.done).map((t) => t.text);
+    (await win.evaluate(() => window.studyat.legacyTasks.list())).filter((t) => !t.done).map((t) => t.text);
   await expect.poll(openTexts).toEqual([C, A]);
 
   await win.getByRole('button', { name: 'Clear done' }).click();
-  await expect.poll(async () => (await win.evaluate(() => window.studyat.tasks.list())).map((t) => t.text)).toEqual([C, A]);
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.legacyTasks.list())).map((t) => t.text)).toEqual([C, A]);
   await quitApp(first.app);
 
   const second = await launch();
-  const tasks = await second.win.evaluate(() => window.studyat.tasks.list());
+  const tasks = await second.win.evaluate(() => window.studyat.legacyTasks.list());
   expect(tasks.map((t) => [t.text, t.done])).toEqual([
     [C, false],
     [A, false],

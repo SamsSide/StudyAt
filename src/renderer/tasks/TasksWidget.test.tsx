@@ -22,7 +22,7 @@ function setup(initial: Task[] = [], opts: { list?: () => Promise<Task[]> } = {}
   let nextId = 100;
   const snap = () => Promise.resolve(rows.map((t) => ({ ...t })));
   const api: MockApi = mockApi({
-    tasks: {
+    legacyTasks: {
       list: vi.fn(opts.list ?? snap),
       create: vi.fn(({ text, colour }: { text: string; colour: TaskColour }) => {
         rows = [...rows, task(nextId, text, { colour, sort: rows.length })];
@@ -69,7 +69,7 @@ describe('TasksWidget', () => {
   it('Enter in "Add a task…" creates a yellow task', async () => {
     const api = setup();
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Read chapter 4{Enter}');
-    expect(api.tasks.create).toHaveBeenCalledWith({
+    expect(api.legacyTasks.create).toHaveBeenCalledWith({
       text: 'Read chapter 4',
       colour: 'yellow',
     });
@@ -80,7 +80,7 @@ describe('TasksWidget', () => {
   it('ignores a blank task', async () => {
     const api = setup();
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), '   {Enter}');
-    expect(api.tasks.create).not.toHaveBeenCalled();
+    expect(api.legacyTasks.create).not.toHaveBeenCalled();
   });
 
   it('text over 500 chars is cut to 500', async () => {
@@ -89,7 +89,7 @@ describe('TasksWidget', () => {
     expect(input).toHaveAttribute('maxlength', '500');
     fireEvent.change(input, { target: { value: 'a'.repeat(620) } });
     fireEvent.submit(input);
-    expect(api.tasks.create).toHaveBeenCalledWith({
+    expect(api.legacyTasks.create).toHaveBeenCalledWith({
       text: 'a'.repeat(500),
       colour: 'yellow',
     });
@@ -108,7 +108,7 @@ describe('TasksWidget', () => {
     ]);
     await userEvent.click(picker.getByRole('button', { name: 'Purple' }));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Flashcards{Enter}');
-    expect(api.tasks.create).toHaveBeenCalledWith({
+    expect(api.legacyTasks.create).toHaveBeenCalledWith({
       text: 'Flashcards',
       colour: 'purple',
     });
@@ -117,13 +117,13 @@ describe('TasksWidget', () => {
     await userEvent.click(
       within(screen.getByRole('group', { name: 'Note colour' })).getByRole('button', { name: 'Blue' }),
     );
-    expect(api.tasks.update).toHaveBeenCalledWith(1, { colour: 'blue' });
+    expect(api.legacyTasks.update).toHaveBeenCalledWith(1, { colour: 'blue' });
   });
 
   it('ticking moves it to "Done (1)"', async () => {
     const api = setup([task(1, 'Essay'), task(2, 'Lab')]);
     await userEvent.click(await screen.findByRole('checkbox', { name: 'Mark "Essay" as done' }));
-    expect(api.tasks.update).toHaveBeenCalledWith(1, { done: true });
+    expect(api.legacyTasks.update).toHaveBeenCalledWith(1, { done: true });
     const toggle = await screen.findByRole('button', { name: /Done \(1\)/ });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByRole('list', { name: 'Done tasks' })).not.toBeInTheDocument();
@@ -140,7 +140,7 @@ describe('TasksWidget', () => {
   it('clear done calls clearDone', async () => {
     const api = setup([task(1, 'Essay'), task(2, 'Lab', { done: true, doneAt: 5 })]);
     await userEvent.click(await screen.findByRole('button', { name: 'Clear done' }));
-    expect(api.tasks.clearDone).toHaveBeenCalled();
+    expect(api.legacyTasks.clearDone).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear done' })).not.toBeInTheDocument());
   });
 
@@ -152,7 +152,7 @@ describe('TasksWidget', () => {
       key: 'ArrowUp',
       altKey: true,
     });
-    expect(api.tasks.reorder).toHaveBeenCalledWith([1, 3, 2]);
+    expect(api.legacyTasks.reorder).toHaveBeenCalledWith([1, 3, 2]);
     await waitFor(() => expect(noteTexts()[1]).toHaveTextContent('Three'));
   });
 
@@ -163,7 +163,7 @@ describe('TasksWidget', () => {
       key: 'ArrowDown',
       altKey: true,
     });
-    expect(api.tasks.reorder).not.toHaveBeenCalled();
+    expect(api.legacyTasks.reorder).not.toHaveBeenCalled();
   });
 
   it('dragging a handle past another note reorders on release', async () => {
@@ -178,7 +178,7 @@ describe('TasksWidget', () => {
     fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientY: 90, pointerId: 1 });
     fireEvent.pointerUp(handle, { pointerId: 1 });
-    expect(api.tasks.reorder).toHaveBeenCalledWith([2, 1]);
+    expect(api.legacyTasks.reorder).toHaveBeenCalledWith([2, 1]);
   });
 
   it('click text to edit and Enter saves', async () => {
@@ -188,7 +188,7 @@ describe('TasksWidget', () => {
     expect(input).toHaveFocus();
     await userEvent.clear(input);
     await userEvent.type(input, 'Essay draft{Enter}');
-    expect(api.tasks.update).toHaveBeenCalledWith(1, { text: 'Essay draft' });
+    expect(api.legacyTasks.update).toHaveBeenCalledWith(1, { text: 'Essay draft' });
     expect(await screen.findByRole('button', { name: 'Essay draft' })).toBeInTheDocument();
   });
 
@@ -196,13 +196,13 @@ describe('TasksWidget', () => {
     const api = setup([task(1, 'Essay')]);
     await userEvent.click(await screen.findByRole('button', { name: 'Essay' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Edit task' }), ' x{Escape}');
-    expect(api.tasks.update).not.toHaveBeenCalled();
+    expect(api.legacyTasks.update).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Essay' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Essay' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Edit task' }), ' two');
     await userEvent.tab();
-    expect(api.tasks.update).toHaveBeenCalledWith(1, { text: 'Essay two' });
+    expect(api.legacyTasks.update).toHaveBeenCalledWith(1, { text: 'Essay two' });
   });
 
   it('Alt+ArrowDown twice moves a note two places and keeps focus on it', async () => {
@@ -215,8 +215,8 @@ describe('TasksWidget', () => {
     expect(within(noteTexts()[1]!).getByRole('checkbox')).toHaveFocus();
     await userEvent.keyboard('{Alt>}{ArrowDown}{/Alt}');
     await waitFor(() => expect(noteTexts()[2]).toHaveTextContent('One'));
-    expect(api.tasks.reorder).toHaveBeenNthCalledWith(1, [2, 1, 3]);
-    expect(api.tasks.reorder).toHaveBeenNthCalledWith(2, [2, 3, 1]);
+    expect(api.legacyTasks.reorder).toHaveBeenNthCalledWith(1, [2, 1, 3]);
+    expect(api.legacyTasks.reorder).toHaveBeenNthCalledWith(2, [2, 3, 1]);
     expect(within(noteTexts()[2]!).getByRole('checkbox')).toHaveFocus();
   });
 
@@ -230,7 +230,7 @@ describe('TasksWidget', () => {
     fireEvent.pointerDown(handle, { button: 0, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientY: 90, pointerId: 1 });
     fireEvent.lostPointerCapture(handle, { pointerId: 1 });
-    expect(api.tasks.reorder).toHaveBeenCalledWith([2, 1]);
+    expect(api.legacyTasks.reorder).toHaveBeenCalledWith([2, 1]);
     expect(first).not.toHaveClass(/dragging/);
   });
 
@@ -247,13 +247,13 @@ describe('TasksWidget', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('button', { name: 'Essay' })).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load your tasks.")).not.toBeInTheDocument();
-    expect(api.tasks.list).toHaveBeenCalledTimes(2);
+    expect(api.legacyTasks.list).toHaveBeenCalledTimes(2);
   });
 
   it('a failed save says the list was refreshed only when the reload worked, and clears on success', async () => {
     const api = setup([task(1, 'Essay')]);
     await screen.findByRole('button', { name: 'Essay' });
-    vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
+    vi.mocked(api.legacyTasks.create).mockRejectedValueOnce(new Error('nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
     expect(
       await screen.findByText("Couldn't save that just now. Your list has been refreshed."),
@@ -268,7 +268,7 @@ describe('TasksWidget', () => {
   it('a failed add puts the typed text back in the add box', async () => {
     const api = setup([task(1, 'Essay')]);
     await screen.findByRole('button', { name: 'Essay' });
-    vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
+    vi.mocked(api.legacyTasks.create).mockRejectedValueOnce(new Error('nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Revise chapter 3{Enter}');
     await screen.findByText("Couldn't save that just now. Your list has been refreshed.");
     expect(screen.getByPlaceholderText('Add a task…')).toHaveValue('Revise chapter 3');
@@ -278,7 +278,7 @@ describe('TasksWidget', () => {
     const api = setup([task(1, 'Essay')]);
     await screen.findByRole('button', { name: 'Essay' });
     let reject: (e: Error) => void = () => undefined;
-    vi.mocked(api.tasks.create).mockReturnValueOnce(new Promise<Task[]>((_, rej) => (reject = rej)));
+    vi.mocked(api.legacyTasks.create).mockReturnValueOnce(new Promise<Task[]>((_, rej) => (reject = rej)));
     const box = screen.getByPlaceholderText('Add a task…');
     await userEvent.type(box, 'First{Enter}');
     await userEvent.type(box, 'Second');
@@ -290,7 +290,7 @@ describe('TasksWidget', () => {
   it('a failed edit reopens the note with the edited text', async () => {
     const api = setup([task(1, 'Essay')]);
     await userEvent.click(await screen.findByRole('button', { name: 'Essay' }));
-    vi.mocked(api.tasks.update).mockRejectedValueOnce(new Error('nope'));
+    vi.mocked(api.legacyTasks.update).mockRejectedValueOnce(new Error('nope'));
     const input = screen.getByRole('textbox', { name: 'Edit task' });
     await userEvent.clear(input);
     await userEvent.type(input, 'Essay final draft{Enter}');
@@ -306,8 +306,8 @@ describe('TasksWidget', () => {
   it('a failed save with a failed reload does not claim a refresh', async () => {
     const api = setup([task(1, 'Essay')]);
     await screen.findByRole('button', { name: 'Essay' });
-    vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
-    vi.mocked(api.tasks.list).mockRejectedValueOnce(new Error('still nope'));
+    vi.mocked(api.legacyTasks.create).mockRejectedValueOnce(new Error('nope'));
+    vi.mocked(api.legacyTasks.list).mockRejectedValueOnce(new Error('still nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
     expect(await screen.findByText("Couldn't save that just now.")).toBeInTheDocument();
     expect(screen.queryByText(/refreshed/)).not.toBeInTheDocument();
@@ -323,7 +323,7 @@ describe('TasksWidget', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
       fireEvent.blur(input);
     });
-    await waitFor(() => expect(api.tasks.update).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.legacyTasks.update).toHaveBeenCalledTimes(1));
   });
 
   it('returns focus to the note text after an edit ends', async () => {
@@ -370,7 +370,7 @@ describe('TasksWidget', () => {
     });
     expect(await screen.findByText("Couldn't load your tasks.")).toBeInTheDocument();
     fail = false;
-    vi.mocked(api.tasks.create).mockRejectedValueOnce(new Error('nope'));
+    vi.mocked(api.legacyTasks.create).mockRejectedValueOnce(new Error('nope'));
     await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'Lab{Enter}');
     expect(
       await screen.findByText("Couldn't save that just now. Your list has been refreshed."),
@@ -383,7 +383,7 @@ describe('TasksWidget', () => {
     const api = setup([task(1, 'Essay'), task(2, 'Lab')]);
     await screen.findByRole('button', { name: 'Essay' });
     let land: (list: Task[]) => void = () => undefined;
-    vi.mocked(api.tasks.update).mockImplementationOnce(() => new Promise<Task[]>((r) => (land = r)));
+    vi.mocked(api.legacyTasks.update).mockImplementationOnce(() => new Promise<Task[]>((r) => (land = r)));
     await userEvent.click(screen.getByRole('checkbox', { name: 'Mark "Essay" as done' }));
     const add = screen.getByPlaceholderText('Add a task…');
     await userEvent.click(add);
@@ -403,8 +403,8 @@ describe('TasksWidget', () => {
     const api = setup([task(1, 'Old', { done: true, doneAt: 5 }), task(2, 'Two'), task(3, 'Three')]);
     await userEvent.click(await screen.findByRole('button', { name: /Done \(1\)/ }));
     await userEvent.click(screen.getByRole('checkbox', { name: 'Mark "Old" as not done' }));
-    expect(api.tasks.update).toHaveBeenCalledWith(1, { done: false });
-    await waitFor(() => expect(api.tasks.reorder).toHaveBeenCalledWith([2, 3, 1]));
+    expect(api.legacyTasks.update).toHaveBeenCalledWith(1, { done: false });
+    await waitFor(() => expect(api.legacyTasks.reorder).toHaveBeenCalledWith([2, 3, 1]));
     await waitFor(() => expect(noteTexts()[2]).toHaveTextContent('Old'));
   });
 });

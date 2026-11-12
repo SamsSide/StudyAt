@@ -70,7 +70,7 @@ export function TasksWidget() {
 
   const load = useCallback(async () => {
     try {
-      adopt(await window.studyat.tasks.list());
+      adopt(await window.studyat.legacyTasks.list());
     } catch {
       setLoadFailed(true);
     }
@@ -78,7 +78,7 @@ export function TasksWidget() {
 
   useEffect(() => {
     let live = true;
-    window.studyat.tasks.list().then(
+    window.studyat.legacyTasks.list().then(
       (list) => live && adopt(list),
       () => live && setLoadFailed(true),
     );
@@ -99,7 +99,7 @@ export function TasksWidget() {
       } catch {
         refocus.current = null;
         try {
-          setTasks(await window.studyat.tasks.list());
+          setTasks(await window.studyat.legacyTasks.list());
           // The list is on screen now, so an earlier "Couldn't load" no longer holds.
           setLoadFailed(false);
           setSaveError('refreshed');
@@ -120,18 +120,18 @@ export function TasksWidget() {
     const clean = clampTaskText(text);
     if (!clean) return;
     setText('');
-    void run(window.studyat.tasks.create({ text: clean, colour })).then((saved) => {
+    void run(window.studyat.legacyTasks.create({ text: clean, colour })).then((saved) => {
       // Never lose what was typed: it goes back in the box, unless Sam has typed something since.
       if (!saved) setText((now) => (now === '' ? clean : now));
     });
   };
 
   const editText = (task: Task, value: string): Promise<boolean> =>
-    run(window.studyat.tasks.update(task.id, { text: value }));
+    run(window.studyat.legacyTasks.update(task.id, { text: value }));
 
   const commitOrder = (ids: number[]) => {
     setTasks((prev) => withOrder(prev, ids));
-    void run(window.studyat.tasks.reorder(ids));
+    void run(window.studyat.legacyTasks.reorder(ids));
   };
 
   const move = (task: Task, delta: -1 | 1, control: string) => {
@@ -148,18 +148,18 @@ export function TasksWidget() {
   const tick = (task: Task) => {
     const next = open[open.findIndex((t) => t.id === task.id) + 1];
     refocus.current = next ? focusControl(next.id, 'check') : () => addRef.current;
-    void run(window.studyat.tasks.update(task.id, { done: true }));
+    void run(window.studyat.legacyTasks.update(task.id, { done: true }));
   };
 
   /** Un-ticked notes return to the end of the open list; focus follows the note there. */
   const untick = (task: Task) => {
     refocus.current = focusControl(task.id, 'check');
     void run(
-      window.studyat.tasks.update(task.id, { done: false }).then((list) => {
+      window.studyat.legacyTasks.update(task.id, { done: false }).then((list) => {
         const ids = openOf(list)
           .map((t) => t.id)
           .filter((id) => id !== task.id);
-        return window.studyat.tasks.reorder([...ids, task.id]);
+        return window.studyat.legacyTasks.reorder([...ids, task.id]);
       }),
     );
   };
@@ -196,7 +196,8 @@ export function TasksWidget() {
         e.currentTarget.releasePointerCapture(e.pointerId);
       setDragId(null);
       const ids = openOf(tasksRef.current).map((t) => t.id);
-      if (ids.some((id, i) => id !== dragStartIds.current[i])) void run(window.studyat.tasks.reorder(ids));
+      if (ids.some((id, i) => id !== dragStartIds.current[i]))
+        void run(window.studyat.legacyTasks.reorder(ids));
     },
   };
 
@@ -248,7 +249,7 @@ export function TasksWidget() {
                 onMove={move}
                 onToggle={tick}
                 onEditText={editText}
-                onColour={(n, c) => void run(window.studyat.tasks.update(n.id, { colour: c }))}
+                onColour={(n, c) => void run(window.studyat.legacyTasks.update(n.id, { colour: c }))}
               />
             ))}
           </ul>
@@ -271,7 +272,7 @@ export function TasksWidget() {
               <button
                 type="button"
                 className={styles.clear}
-                onClick={() => void run(window.studyat.tasks.clearDone())}
+                onClick={() => void run(window.studyat.legacyTasks.clearDone())}
               >
                 Clear done
               </button>
@@ -284,7 +285,7 @@ export function TasksWidget() {
                     task={t}
                     onToggle={untick}
                     onEditText={editText}
-                    onColour={(n, c) => void run(window.studyat.tasks.update(n.id, { colour: c }))}
+                    onColour={(n, c) => void run(window.studyat.legacyTasks.update(n.id, { colour: c }))}
                   />
                 ))}
               </ul>

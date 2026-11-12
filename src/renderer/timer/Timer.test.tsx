@@ -198,12 +198,11 @@ describe('Countdown', () => {
   it('adds Countdown to the mode control and picks it', async () => {
     render(<TimerWidget />);
     const bar = screen.getByRole('toolbar', { name: 'Timer mode' });
-    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      'Pomodoro',
-      'Short',
-      'Long',
-      'Countdown',
-    ]);
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Pomodoro', 'Short', 'Long', 'Countdown']);
     await userEvent.click(within(bar).getByRole('button', { name: 'Countdown' }));
     expect(api.timer.setMode).toHaveBeenCalledWith('countdown');
   });
@@ -213,13 +212,11 @@ describe('Countdown', () => {
     setup({ mode: 'countdown', remainingMs: 60 * 60_000 });
     render(<TimerWidget />);
     const bar = presetBar()!;
-    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      '30',
-      '45',
-      '60',
-      '90',
-      '120',
-    ]);
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['30', '45', '60', '90', '120']);
     await user.click(within(bar).getByRole('button', { name: '90' }));
     expect(api.settings.set).toHaveBeenLastCalledWith({ countdownMinutes: 90 });
     const field = within(bar).getByRole('spinbutton', { name: 'Countdown minutes' });
@@ -243,10 +240,13 @@ describe('Countdown', () => {
 });
 
 describe('TaskSelect', () => {
-
   it('lists "No task" then the not-done tasks in order, and picks one', async () => {
     const user = userEvent.setup();
-    vi.mocked(api.tasks.list).mockResolvedValue([task(1, 'Read ch. 3'), task(2, 'Old', true), task(3, 'Essay plan')]);
+    vi.mocked(api.legacyTasks.list).mockResolvedValue([
+      task(1, 'Read ch. 3'),
+      task(2, 'Old', true),
+      task(3, 'Essay plan'),
+    ]);
     render(<TimerWidget />);
     const box = screen.getByRole('combobox', { name: 'Task' });
     expect(box).toHaveTextContent('No task');
@@ -270,11 +270,11 @@ describe('TaskSelect', () => {
 
   it('a held task that is now done still shows its text while running', async () => {
     setup({ status: 'running', taskId: 2, taskText: 'Old' });
-    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Old', true)]);
+    vi.mocked(api.legacyTasks.list).mockResolvedValue([task(2, 'Old', true)]);
     render(<TimerWidget />);
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     await userEvent.click(screen.getByRole('combobox', { name: 'Task' }));
-    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
+    await waitFor(() => expect(api.legacyTasks.list).toHaveBeenCalled());
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     expect(api.timer.setTask).not.toHaveBeenCalled();
   });
