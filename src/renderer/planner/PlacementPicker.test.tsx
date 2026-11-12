@@ -39,10 +39,16 @@ function setup(): MockApi {
 }
 
 beforeEach(() => {
+  // Frozen at 2026-11-11 noon, so the planner's "today" never follows the real clock.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(2026, 10, 11, 12, 0, 0));
   resetPlannerStore();
   resetStudyStore();
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 const openAndType = async (user: ReturnType<typeof userEvent.setup>, value: string) => {
   await user.click(screen.getByRole('button', { name: /^Placement/ }));
@@ -70,7 +76,10 @@ describe('PlacementPicker date draft', () => {
     await openAndType(user, '2026-11-20');
     await user.click(screen.getByRole('button', { name: 'Today' }));
     await waitFor(() => expect(api.tasks.move).toHaveBeenCalledTimes(1));
-    expect(api.tasks.move).toHaveBeenCalledWith(1, { day: plannerToday(4), index: 0 });
+    expect(api.tasks.move).toHaveBeenCalledWith(1, {
+      day: plannerToday(DEFAULT_SETTINGS.rolloverHour),
+      index: 0,
+    });
   });
 
   it('lets a list win over a pending date draft', async () => {

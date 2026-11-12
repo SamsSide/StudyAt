@@ -238,6 +238,16 @@ function Popover({ task }: { task: PlannerTask }) {
     [],
   );
 
+  // aria-modal, but nothing behind is inert: a press outside closes it, as Esc does (the unmount
+  // above saves whatever is pending).
+  useEffect(() => {
+    const onDown = (e: PointerEvent): void => {
+      if (e.target instanceof Node && root.current && !root.current.contains(e.target)) closeDetail();
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [closeDetail]);
+
   // A dialog traps Tab and keeps its keys to itself: nothing behind it, shell shortcuts included,
   // sees a key pressed inside it. Esc closes (and the unmount saves). A picker's own Esc has
   // already stopped here.

@@ -42,8 +42,9 @@
   outline: 2px solid #9db4ff;
   outline-offset: 2px;
 }
-/* `button.` so these beat `.widget button:not(.row)` above; without it the accent fill was lost
-   and the dark text sat on grey glass, reading as disabled (P1, D9). */
+/* `button.` so these tie `.widget button:not(.row)` above on specificity and win on source order;
+   without it the accent fill was lost and the dark text sat on grey glass, reading as disabled
+   (P1, D9). */
 .widget button.primary {
   background: #7c9cff;
   color: #0b1020;
@@ -172,4 +173,14 @@
   .widget button {
     transition: background 120ms ease;
   }
+}
+
+/* Read out as the row's description (the due date and time); not drawn. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

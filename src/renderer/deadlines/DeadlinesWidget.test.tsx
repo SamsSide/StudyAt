@@ -56,7 +56,8 @@ afterEach(() => vi.useRealTimers());
 const open = async () => {
   const user = userEvent.setup();
   render(<DeadlinesWidget />);
-  await screen.findByRole('button', { name: '+ Add' });
+  // The list has answered (rows, or the empty copy) before a test reads it.
+  await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
   return user;
 };
 
@@ -71,7 +72,7 @@ describe('DeadlinesWidget', () => {
     // Eight seconds before the minute, so the imminent row reads 42m 08s.
     vi.setSystemTime(NOW - 8_000);
     await open();
-    const rows = screen.getAllByRole('listitem');
+    const rows = await screen.findAllByRole('listitem');
     expect(rows.map((r) => within(r).getByText(/^(Exam|CW)$/).textContent)).toEqual([
       'CW',
       'Exam',
@@ -229,6 +230,52 @@ describe('DeadlinesWidget', () => {
       }),
     );
     await waitFor(() => expect(screen.getByRole('button', { name: '+ Add' })).toHaveFocus());
+  });
+
+  it('never lets a slow list reply overwrite a newer result from a save', async () => {
+    const api = setup([deadline({ id: 7, title: 'Networks', due: '2030-01-01T09:00' })]);
+    const user = await open();
+    // The next list() (the window regains focus) stays pending until we say so.
+    let answer: (rows: Deadline[]) => void = () => undefined;
+    vi.mocked(api.deadlines.list).mockImplementationOnce(
+      () => new Promise<Deadline[]>((resolve) => (answer = resolve)),
+    );
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    const saved = deadline({ id: 7, title: 'Networks II', due: '2030-01-01T09:00' });
+    vi.mocked(api.deadlines.update).mockResolvedValueOnce({ upcoming: [saved], past: [] });
+    await user.click(screen.getByRole('button', { name: /Networks/ }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('button', { name: /Networks II/ })).toBeInTheDocument();
+    await act(async () => {
+      answer([deadline({ id: 7, title: 'Networks', due: '2030-01-01T09:00' })]);
+    });
+    expect(screen.getByRole('button', { name: /Networks II/ })).toBeInTheDocument();
+    expect(screen.queryByText('Networks')).not.toBeInTheDocument();
+  });
+
+  it('describes a row by its due date and time, leaving the name alone', async () => {
+    setup([deadline({ title: 'Report', kind: 'coursework', subjectId: 2, due: '2026-12-14T15:30' })]);
+    await open();
+    const row = screen.getByRole('button', { name: /^Report, Coursework/ });
+    expect(row).toHaveAccessibleDescription(/^Due .*14 Dec 2026.*15:30$/);
+    expect(row).not.toHaveAccessibleName(/15:30/);
+  });
+
+  it('returns focus to the edited row after a successful Save', async () => {
+    const api = setup([deadline({ id: 7, title: 'Networks', due: '2030-01-01T09:00' })]);
+    vi.mocked(api.deadlines.update).mockResolvedValueOnce({
+      upcoming: [deadline({ id: 7, title: 'Networks II', due: '2030-01-01T09:00' })],
+      past: [],
+    });
+    const user = await open();
+    await user.click(screen.getByRole('button', { name: /Networks/ }));
+    const title = screen.getByLabelText('Title');
+    await user.clear(title);
+    await user.type(title, 'Networks II');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Networks II/ })).toHaveFocus());
   });
 
   it('marks a done deadline not done', async () => {

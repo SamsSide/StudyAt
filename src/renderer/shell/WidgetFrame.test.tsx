@@ -516,6 +516,31 @@ describe('WidgetFrame outside settings (image widgets, spec §3.6)', () => {
     expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
   });
 
+  it('a press on a form label inside a bare body never starts a drag', () => {
+    const onPatch = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Note" chrome="bare" pos={imagePos} onPatch={onPatch}>
+        <label>
+          <span>Pick one</span>
+          <input type="checkbox" />
+        </label>
+      </WidgetFrame>,
+    );
+    const group = screen.getByRole('group', { name: 'Note' });
+    const left = group.style.left;
+    fireEvent.pointerDown(screen.getByText('Pick one'), {
+      clientX: 960,
+      clientY: 560,
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(group.style.left).toBe(left);
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
   it('a bare body with controls is no button: its button clicks, its input types, its arrows stay put', async () => {
     const user = userEvent.setup();
     const onPatch = vi.fn();

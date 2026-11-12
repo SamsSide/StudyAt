@@ -114,6 +114,9 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
 export function ChimesSection({ settings, update }: SectionProps) {
   const volumeId = useId();
   const [files, setFiles] = useState<Sound[]>([]);
+  // The running countdown preview's cancel: a new preview, or leaving the section, stops it first.
+  const stopPreview = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopPreview.current?.(), []);
   // The slider follows the finger; the save waits until it settles. While a value is waiting or
   // saving, an older answer from main never pulls the slider back; once the last save lands the
   // slider takes main's value, so a failed save shows what is really stored.
@@ -229,7 +232,10 @@ export function ChimesSection({ settings, update }: SectionProps) {
         <button
           type="button"
           className={styles.button}
-          onClick={() => playCountdownPreview({ ...settings, chimeVolume: volume })}
+          onClick={() => {
+            stopPreview.current?.();
+            stopPreview.current = playCountdownPreview({ ...settings, chimeVolume: volume });
+          }}
         >
           Preview
         </button>

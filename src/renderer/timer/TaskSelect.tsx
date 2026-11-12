@@ -15,13 +15,13 @@ type Group = 'Today' | 'This week' | 'Lists';
 type Choice = { id: number | null; text: string; group: Group | null };
 
 const NO_TASK: Choice = { id: null, text: 'No task', group: null };
-/** Room the list needs below the box before it opens upwards instead. */
-const LIST_ROOM = 340;
 /** The options' tallest (as `.taskOptions` in timer.module.css) and shortest height, in CSS px. */
 const OPTIONS_MAX = 7 * 34 + 3 * 22;
 const OPTIONS_MIN = 2 * 34;
 /** What the open list adds around its options: the find box, gaps, padding and the window edge. */
 const LIST_CHROME = 72;
+/** The room, in CSS px, that shows the whole list. */
+const LIST_ROOM = OPTIONS_MAX + LIST_CHROME;
 
 type Found = { today: PlannerTask[]; week: PlannerTask[]; lists: PlannerTask[] };
 const EMPTY: Found = { today: [], week: [], lists: [] };
@@ -92,12 +92,15 @@ export function TaskSelect() {
 
   const show = (): void => {
     const rect = box.current?.getBoundingClientRect();
-    const up = rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight;
-    setUpwards(up);
     // The widget is drawn scaled (WidgetFrame), so window pixels become CSS pixels by its scale.
     const drawn = box.current?.offsetHeight ?? 0;
     const scale = rect !== undefined && drawn > 0 && rect.height > 0 ? rect.height / drawn : 1;
-    const room = rect === undefined ? Infinity : (up ? rect.top : window.innerHeight - rect.bottom) / scale;
+    const below = rect === undefined ? Infinity : (window.innerHeight - rect.bottom) / scale;
+    const above = rect === undefined ? 0 : rect.top / scale;
+    // Down when the whole list fits; otherwise towards the side with more room.
+    const up = below < LIST_ROOM && above > below;
+    setUpwards(up);
+    const room = up ? above : below;
     setOptionsMax(Math.max(OPTIONS_MIN, Math.min(OPTIONS_MAX, room - LIST_CHROME)));
     setFilter('');
     setFailed(null);

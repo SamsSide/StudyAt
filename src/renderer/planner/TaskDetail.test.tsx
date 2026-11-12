@@ -490,6 +490,23 @@ describe('TaskDetail', () => {
     expect(api.tasks.update).toHaveBeenCalledWith(1, { note: 'Half a thought' });
   });
 
+  it('closes on a press outside the dialog, saving a draft first, and not on a press inside', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    const outside = document.createElement('button');
+    outside.textContent = 'Behind';
+    document.body.append(outside);
+    await user.type(screen.getByLabelText('Note'), 'Half a thought');
+    await user.click(screen.getByLabelText('Title'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await user.click(outside);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(usePlannerStore.getState().detailTaskId).toBeNull();
+    expect(api.tasks.update).toHaveBeenCalledTimes(1);
+    expect(api.tasks.update).toHaveBeenCalledWith(1, { note: 'Half a thought' });
+    outside.remove();
+  });
+
   it('saves a title being typed when Close is clicked, once', async () => {
     const user = userEvent.setup();
     const { api } = setup();

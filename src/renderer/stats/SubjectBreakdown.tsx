@@ -50,7 +50,7 @@ export function SubjectBreakdown({ revision, className }: { revision: number; cl
       {query.status === 'error' && (
         <LoadError message="Couldn’t load your subjects." onRetry={query.reload} />
       )}
-      {totals && totals.length === 0 && <p className={styles.empty}>No focus time in this range yet.</p>}
+      {totals && totals.length === 0 && <p className={styles.empty}>No focus time in this range yet</p>}
       {totals && totals.length > 0 && (
         <ul className={styles.subjects}>
           {totals.map((t) => (

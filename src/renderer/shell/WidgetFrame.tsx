@@ -118,7 +118,7 @@ const windowBox = (): Box => ({ w: window.innerWidth, h: window.innerHeight });
 
 /** What inside a bare body keeps its own pointer and keys. */
 const OWN_INPUT =
-  'button, a[href], input, select, textarea, [contenteditable]:not([contenteditable="false"]), [data-no-drag]';
+  'button, a[href], input, select, textarea, label, [contenteditable]:not([contenteditable="false"]), [data-no-drag]';
 
 /** The event is aimed at a control inside `body` (not at the body itself). */
 const atControl = (target: EventTarget, body: Element): boolean => {

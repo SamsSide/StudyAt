@@ -363,7 +363,7 @@ describe('SubjectBreakdown', () => {
 
   it('says so kindly when the range is empty', async () => {
     render(<SubjectBreakdown revision={0} />);
-    expect(await screen.findByText('No focus time in this range yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No focus time in this range yet')).toBeInTheDocument();
   });
 });
 

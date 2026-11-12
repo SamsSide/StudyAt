@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -293,20 +293,41 @@ describe('TaskSelect', () => {
     expect(api.timer.setTask).toHaveBeenCalledWith(4);
   });
 
-  it('the open task list scrolls within the room the window has, measured at the widget scale', async () => {
+  /** Opens the task list for a box drawn at half size (so CSS px are twice window px). */
+  const openAt = async (top: number, innerHeight: number) => {
     const user = userEvent.setup();
     seedPlanner();
     render(<TimerWidget />);
     const box = screen.getByRole('combobox', { name: 'Task' });
-    // Drawn at half size near the window's foot, so it opens upwards into 120 window px above the
-    // box: 120 / 0.5 - 72 = 168 CSS px.
     Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 32 });
     vi.spyOn(box, 'getBoundingClientRect').mockReturnValue(
-      DOMRect.fromRect({ x: 0, y: 120, width: 100, height: 16 }),
+      DOMRect.fromRect({ x: 0, y: top, width: 100, height: 16 }),
     );
-    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(366);
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(innerHeight);
     await user.click(box);
-    expect(screen.getByRole('listbox', { name: 'Task' })).toHaveStyle({ maxHeight: '168px' });
+    return screen.getByRole('listbox', { name: 'Task' });
+  };
+
+  it('the open task list scrolls within the room the window has, measured at the widget scale', async () => {
+    // Below: (300 - 196) / 0.5 = 208 CSS px, short of the 376 the list wants; above: 180 / 0.5 = 360.
+    // So it opens upwards into 360 - 72 = 288 CSS px.
+    const list = await openAt(180, 300);
+    expect(list).toHaveStyle({ maxHeight: '288px' });
+    expect(list.parentElement?.className).toMatch(/upwards/i);
+  });
+
+  it('opens downwards when the room below fits the whole list, even with more above', async () => {
+    // Below: (500 - 196) / 0.5 = 608 CSS px; above: 180 / 0.5 = 360.
+    const list = await openAt(180, 500);
+    expect(list).toHaveStyle({ maxHeight: '304px' });
+    expect(list.parentElement?.className).not.toMatch(/upwards/i);
+  });
+
+  it('opens towards the side with more room when neither fits the whole list', async () => {
+    // Below: (150 - 36) / 0.5 = 228 CSS px, short of 376; above: 20 / 0.5 = 40. So down, into 228 - 72 = 156.
+    const list = await openAt(20, 150);
+    expect(list).toHaveStyle({ maxHeight: '156px' });
+    expect(list.parentElement?.className).not.toMatch(/upwards/i);
   });
 
   it('typing filters the titles', async () => {
@@ -414,6 +435,20 @@ describe('IntentionField and OutcomeAsk', () => {
       useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, intention: 'From main' } });
     });
     expect(field()).toHaveValue('From main');
+  });
+
+  it('refuses an insert past the cap instead of dropping the end', () => {
+    render(<TimerWidget />);
+    const full = 'a'.repeat(INTENTION_MAX - 1) + 'z';
+    fireEvent.change(field(), { target: { value: full } });
+    expect(field()).toHaveValue(full);
+    // One more character in the middle would push the final 'z' off the end: the change is refused.
+    fireEvent.change(field(), { target: { value: 'a'.repeat(10) + 'X' + full.slice(10) } });
+    expect(field()).toHaveValue(full);
+    // Emoji count as one each.
+    const emoji = '😀'.repeat(INTENTION_MAX);
+    fireEvent.change(field(), { target: { value: emoji } });
+    expect(field()).toHaveValue(emoji);
   });
 
   it('has the placeholder, and Enter saves the text', async () => {

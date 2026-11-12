@@ -93,6 +93,13 @@ describe('NoteStickies (v1.2 spec §3.2)', () => {
     expect(screen.getByRole('button', { name: 'Move Shopping' })).toBeInTheDocument();
   });
 
+  it('names the text box "Note text", whatever has been typed', async () => {
+    await renderStickies([note(1, 'Shopping\nmilk')]);
+    const box = screen.getByRole('textbox', { name: 'Note text' });
+    fireEvent.change(box, { target: { value: 'Something else\nentirely' } });
+    expect(screen.getByRole('textbox', { name: 'Note text' })).toBe(box);
+  });
+
   it('typing saves 500 ms after it stops, through notes.update', async () => {
     const api = await renderStickies([note(1, 'Shopping\nmilk')]);
     const box = screen.getByDisplayValue(/Shopping/);

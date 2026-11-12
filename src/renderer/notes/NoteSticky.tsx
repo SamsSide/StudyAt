@@ -185,7 +185,7 @@ export function NoteSticky({ note }: { note: Note }) {
     >
       <textarea
         className={`${notes.text} ${styles.text}`}
-        aria-label={`Note: ${title}`}
+        aria-label="Note text"
         placeholder="Write a note…"
         maxLength={MAX_NOTE_LENGTH}
         spellCheck

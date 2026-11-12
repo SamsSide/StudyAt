@@ -47,8 +47,12 @@ export function IntentionField() {
       placeholder="By the end I will…"
       value={shown}
       onFocus={() => setEdit({ ...edit, sent: null })}
-      // Capped in code points, not UTF-16 units, so an emoji counts as one.
-      onChange={(e) => setEdit({ ...edit, draft: [...e.target.value].slice(0, INTENTION_MAX).join('') })}
+      // Capped in code points, not UTF-16 units, so an emoji counts as one. A value over the cap is
+      // refused whole (the draft stays), so an insert in the middle never drops the end.
+      onChange={(e) => {
+        if ([...e.target.value].length > INTENTION_MAX) return;
+        setEdit({ ...edit, draft: e.target.value });
+      }}
       onBlur={(e) => commit(e.target.value, true)}
       onKeyDown={(e) => {
         // Stop here, so the in-app shortcuts (Space, R...) leave typing alone.
