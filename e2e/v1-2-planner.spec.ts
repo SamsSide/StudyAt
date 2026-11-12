@@ -756,6 +756,90 @@ test('board list menu: scrolling its ⋯ under the board header closes it', asyn
   await shot(win, 't35-7-list-menu-under-header.png');
 });
 
+test('deadlines: deleted or marked done in the widget, they leave the open board, chips and exam line', async ({ launch }) => {
+  const { win } = await launch();
+  await prepare(win);
+  const comp2221 = await subjectId(win, 'COMP2221');
+  const aiList = (await win.evaluate(() => window.studyat.planner.lists())).lists.find((l) => l.subjectId === comp2221);
+  if (!aiList) throw new Error('no COMP2221 list');
+  // Tomorrow by the calendar, so every due time is ahead of now whatever the hour (rollover too).
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  const date = localParts(t.getTime()).date;
+  const day = studyDay(new Date(`${date}T12:00`).getTime());
+  const made = await win.evaluate(
+    async (d) => [
+      await window.studyat.deadlines.create({ title: 'COMP2221 mock exam', kind: 'exam', subjectId: d.s, due: `${d.date}T10:00` }),
+      await window.studyat.deadlines.create({ title: 'COMP2221 class test', kind: 'exam', subjectId: d.s, due: `${d.date}T14:00` }),
+      await window.studyat.deadlines.create({ title: 'Stays: essay plan', kind: 'coursework', subjectId: null, due: `${d.date}T16:00` }),
+    ],
+    { s: comp2221, date },
+  );
+  expect(made).toHaveLength(3);
+  await reload(win);
+  await win.locator('nav[aria-label="Dock"]').getByRole('button', { name: /^Widgets/ }).first().click();
+  const sw = win.getByRole('dialog', { name: 'Widgets' }).getByRole('switch', { name: 'Deadlines', exact: true });
+  if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click();
+  await expect(sw).toHaveAttribute('aria-checked', 'true');
+  await win.keyboard.press('Escape');
+  await expect(win.getByRole('dialog', { name: 'Widgets' })).toBeHidden();
+  const dw = widget(win, 'Deadlines');
+  await expect(dw.locator('li').filter({ hasText: 'COMP2221 class test' })).toBeVisible();
+
+  const board = await openBoard(win);
+  await boardView(board, 'Week');
+  if (weekStartOf(day) !== weekStartOf(studyDay(Date.now()))) await board.getByRole('button', { name: 'Next week' }).click();
+  const head = daySection(board, day).locator('header');
+  const card = board.locator(`section[aria-label="${aiList.name}"]`);
+  for (const title of ['COMP2221 mock exam', 'COMP2221 class test', 'Stays: essay plan']) await expect(head).toContainText(title);
+  await expect(card).toContainText('Exam in 1 day');
+  await shot(win, 'f3-deadlines-board-before.png');
+
+  // The board's scrim covers the widgets, so the widget's buttons get DOM clicks in the page; the
+  // board stays open throughout, so whatever clears it is the widget's refresh, not a reopen.
+  const hit = await dw.evaluate((n) => {
+    const r = n.getBoundingClientRect();
+    return n.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  });
+  test.info().annotations.push({ type: 'widget under the board', description: `hit-test reaches the widget: ${hit}` });
+  const press = async (l: Locator): Promise<void> => {
+    await expect(l).toHaveCount(1);
+    await l.dispatchEvent('click');
+  };
+  const dRow = (title: string) => dw.locator('li').filter({ hasText: title }).getByRole('button').first();
+
+  // Delete the earlier exam: its chip goes; the later exam keeps the line.
+  await press(dRow('COMP2221 mock exam'));
+  await press(dw.getByRole('button', { name: 'Delete', exact: true }));
+  await press(dw.getByRole('group', { name: 'Confirm delete' }).getByRole('button', { name: 'Yes, delete' }));
+  await expect(dw.getByRole('form')).toHaveCount(0);
+  await expect(head).not.toContainText('COMP2221 mock exam');
+  await expect(head).toContainText('COMP2221 class test');
+  await expect(card).toContainText('Exam in 1 day');
+
+  // Mark the other exam done: its chip and the exam line go; the coursework chip stays.
+  await press(dRow('COMP2221 class test'));
+  await press(dw.getByRole('button', { name: 'Mark done', exact: true }));
+  await expect(dw.getByRole('form')).toHaveCount(0);
+  await expect(head).not.toContainText('COMP2221 class test');
+  await expect(card).not.toContainText(/Exam (in \d+ days?|today)/);
+  await expect(head).toContainText('Stays: essay plan');
+  await expect(board).toBeVisible();
+  await shot(win, 'f3-deadlines-board-after.png');
+
+  // Provenance: main holds the delete and the done.
+  const all = await win.evaluate(async () => [
+    ...(await window.studyat.deadlines.list({ past: false })),
+    ...(await window.studyat.deadlines.list({ past: true })),
+  ]);
+  const byTitle = (title: string) => all.filter((d) => d.title === title);
+  test.info().annotations.push({ type: 'main after', description: JSON.stringify(all.map((d) => [d.title, d.done])) });
+  expect(byTitle('COMP2221 mock exam')).toHaveLength(0);
+  expect(byTitle('COMP2221 class test').length).toBeGreaterThan(0);
+  expect(byTitle('COMP2221 class test').every((d) => d.done)).toBe(true);
+  expect(byTitle('Stays: essay plan').some((d) => !d.done)).toBe(true);
+});
+
 test('pop-ups over another widget: the timer task picker and the stats menu are opaque and on top', async ({ launch }) => {
   const { win } = await launch();
   await prepare(win);
