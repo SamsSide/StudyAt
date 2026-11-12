@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { dayKeyOf } from '../../core/time';
 import type { Db } from '../db/db';
+import { plannerTasksRepo } from '../db/repos/plannerTasks';
 import { recapsRepo } from '../db/repos/recaps';
 import { sessionsRepo } from '../db/repos/sessions';
 import { subjectsRepo } from '../db/repos/subjects';
@@ -197,5 +198,72 @@ describe('recapsService', () => {
   it('computes nothing without any sessions', () => {
     const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
     expect(recapsService({ db, stats }).computePending(WED)).toBeNull();
+  });
+
+  it('card total today adds the live running row', () => {
+    const running = sessionsRepo(db).insertRunning({
+      pomodoroId: 'live',
+      subjectId: null,
+      taskId: null,
+      taskText: null,
+      startedAt: WED - 12 * MIN,
+      dayKey: dayKeyOf(WED, 4),
+    });
+    sessionsRepo(db).checkpoint(running.id, 5 * MIN, WED - 7 * MIN);
+    const stats = statsService({ db, now: () => WED, liveTodayMs: () => 12 * MIN });
+    const card = stats.card('total', 'today');
+    expect(card.card).toBe('total');
+    if (card.card === 'total') expect(card.totalMs).toBe(12 * MIN);
+  });
+
+  describe('card estimates', () => {
+    /** A finished focus row of `minutes` on `taskId`, on the day `start` falls in. */
+    function addTaskSession(start: number, minutes: number, taskId: number): void {
+      const repo = sessionsRepo(db);
+      const row = repo.insertRunning({
+        pomodoroId: `t${start}`,
+        subjectId: null,
+        taskId,
+        taskText: null,
+        startedAt: start,
+        dayKey: dayKeyOf(start, 4),
+      });
+      repo.close(row.id, start + minutes * MIN, minutes * MIN, 0);
+    }
+    const TUE = new Date(2026, 10, 10, 10, 0).getTime();
+
+    it('uses done tasks with an estimate and their sessions', () => {
+      const subject = subjectsRepo(db).create({ name: 'COMP2261 Algorithms', colour: '#112233' });
+      const tasks = plannerTasksRepo(db);
+      const task = tasks.create({ title: 'Problem set', day: '2026-11-10', listId: null, estimateMin: 30, subjectId: subject.id }, WED);
+      tasks.update(task.id, { done: true }, WED);
+      addTaskSession(TUE, 45, task.id);
+      const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
+      const card = stats.card('estimates', 'week');
+      expect(card.card).toBe('estimates');
+      if (card.card !== 'estimates') return;
+      expect(card.tasks).toBe(1);
+      expect(card.ratio).toBe(1.5);
+      expect(card.bySubject[0]?.label).toBe('COMP2261');
+    });
+
+    it('leaves out an open task even with an estimate and sessions', () => {
+      const tasks = plannerTasksRepo(db);
+      const open = tasks.create({ title: 'Open one', day: '2026-11-10', listId: null, estimateMin: 30 }, WED);
+      addTaskSession(TUE, 45, open.id);
+      const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
+      const card = stats.card('estimates', 'week');
+      if (card.card !== 'estimates') throw new Error('wrong card');
+      expect(card.tasks).toBe(0);
+      expect(card.ratio).toBeNull();
+    });
+  });
+
+  it('card subjects and goal run over the same rows', () => {
+    addSession(WED - 3 * 3_600_000, 30);
+    const stats = statsService({ db, now: () => WED, liveTodayMs: () => 30 * MIN });
+    expect(stats.card('subjects', 'today').card).toBe('subjects');
+    const goal = stats.card('goal', 'week');
+    expect(goal.card).toBe('goal');
   });
 });
