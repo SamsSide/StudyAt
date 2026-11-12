@@ -504,3 +504,78 @@ test('the grip is hidden at rest and on hover, and shows on keyboard focus', asy
   expect(focused.w).toBeGreaterThan(8);
   await shot(win, '08-grip-keyboard-focus.png');
 });
+
+// ---------------------------------------------------------------------------------------------
+// 6. Esc during a mouse drag cancels it and nothing else (final-fix-1, bec2cd6).
+
+/** Presses the title and moves toward `target` until the drag is live and well on its way; the
+ *  button stays held. The caller presses Esc and releases. */
+async function holdDrag(win: Page, title: Locator, target: Locator, overlay: boolean): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
+  await title.scrollIntoViewIfNeeded();
+  await sleep(300);
+  const start = await title.evaluate((n) => {
+    const r = n.getClientRects()[0]!;
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  const b = await target.boundingBox();
+  if (!b) throw new Error('no target box');
+  await win.mouse.move(start.x, start.y);
+  await win.mouse.down();
+  await win.mouse.move(start.x + 8, start.y + 8, { steps: 4 });
+  await expect(win.locator('li[data-dragging="true"]').first()).toBeAttached();
+  if (overlay) await expect(win.locator('[data-drag-overlay]')).toBeVisible();
+  await win.mouse.move(b.x + b.width / 2, b.y + 30, { steps: 20 });
+  await sleep(300);
+}
+
+test('board: Esc during a mouse drag cancels it, keeps the board open and the task where it was', async ({ launch }) => {
+  const { win } = await launch();
+  await prepare(win);
+  const { mon, thu } = week();
+  const [id] = await seed(win, [{ title: 'Esc drag', day: mon }]);
+  await reload(win);
+  const board = await openBoard(win);
+  await expect(rowOf(daySection(board, mon), 'Esc drag')).toBeVisible();
+
+  await holdDrag(win, titleOf(daySection(board, mon), 'Esc drag'), daySection(board, thu), true);
+  await expect(win.locator('[data-drag-overlay]')).toBeVisible(); // provenance: live at the moment of Esc
+  await win.keyboard.press('Escape');
+  await win.mouse.up();
+  await sleep(500);
+
+  await expect(boardOf(win)).toBeVisible();
+  await expect(win.locator('li[data-dragging="true"]')).toHaveCount(0);
+  expect((await taskOf(win, id!))?.day).toBe(mon);
+  expect(await dayTitles(win, thu)).not.toContain('Esc drag');
+  await sleep(500);
+  await expect(win.getByRole('dialog', { name: 'Task: Esc drag' })).toBeHidden();
+  await expect(rowOf(daySection(boardOf(win), mon), 'Esc drag')).toBeVisible();
+  await calm(win);
+  await shot(win, '14-esc-cancelled-drag.png');
+
+  // With no drag live, Esc still closes the board.
+  await win.keyboard.press('Escape');
+  await expect(boardOf(win)).toBeHidden();
+});
+
+test('widget Week: Esc during a mouse drag cancels it and the widget stays open', async ({ launch }) => {
+  const { win } = await launch();
+  await prepare(win);
+  const mon = addDays(weekStartOf(studyDay(Date.now())), 7);
+  const tue = addDays(mon, 1);
+  const [id] = await seed(win, [{ title: 'Widget esc', day: mon }]);
+  await reload(win);
+  const w = await openTasks(win, 'Week');
+  await w.getByRole('button', { name: 'Next week', exact: true }).click();
+  await expect(rowOf(daySection(w, mon), 'Widget esc')).toBeVisible();
+  const title = rowOf(daySection(w, mon), 'Widget esc').getByRole('button', { name: 'Widget esc', exact: true });
+  await holdDrag(win, title, daySection(w, tue), false);
+  await win.keyboard.press('Escape');
+  await win.mouse.up();
+  await sleep(500);
+  await expect(w).toBeVisible();
+  await expect(win.locator('li[data-dragging="true"]')).toHaveCount(0);
+  expect((await taskOf(win, id!))?.day).toBe(mon);
+  await expect(win.getByRole('dialog', { name: 'Task: Widget esc' })).toBeHidden();
+});
