@@ -138,3 +138,80 @@ Every ruling, with its reason and cost, is in the build ledger
 Left as small display-only follow-ups: board deadline pruning uses the default rollover hour if
 it runs before settings load; a few tests could pin rollover-boundary and unmount cases. None
 touches study time or data.
+
+## 8. Tweek board feel (2026-11-12)
+
+A follow-up pass on the same branch. Spec
+[2026-11-12-tweek-board-feel-design.md](../specs/2026-11-12-tweek-board-feel-design.md), plan
+[2026-11-12-tweek-board-feel.md](2026-11-12-tweek-board-feel.md); commits `c1cc2ad..2341762`.
+Renderer only: no schema, IPC, settings or accounting change.
+
+What changed: a task drags by its whole line (board and widget; the `Move "<title>"` grip shows
+only on keyboard focus); one click opens a small Tweek card, top centre over a dimmed backdrop,
+with Expand for the full detail; a click on any blank board line (day, list, Inbox, board Day)
+types a task there, Enter keeps typing on the next line, Esc clears it; board add lines show no
+text. Esc during a mouse drag puts the task back and keeps the board open.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| `./check.sh` (WSL, whole tree) | **green**: 116 test files, **1773 tests** (1726 before this pass) |
+| `e2e/v1-2-tweek-feel.spec.ts` on Windows, `--repeat-each=2` | **24 passed** (incl. the widget drag pinned to a Sunday and a Monday) |
+| Whole Playwright suite on Windows | **59 passed, 1 failed, 4 skipped**: the failure is `shortcuts.spec.ts` (your StudyAt.exe holds Ctrl+Alt+P); the skips are screenshot-only specs |
+
+Every task was reviewed by `study-review`, and a final review covered the whole pass. Every
+acceptance criterion in spec §9 is met; each e2e drag checks main's state, not only the screen.
+
+### Screenshots
+
+On Windows under `C:\Users\samue\studyat-shots\v1-2-tweek\`: `01-board-blank-lines`,
+`02-add-line-focused`, `03-two-typed`, `04-drag-mid`, `05-quick-card`, `06-card-repeat-menu`,
+`07-expanded`, `08-grip-keyboard-focus`, `09-widget-card`, `10a-card` / `10b-expanded`,
+`11-card-task-menu-delete` (short window, not clipped), `12-day-add-line-blank` /
+`12b-day-add-line-focused`, `13-grip-at-rest` / `13b-grip-hovered`, `14-esc-cancelled-drag`.
+The board shots re-taken by the shell spec are in `v1-2-tweek-full\`.
+
+### Your hand-walk
+
+Run `scripts/win.sh npm run dev` (same data-folder note as §4).
+
+- [ ] 1. Open the board (B). Click a blank line halfway down Friday: a field appears on Friday's
+  first empty line. Type "Lecture 5 notes #lecture ~1h", Enter, then "Anki", Enter. Both appear;
+  the field is still active below them.
+- [ ] 2. Click a blank line in the Inbox column: same. Press Esc: the field clears and the board
+  stays open.
+- [ ] 3. Grab "Anki" by its text and drag it to Monday, then into a list, then back to Friday.
+  Mid-drag once, press Esc: it goes back and the board stays open.
+- [ ] 4. Click "Lecture 5 notes" once: the small card opens at the top, board dimmed. Add a note,
+  add a tag, pick a subject, set a colour, set a reminder. Close with Esc; reopen: all kept.
+- [ ] 5. Press Expand: the full detail of the same task. Close. (Type in the note, then press
+  Expand straight away: does the note flicker back for a moment?)
+- [ ] 6. In the widget (T), drag a task between two days in Week, and click one to see the card.
+- [ ] 7. Tab to a row's title and press Tab once more to its grip: it shows, Space lifts, arrows
+  move, Space drops.
+
+### Look calls for you
+
+- **Focused add line** (`02`, `03`): it shows the app's blue focus ring as a box as well as the
+  fill. Tweek shows only a soft fill. Keep the ring, or fill only?
+- **Board Day add line** (`12`, `12b`): no underline at rest, a boxed field when focused.
+- **Expand width** (`10a`, `10b`): the card is 420 px, the full detail 400 px, so the panel
+  narrows slightly on Expand. Match them?
+- **Two Start focus buttons on the card:** ▶ closes the card; the ⋯ menu's Start focus leaves it
+  open. Same for both?
+- **Compact rows** (`03`): "Lecture 5 notes" puts its `0m / 1h` chip on a second line (the row
+  layout is from v1.2, not this pass).
+
+### Rulings
+
+All are in the ledger `.claude/ledger/2026-11-12-tweek-board-feel/progress.md` (git-ignored). The
+ones you can see:
+- The grabbing cursor shows during any drag, the widget included (spec §3.2), so its rule keys on
+  the dragged row, not only the board's overlay.
+- Esc during a mouse drag is claimed by the drag, so it never closes the board (spec §7). dnd-kit
+  alone did not do this.
+- The card's icon bar uses drawn icons (they tint with the accent when set); the Reminder panel
+  is a group with a time field and Clear; the card's ⋯ menu opens upwards.
+- Left for later: keep the card's half-typed text across Expand without a round trip; a few
+  extra tests listed in the ledger. None touches study time or data.

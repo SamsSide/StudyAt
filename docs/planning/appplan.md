@@ -234,7 +234,10 @@ only), reminder (`HH:MM`; dated tasks only), and a kind (task or revision).
 
 **Quick add.** Any add row parses `#tag`, `~45m` / `~1h30m` (estimate) and `@text` (the first
 subject whose name contains it): `Lecture 5 notes #lecture ~1h @2221` gives a titled task with
-tag, 60 min and COMP2221. On the board the add rows just say "Add…".
+tag, 60 min and COMP2221. On the board the add lines show no text: a click on any blank ruled
+line of a day column, a list column (the Inbox included) or the board Day sheet focuses that
+column's add line, which fills in when focused. Enter adds the task and keeps typing on the next
+line; Esc clears the line without closing the board.
 
 **Done and repeat.** Ticking strikes a task through and sinks it below the open ones; done tasks
 stay put and clear per list. Ticking a repeating task creates the next copy on the next matching
@@ -257,9 +260,20 @@ exam are dropped and one is added the day before. Revision tasks never offer rev
 
 **Widget** (dock Tasks, `T`): tabs **Day · Week · Lists**, a subject/tag filter and Expand (**B**).
 Rows show a checkbox, title, then chips (subject dot, estimate against actual "32m / 45m", amber
-once over, subtasks "2/5", tags, repeat, reminder), with ▶ and a drag grip on hover. A row opens
-the **detail popover**: placement, title, note, subtasks, subject, estimate, tags, colour, repeat,
-reminder, "Focused: 32m", and a menu (Start focus, Schedule revision…, Duplicate, Delete).
+once over, subtasks "2/5", tags, repeat, reminder), with ▶ on hover. A task is dragged by its
+whole line (on the board and in the widget); from the keyboard, Tab to its `Move "<title>"` grip,
+which shows only on keyboard focus, then Space, arrows, Space. A click within 250 ms of a drag
+ending is ignored, so a drop never opens the task.
+
+One click on a task opens the **quick card**, Tweek-style: top centre over a dimmed backdrop, with
+placement, Expand and close; the title with a round done check; a note ("Add some extra notes
+here…"); a chip row (subject, estimate, tags, "Focused 32m"); subtasks; and an icon bar (Add
+subtask, Repeat, Colour, Reminder, Start focus, and the task menu). Repeat and Reminder are off
+for a list task. **Expand** switches the same dialog to the full **detail popover**: placement,
+title, note, subtasks, subject, estimate (with custom), tags, colour, repeat (with every N days),
+reminder, "Focused: 32m", and a menu (Start focus, Schedule revision…, Duplicate, Delete, confirmed
+in place). Both save as you edit; Esc or a press on the backdrop closes either and keeps what was
+typed.
 
 **Board** (overlay, **B**, closed with Esc), styled like Tweek, with drag and drop between any
 day and list (insertion marker, and a solid drag card held at the grab point; the detail
