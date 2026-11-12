@@ -187,6 +187,7 @@ test('board: inset 24 px, quick add, pointer drags list→day and day→day, reo
     { title: 'Reorder second', day: mon, estimateMin: 30 },
     { title: 'Network layer summary', day: addDays(mon, 1), estimateMin: 30 },
     { title: 'Stays on Wednesday', day: addDays(mon, 2) },
+    { title: 'Type classes reading', listId: aiList, estimateMin: 30 },
   ]);
   await reload(win);
 
@@ -251,12 +252,14 @@ test('board: inset 24 px, quick add, pointer drags list→day and day→day, reo
   await expect.poll(async () => (await taskOf(win, dayDrag!))?.day).toBe(wed);
   await expect(rowOf(daySection(board, wed), 'Network layer summary')).toBeVisible();
 
-  // Reorder within Monday: the second above the first.
+  // Reorder within Monday: the second above the first. Only the pair is compared, because on a
+  // Monday the quick-added "Lecture 5 notes" shares the day (any weekday passes).
+  const pair = (titles: string[]) => titles.map((t) => t.trim()).filter((t) => t.startsWith('Reorder '));
   const firstBox = await rowOf(daySection(board, mon), 'Reorder first').boundingBox();
   await pointerDrag(win, grip(daySection(board, mon), 'Reorder second'), { x: firstBox!.x + firstBox!.width / 2, y: firstBox!.y + 3 });
-  await expect.poll(() => dayTitles(win, mon)).toEqual(['Reorder second', 'Reorder first']);
+  await expect.poll(async () => pair(await dayTitles(win, mon))).toEqual(['Reorder second', 'Reorder first']);
   const domOrder = await daySection(board, mon).locator('li[data-task-id] span[role="button"]').allInnerTexts();
-  expect(domOrder.map((t) => t.trim())).toEqual(['Reorder second', 'Reorder first']);
+  expect(pair(domOrder)).toEqual(['Reorder second', 'Reorder first']);
 
   // Released outside every column (over the board's header): nothing moves.
   const head = await board.getByRole('group', { name: 'Board view' }).boundingBox();
@@ -271,7 +274,8 @@ test('board: inset 24 px, quick add, pointer drags list→day and day→day, reo
   await calm(win);
   await shot(win, 'v12-board-month.png');
   await boardView(board, 'Day');
-  await expect(board).toContainText('Lecture 5 notes');
+  const todaySheet = board.locator(`section[data-today="true"][aria-label="${formatDayLabel(today)}"]`);
+  await expect(rowOf(todaySheet, 'Lecture 5 notes')).toBeVisible();
   await calm(win);
   await shot(win, 'v12-board-day.png');
 
@@ -296,9 +300,12 @@ test('board: inset 24 px, quick add, pointer drags list→day and day→day, reo
   await calm(win);
   await shot(win, 'v12-widget-day.png');
   await openTasks(win, 'Week');
+  await expect(rowOf(daySection(w, today), 'Lecture 5 notes')).toBeVisible();
   await calm(win);
   await shot(win, 'v12-widget-week.png');
   await openTasks(win, 'Lists');
+  await w.getByRole('combobox', { name: 'List', exact: true }).selectOption(String(aiList));
+  await expect(rowOf(w, 'Type classes reading')).toBeVisible();
   await calm(win);
   await shot(win, 'v12-widget-lists.png');
 
@@ -429,6 +436,8 @@ test('revision: ticking a lecture task offers 1 · 3 · 7 · 21; Add respects th
   const bar = w.getByRole('group', { name: 'Schedule revision' });
   await expect(bar).toBeVisible();
   await expect(bar).toContainText('Schedule revision?');
+  // The chips as drawn, separators included.
+  await expect(bar.locator(':scope > div').first()).toHaveText('1 · 3 · 7 · 21 days', { useInnerText: true });
   for (const n of [1, 3, 7, 21]) {
     await expect(bar.getByRole('button', { name: `${n} ${n === 1 ? 'day' : 'days'}`, exact: true })).toHaveAttribute('aria-pressed', 'true');
   }
@@ -531,7 +540,11 @@ test('reminder: two minutes ahead, reminded_day is set within 2.5 min and main l
     .poll(async () => app.evaluate(() => (globalThis as unknown as { shown: string[] }).shown), { timeout: 150_000, intervals: [5_000] })
     .toEqual(['Reminder · Email supervisor about project scope']);
   test.info().annotations.push({ type: 'reminder', description: `due ${localParts(at).time}, fired ${new Date().toTimeString().slice(0, 8)}` });
-  const errors = logs.filter((l) => /\[main #\d+ err\]/.test(l) && /error/i.test(l));
+  // Errors: an error line on main's stderr, any renderer console error or uncaught page error
+  // ("[page #n error]"), and any line at all mentioning an uncaught throw or an exception.
+  const errors = logs.filter(
+    (l) => (/\[main #\d+ err\]/.test(l) && /error/i.test(l)) || /\[page #\d+ error\]/.test(l) || /Uncaught|Exception/.test(l),
+  );
   expect(errors).toEqual([]);
   expect(await quitApp(app)).toBe(0);
   expect(await queryDb(dataDir, `SELECT reminded_day FROM tasks WHERE id = ${id}`)).toEqual([{ reminded_day: day }]);
