@@ -1,0 +1,320 @@
+/* The planner widget's contents (v1.2 spec §3.7); the glass and the title come from WidgetFrame.
+   Rows are quiet lines on the glass: a task's colour is a thin edge, never a fill, so the light
+   text keeps its contrast. Motion is the shared --duration tokens, which tokens.css zeroes under
+   prefers-reduced-motion. */
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 340px;
+  max-height: 460px;
+  box-sizing: border-box;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+}
+
+.tab,
+.textButton,
+.navButton,
+.play {
+  font: inherit;
+  color: var(--text);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
+}
+
+.tab {
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+}
+
+.tab[aria-selected='true'] {
+  background: var(--active);
+}
+
+.textButton {
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+}
+
+.textButton[data-active='true'] {
+  background: var(--active);
+}
+
+.textButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tab:hover,
+.textButton:hover:not(:disabled),
+.navButton:hover,
+.play:hover {
+  background: var(--hover);
+}
+
+.tab:focus-visible,
+.textButton:focus-visible,
+.navButton:focus-visible,
+.play:focus-visible,
+.title:focus-visible,
+.check:focus-visible,
+.addInput:focus-visible,
+.select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.notice {
+  margin: 0;
+  min-height: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.notice:empty {
+  display: none;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dayNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.dayLabel {
+  flex: 1;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.navButton {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.deadlines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.deadline {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  font-size: var(--text-xs);
+}
+
+.exam {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.empty {
+  margin: var(--space-3) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  max-height: 280px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-within {
+  background: var(--hover);
+}
+
+.row[data-colour='yellow'] {
+  border-left-color: var(--note-yellow);
+}
+.row[data-colour='pink'] {
+  border-left-color: var(--note-pink);
+}
+.row[data-colour='blue'] {
+  border-left-color: var(--note-blue);
+}
+.row[data-colour='green'] {
+  border-left-color: var(--note-green);
+}
+.row[data-colour='purple'] {
+  border-left-color: var(--note-purple);
+}
+.row[data-colour='grey'] {
+  border-left-color: var(--note-grey);
+}
+
+.check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.row[data-done='true'] .title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.chips {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Over the estimate: amber, and the text stays light on the dark glass. */
+.chip[data-over='true'] {
+  background: rgba(242, 180, 92, 0.25);
+  color: #ffd9a0;
+}
+
+.hover {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.row:hover .hover,
+.row:focus-within .hover {
+  opacity: 1;
+}
+
+.play {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: var(--text-xs);
+}
+
+.addRow {
+  display: flex;
+}
+
+.addInput,
+.select {
+  box-sizing: border-box;
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font: inherit;
+}
+
+.addInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.addInput::placeholder {
+  color: var(--text-faint);
+}
+
+.select option {
+  color: #1b1e27;
+}
+
+.filterBar {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.filterBar .select {
+  flex: 1;
+  min-width: 0;
+}

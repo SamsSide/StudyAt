@@ -11,7 +11,7 @@ import { spaceAudio, useSpaceAudio } from './spaces/spaceAudio';
 import { SpacesPanel } from './spaces/SpacesPanel';
 import { SpotifyWidget } from './spotify/SpotifyWidget';
 import { StatsOverlay } from './stats/StatsOverlay';
-import { TasksWidget } from './tasks/TasksWidget';
+import { PlannerWidget } from './planner/PlannerWidget';
 import { TimerWidget } from './timer/TimerWidget';
 import { WeatherWidget } from './weather/WeatherWidget';
 
@@ -33,7 +33,7 @@ export const registry: Registry = {
   panels: { spaces: SpacesPanel, sounds: BoundSoundsPanel },
   widgets: {
     timer: TimerWidget,
-    tasks: TasksWidget,
+    tasks: PlannerWidget,
     spotify: SpotifyWidget,
     calendar: CalendarWidget,
     weather: WeatherWidget,
