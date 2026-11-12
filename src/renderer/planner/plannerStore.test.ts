@@ -140,6 +140,35 @@ describe('plannerStore', () => {
       expect(NEXT_FOCUS_NOTE).toBe('Task set for your next focus.');
     });
 
+    it('a paused break also sets the notice (main holds the task the same way)', async () => {
+      installMockApi(
+        mockApi({
+          timer: {
+            startTask: vi.fn(() =>
+              Promise.resolve({ ...idleTimerState(), mode: 'long' as const, status: 'paused' as const }),
+            ),
+          },
+        }),
+      );
+      await store().startTask(4);
+      expect(store().notice).toBe(NEXT_FOCUS_NOTE);
+    });
+
+    it.each([
+      ['idle', 'short', 'idle'],
+      ['a running focus', 'focus', 'running'],
+      ['a paused focus', 'focus', 'paused'],
+      ['a running countdown', 'countdown', 'running'],
+    ] as const)('%s shows no notice', async (_name, mode, status) => {
+      installMockApi(
+        mockApi({
+          timer: { startTask: vi.fn(() => Promise.resolve({ ...idleTimerState(), mode, status })) },
+        }),
+      );
+      await store().startTask(4);
+      expect(store().notice).toBeNull();
+    });
+
     it('a rejection says the task is gone and reloads the day', async () => {
       const api = mockApi({ timer: { startTask: vi.fn(() => Promise.reject(new Error('nope'))) } });
       installMockApi(api);

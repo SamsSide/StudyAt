@@ -10,11 +10,12 @@ import { plannerToday } from './format';
 import { deadlinesOn, tasksOnDay, usePlannerStore } from './plannerStore';
 import { QuickAdd } from './QuickAdd';
 import { TaskRow } from './TaskRow';
+import { useToday } from './useToday';
 import styles from './planner.module.css';
 
 export function DayView() {
   const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? 4);
-  const today = plannerToday(rolloverHour);
+  const today = useToday(rolloverHour);
   const chosen = usePlannerStore((s) => s.day);
   const day = chosen ?? today;
   const setDay = usePlannerStore((s) => s.setDay);
@@ -75,7 +76,10 @@ export function DayView() {
           ))}
         </ul>
       )}
-      <QuickAdd label="Add a task" place={{ day }} />
+      <QuickAdd
+        label="Add a task"
+        place={chosen === null ? () => ({ day: plannerToday(rolloverHour) }) : { day }}
+      />
     </section>
   );
 }

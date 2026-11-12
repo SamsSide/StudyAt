@@ -269,7 +269,7 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
       set({ notice: null });
       try {
         const state = await api().timer.startTask(id);
-        if (state.mode !== 'focus' && state.mode !== 'countdown' && state.status === 'running') {
+        if (state.mode !== 'focus' && state.mode !== 'countdown' && state.status !== 'idle') {
           set({ notice: NEXT_FOCUS_NOTE });
         }
       } catch (e) {

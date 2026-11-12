@@ -1,11 +1,18 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays } from '../../core/time';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { Deadline, PlannerTask } from '../../shared/types';
 import { resetStudyStore, useStudyStore } from '../shell/store';
-import { installMockApi, minimalPlannerTask, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
+import {
+  idleTimerState,
+  installMockApi,
+  minimalPlannerTask,
+  mockApi,
+  seedSubjects,
+  type MockApi,
+} from '../test/mockApi';
 import { plannerToday } from './format';
 import { PlannerWidget } from './PlannerWidget';
 import { resetPlannerStore, usePlannerStore } from './plannerStore';
@@ -75,9 +82,19 @@ function setup(opts: { tasks?: PlannerTask[]; deadlines?: Deadline[]; lists?: bo
   return api;
 }
 
+// Midday on a fixed date, so "today" never depends on when the suite runs. Only Date is faked:
+// Testing Library's waitFor needs the real timers.
+const NOON = new Date(2026, 10, 11, 12, 0).getTime();
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOON);
   resetPlannerStore();
   resetStudyStore();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('PlannerWidget', () => {
@@ -181,6 +198,58 @@ describe('PlannerWidget', () => {
     render(<PlannerWidget />);
     await user.click(await screen.findByRole('button', { name: 'Start focus on "Read"' }));
     expect(api.timer.startTask).toHaveBeenCalledWith(7);
+  });
+
+  it('a break-time start shows the next-focus copy in the status line', async () => {
+    const user = userEvent.setup();
+    const api = setup({ tasks: [minimalPlannerTask({ id: 7, title: 'Read', day: today() })] });
+    vi.mocked(api.timer.startTask).mockResolvedValue({
+      ...idleTimerState(),
+      mode: 'short',
+      status: 'paused',
+    });
+    render(<PlannerWidget />);
+    await user.click(await screen.findByRole('button', { name: 'Start focus on "Read"' }));
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('Task set for your next focus.'),
+    );
+  });
+
+  it('a failed quick add keeps what was typed', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const api = setup();
+    vi.mocked(api.tasks.create).mockRejectedValue(new Error('no'));
+    render(<PlannerWidget />);
+    const box = screen.getByRole('textbox', { name: 'Add a task' });
+    await user.type(box, 'Keep me{Enter}');
+    await waitFor(() => expect(api.tasks.create).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(box).toHaveValue('Keep me');
+  });
+
+  it('left open past the rollover, the label, the loaded day and quick add move to the new day', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 11, 23, 50).getTime());
+    const api = setup();
+    render(<PlannerWidget />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText(/^Today · /)).toHaveTextContent('11');
+    expect(api.planner.day).toHaveBeenLastCalledWith('2026-11-11');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60 * 60_000);
+    });
+    expect(api.planner.day).toHaveBeenLastCalledWith('2026-11-12');
+    expect(screen.getByText(/^Today · /)).toHaveTextContent('12');
+    const box = screen.getByRole('textbox', { name: 'Add a task' });
+    fireEvent.change(box, { target: { value: 'Fresh' } });
+    fireEvent.submit(box);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.tasks.create).toHaveBeenCalledWith({ title: 'Fresh', day: '2026-11-12' });
   });
 
   it('ticking sends done to tasks.update', async () => {

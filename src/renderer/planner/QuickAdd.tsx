@@ -7,9 +7,12 @@ import { useStudyStore } from '../shell/store';
 import { usePlannerStore } from './plannerStore';
 import styles from './planner.module.css';
 
+type Place = { day: string } | { listId: number };
+
 interface Props {
   label: string;
-  place: { day: string } | { listId: number };
+  /** A function is resolved at submit time (the Day view's "today" can roll over while open). */
+  place: Place | (() => Place);
   onCreated?(t: PlannerTask): void;
 }
 
@@ -22,13 +25,14 @@ export function QuickAdd({ label, place, onCreated }: Props) {
     e.preventDefault();
     const parsed = parseQuickAdd(text, subjects);
     if (parsed.title === '') return;
-    const input: TaskInput = { title: parsed.title, ...place };
+    const input: TaskInput = { title: parsed.title, ...(typeof place === 'function' ? place() : place) };
     if (parsed.tags.length > 0) input.tags = parsed.tags;
     if (parsed.estimateMin !== null) input.estimateMin = parsed.estimateMin;
     if (parsed.subjectId !== null) input.subjectId = parsed.subjectId;
-    setText('');
     const made = await create(input);
-    if (made) onCreated?.(made);
+    if (!made) return; // keep the text; the store has shown its notice
+    setText('');
+    onCreated?.(made);
   };
 
   return (
