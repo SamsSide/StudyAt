@@ -3,26 +3,25 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatClock as sharedFormatClock } from '../../shared/clock';
-import type { Task, TimerState } from '../../shared/types';
+import { addDays, dayKeyOf } from '../../core/time';
+import { DEFAULT_SETTINGS } from '../../shared/settings';
+import type { TimerState } from '../../shared/types';
 import { MiniTimer } from '../mini/MiniTimer';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { useShortcuts } from '../shell/useShortcuts';
-import { idleTimerState, installMockApi, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
+import {
+  idleTimerState,
+  installMockApi,
+  minimalPlannerTask,
+  mockApi,
+  seedSubjects,
+  type MockApi,
+} from '../test/mockApi';
 import { AwayPrompt } from './AwayPrompt';
 import { formatClock } from './format';
 import { TimerWidget } from './TimerWidget';
 
 let api: MockApi;
-
-const task = (id: number, text: string, done = false): Task => ({
-  id,
-  text,
-  colour: 'yellow',
-  done,
-  sort: id,
-  createdAt: 0,
-  doneAt: done ? 1 : null,
-});
 
 function setup(timer: Partial<TimerState> = {}) {
   api = mockApi();
@@ -240,22 +239,70 @@ describe('Countdown', () => {
 });
 
 describe('TaskSelect', () => {
-  it('lists "No task" then the not-done tasks in order, and picks one', async () => {
+  const todayKey = dayKeyOf(Date.now(), DEFAULT_SETTINGS.rolloverHour);
+  const tomorrow = addDays(todayKey, 1);
+  const seedPlanner = (): void => {
+    vi.mocked(api.planner.week).mockResolvedValue({
+      from: todayKey,
+      to: todayKey,
+      deadlines: [],
+      studiedMs: {},
+      tasks: [
+        minimalPlannerTask({ id: 1, title: 'Read ch. 3', day: todayKey }),
+        minimalPlannerTask({ id: 2, title: 'Old', day: todayKey, done: true }),
+        minimalPlannerTask({ id: 3, title: 'Lab report', day: tomorrow }),
+      ],
+    });
+    vi.mocked(api.planner.lists).mockResolvedValue({
+      lists: [],
+      deadlines: [],
+      tasks: [
+        minimalPlannerTask({ id: 4, title: 'Essay plan', day: null, listId: 9 }),
+        minimalPlannerTask({ id: 5, title: 'Lab safety quiz', day: null, listId: 9 }),
+        minimalPlannerTask({ id: 6, title: 'Finished', day: null, listId: 9, done: true }),
+      ],
+    });
+  };
+
+  it('groups open tasks Today, This week, Lists after "No task", and picks one', async () => {
     const user = userEvent.setup();
-    vi.mocked(api.legacyTasks.list).mockResolvedValue([
-      task(1, 'Read ch. 3'),
-      task(2, 'Old', true),
-      task(3, 'Essay plan'),
-    ]);
+    seedPlanner();
     render(<TimerWidget />);
     const box = screen.getByRole('combobox', { name: 'Task' });
     expect(box).toHaveTextContent('No task');
     await user.click(box);
     await screen.findByRole('option', { name: 'Essay plan' });
-    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Essay plan']);
+    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Lab report', 'Essay plan', 'Lab safety quiz']);
+    const headings = ['Today', 'This week', 'Lists'].map((h) => screen.getByText(h));
+    headings.forEach((h, i) => {
+      const next = headings[i + 1];
+      if (next) expect(h.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
     expect(screen.getByRole('option', { name: 'Essay plan' })).toHaveAttribute('title', 'Essay plan');
     await user.click(screen.getByRole('option', { name: 'Essay plan' }));
-    expect(api.timer.setTask).toHaveBeenCalledWith(3);
+    expect(api.timer.setTask).toHaveBeenCalledWith(4);
+  });
+
+  it('typing filters the titles', async () => {
+    const user = userEvent.setup();
+    seedPlanner();
+    render(<TimerWidget />);
+    await user.click(screen.getByRole('combobox', { name: 'Task' }));
+    await screen.findByRole('option', { name: 'Essay plan' });
+    await user.type(screen.getByLabelText('Find a task'), 'lab');
+    expect(optionNames()).toEqual(['Lab report', 'Lab safety quiz']);
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(api.timer.setTask).toHaveBeenCalledWith(5);
+  });
+
+  it('a pick that main rejects says the task no longer exists', async () => {
+    const user = userEvent.setup();
+    seedPlanner();
+    vi.mocked(api.timer.setTask).mockRejectedValue(new Error('gone'));
+    render(<TimerWidget />);
+    await user.click(screen.getByRole('combobox', { name: 'Task' }));
+    await user.click(await screen.findByRole('option', { name: 'Essay plan' }));
+    expect(await screen.findByText('That task no longer exists.')).toBeInTheDocument();
   });
 
   it('is available in Countdown but not in a break', () => {
@@ -270,13 +317,79 @@ describe('TaskSelect', () => {
 
   it('a held task that is now done still shows its text while running', async () => {
     setup({ status: 'running', taskId: 2, taskText: 'Old' });
-    vi.mocked(api.legacyTasks.list).mockResolvedValue([task(2, 'Old', true)]);
+    seedPlanner();
     render(<TimerWidget />);
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     await userEvent.click(screen.getByRole('combobox', { name: 'Task' }));
-    await waitFor(() => expect(api.legacyTasks.list).toHaveBeenCalled());
+    await waitFor(() => expect(api.planner.week).toHaveBeenCalled());
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     expect(api.timer.setTask).not.toHaveBeenCalled();
+  });
+});
+
+describe('IntentionField and OutcomeAsk', () => {
+  const field = (): HTMLInputElement => screen.getByPlaceholderText('By the end I will…');
+
+  it('has the placeholder and a 140 character limit, and Enter saves the text', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    expect(field()).toHaveAttribute('maxLength', '140');
+    await user.type(field(), 'Finish Q1–3{Enter}');
+    expect(api.timer.setIntention).toHaveBeenCalledTimes(1);
+    expect(api.timer.setIntention).toHaveBeenCalledWith('Finish Q1–3');
+    await user.tab(); // the blur after Enter sends nothing more
+    expect(api.timer.setIntention).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves on blur, shows the held intention, and clearing it sends null', async () => {
+    const user = userEvent.setup();
+    setup({ intention: 'Finish Q1–3' });
+    render(<TimerWidget />);
+    expect(field()).toHaveValue('Finish Q1–3');
+    await user.clear(field());
+    await user.tab();
+    expect(api.timer.setIntention).toHaveBeenCalledWith(null);
+  });
+
+  it('does not save text that has not changed', async () => {
+    const user = userEvent.setup();
+    setup({ intention: 'Same' });
+    render(<TimerWidget />);
+    await user.click(field());
+    await user.tab();
+    expect(api.timer.setIntention).not.toHaveBeenCalled();
+  });
+
+  it('is hidden in a break', () => {
+    setup({ mode: 'short' });
+    render(<TimerWidget />);
+    expect(screen.queryByPlaceholderText('By the end I will…')).toBeNull();
+  });
+
+  const ask = { pomodoroId: 'p1', intention: 'Finish Q1–3' };
+
+  it('asks "Did you do it?" with the intention, and sends the answer', async () => {
+    const user = userEvent.setup();
+    setup({ mode: 'short', askOutcome: ask });
+    render(<TimerWidget />);
+    const group = screen.getByRole('group', { name: 'Did you do it?' });
+    expect(group).toHaveTextContent('Finish Q1–3');
+    await user.click(within(group).getByRole('button', { name: 'Partly' }));
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'partly');
+    await user.click(within(group).getByRole('button', { name: 'Skip' }));
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', null);
+    await user.click(within(group).getByRole('button', { name: 'Done' }));
+    await user.click(within(group).getByRole('button', { name: 'Not' }));
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'done');
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'not');
+  });
+
+  it('shows neither the field nor the question when the setting is off', async () => {
+    setup({ askOutcome: ask });
+    useStudyStore.setState({ settings: { ...(await api.settings.get()), sessionIntention: false } });
+    render(<TimerWidget />);
+    expect(screen.queryByPlaceholderText('By the end I will…')).toBeNull();
+    expect(screen.queryByText('Did you do it?')).toBeNull();
   });
 });
 

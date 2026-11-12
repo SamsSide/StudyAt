@@ -61,6 +61,12 @@ export function TimerSection({ settings, update }: SectionProps) {
         onChange={(v) => update({ autoStartFocus: v })}
       />
       <Toggle
+        label="Ask what I'll do each focus"
+        hint="A line under the task picker, and a quick question when the focus ends"
+        checked={settings.sessionIntention}
+        onChange={(v) => update({ sessionIntention: v })}
+      />
+      <Toggle
         label="Ask if I've been away"
         hint="Off: time while you're away from the keyboard still counts. Locking or sleeping the PC still pauses the timer."
         checked={settings.awayPrompt}

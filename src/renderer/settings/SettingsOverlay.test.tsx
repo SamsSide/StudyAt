@@ -118,6 +118,14 @@ describe('SettingsOverlay', () => {
     await waitFor(() => expect(screen.getByLabelText('Away check after')).toBeDisabled());
   });
 
+  it('timer: "Ask what I\'ll do each focus" is on by default and saves sessionIntention off', async () => {
+    const api = setup();
+    const sw = screen.getByRole('switch', { name: "Ask what I'll do each focus" });
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(sw);
+    expect(api.settings.set).toHaveBeenCalledWith({ sessionIntention: false });
+  });
+
   it('timer: Countdown length is a 1 to 240 minute field that saves', async () => {
     const api = setup();
     const field = screen.getByLabelText('Countdown length');

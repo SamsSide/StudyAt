@@ -6,6 +6,8 @@ import { isFocusMode } from '../../shared/modes';
 import { Icon } from '../shell/icons';
 import { useStudyStore } from '../shell/store';
 import { formatClock, MODE_LABEL, pauseMessage, startLabel, toggleTimer } from './format';
+import { IntentionField } from './IntentionField';
+import { OutcomeAsk } from './OutcomeAsk';
 import { SubjectSelect } from './SubjectSelect';
 import { TaskSelect } from './TaskSelect';
 import styles from './timer.module.css';
@@ -124,6 +126,8 @@ export function TimerWidget() {
         {message}
       </p>
 
+      <OutcomeAsk />
+
       <div className={styles.controls}>
         <button type="button" className={styles.primary} onClick={() => toggleTimer(timer.status)}>
           {startLabel(timer.status)}
@@ -164,6 +168,7 @@ export function TimerWidget() {
         </div>
       </div>
       {isFocusMode(timer.mode) && <TaskSelect />}
+      <IntentionField />
     </div>
   );
 }
