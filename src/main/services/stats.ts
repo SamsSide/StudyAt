@@ -168,6 +168,7 @@ export function statsService(deps: StatsServiceDeps) {
               title: t.title,
               day: t.day,
               estimateMin: t.estimateMin,
+              // List fallback cannot fire today: a task has a day XOR a list and doneEstimated returns dated tasks only.
               effectiveSubjectId: t.subjectId ?? (t.listId === null ? null : (listSubject.get(t.listId) ?? null)),
             });
           }

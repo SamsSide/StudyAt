@@ -16,6 +16,7 @@ export const REMINDER_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const MAX_POPPED_NOTES = 12;
 export const MAX_STAT_WIDGETS = 6;
 export const DEADLINE_TITLE_MAX = 120;
+export const DEADLINE_NOTE_MAX = 5000;
 export const INTENTION_MAX = 140;
 export const REVISION_TAG = 'revision';
 export const REVISION_PREFIX = 'Revise: ';

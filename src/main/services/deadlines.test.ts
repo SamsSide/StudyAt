@@ -76,4 +76,23 @@ describe('deadlinesService', () => {
     expect(view.upcoming[0]).toMatchObject({ subjectId: subject.id, note: 'n' });
     expect(s.remove(view.upcoming[0]!.id).upcoming).toEqual([]);
   });
+
+  it('accepts a 5000-character note and rejects 5001, on create and update', () => {
+    const s = svc();
+    const base = { title: 'X', kind: 'exam', subjectId: null, due: '2026-12-01T09:00' } as const;
+    const view = s.create({ ...base, note: 'a'.repeat(5000) });
+    expect(view.upcoming[0]!.note).toHaveLength(5000);
+    expect(() => s.create({ ...base, note: 'a'.repeat(5001) })).toThrow(IpcValidationError);
+    const id = view.upcoming[0]!.id;
+    expect(s.update(id, { note: 'b'.repeat(5000) }).upcoming[0]!.note).toHaveLength(5000);
+    expect(() => s.update(id, { note: 'b'.repeat(5001) })).toThrow(IpcValidationError);
+  });
+
+  it('rejects impossible due dates', () => {
+    const s = svc();
+    for (const due of ['2026-02-30T09:00', '2026-11-12T24:00', '2026-13-01T09:00']) {
+      expect(() => s.create({ title: 'X', kind: 'exam', subjectId: null, due })).toThrow(IpcValidationError);
+    }
+    expect(() => s.create({ title: 'X', kind: 'exam', subjectId: null, due: '2028-02-29T09:00' })).not.toThrow();
+  });
 });

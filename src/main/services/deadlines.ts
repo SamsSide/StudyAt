@@ -2,7 +2,7 @@
 // lives here; the repo stores what it is given. "Today" is the calendar date, not the study day:
 // a deadline due earlier today is still upcoming (the widget shows "Due").
 import { calendarDate } from '../../core/wallclock';
-import { DEADLINE_TITLE_MAX } from '../../shared/planner';
+import { DEADLINE_NOTE_MAX, DEADLINE_TITLE_MAX } from '../../shared/planner';
 import type { Deadline, DeadlineInput, DeadlineKind, DeadlinePatch, DeadlinesView } from '../../shared/types';
 import type { Db } from '../db/db';
 import { deadlinesRepo } from '../db/repos/deadlines';
@@ -26,6 +26,12 @@ function assertDue(v: unknown): string {
   const m = DUE_RE.exec(s);
   if (!m) throw new IpcValidationError('due must be a YYYY-MM-DDTHH:MM time');
   assertDayKey(m[1], 'due');
+  // assertDayKey parses with Date.parse, which rolls 02-30 over to 03-02; round-trip the parts.
+  const [y, mo, d] = m[1]!.split('-').map(Number) as [number, number, number];
+  const dt = new Date(y, mo - 1, d, Number(m[2]), Number(s.slice(14)));
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) {
+    throw new IpcValidationError('due is not a real date');
+  }
   return s;
 }
 
@@ -64,7 +70,7 @@ export function deadlinesService(deps: DeadlinesServiceDeps) {
         kind: assertEnum(input.kind, KINDS, 'kind'),
         subjectId: assertSubject(input.subjectId),
         due: assertDue(input.due),
-        note: input.note === undefined ? '' : assertStr(input.note, 'note'),
+        note: input.note === undefined ? '' : assertStr(input.note, 'note', { max: DEADLINE_NOTE_MAX }),
       };
       repo.create(row, deps.now());
       return view();
@@ -76,7 +82,7 @@ export function deadlinesService(deps: DeadlinesServiceDeps) {
       if (patch.kind !== undefined) clean.kind = assertEnum(patch.kind, KINDS, 'kind');
       if (patch.subjectId !== undefined) clean.subjectId = assertSubject(patch.subjectId);
       if (patch.due !== undefined) clean.due = assertDue(patch.due);
-      if (patch.note !== undefined) clean.note = assertStr(patch.note, 'note');
+      if (patch.note !== undefined) clean.note = assertStr(patch.note, 'note', { max: DEADLINE_NOTE_MAX });
       if (patch.done !== undefined) clean.done = assertBool(patch.done, 'done');
       if (!repo.update(id, clean, deps.now())) throw new IpcValidationError('No such deadline');
       return view();
