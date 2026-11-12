@@ -2,7 +2,7 @@
 // (§3.9) from assets/builtin.json, the timer and accounting settings, and the active space. Each
 // table is seeded only while empty; a stored setting is never overwritten. Seeded subjects also get
 // one planner list each, after the Inbox list (v1.2 Plan notes 2).
-import { LIST_NAME_MAX } from '../../shared/planner';
+import { INBOX_LIST_NAME, LIST_NAME_MAX } from '../../shared/planner';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
 import type { Settings } from '../../shared/types';
@@ -32,9 +32,6 @@ const PINNED_SETTINGS: readonly (keyof Settings)[] = [
   'rolloverHour',
   'idleMinutes',
 ];
-
-/** The subject-less list every install starts with, at sort 0 (migration v4 seeds the same). */
-const INBOX_LIST_NAME = 'Inbox';
 
 const isEmpty = (db: Db, table: 'subjects' | 'spaces' | 'sounds'): boolean =>
   Number(one(db.raw, `SELECT count(*) AS n FROM ${table}`)!.n) === 0;

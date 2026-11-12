@@ -886,6 +886,16 @@ describe('createBroadcaster', () => {
     }
   });
 
+  it('notes:popOut on an already popped note is idempotent, even at the limit', async () => {
+    const { invoke } = setup();
+    for (let i = 0; i < 12; i++) await invoke(CHANNELS.notes.create);
+    const ids = ((await invoke(CHANNELS.notes.list)) as Note[]).map((n) => n.id);
+    for (const id of ids) await invoke(CHANNELS.notes.popOut, id);
+    const before = (await invoke(CHANNELS.notes.list)) as Note[];
+    const again = (await invoke(CHANNELS.notes.popOut, ids[0])) as Note[];
+    expect(again).toEqual(before);
+  });
+
   it('notes:update accepts x, y, scale and bare', async () => {
     const { invoke } = setup();
     const [note] = (await invoke(CHANNELS.notes.create)) as Note[];

@@ -1307,6 +1307,12 @@ describe('TimerController', () => {
     at(10 * MIN);
     expect(rows().map((s) => s.intention)).toEqual(['Finish Q1–3', 'Finish Q1–3']);
   });
+  it('cuts an intention by code points, never inside a surrogate pair', () => {
+    const c = make();
+    c.start();
+    c.setIntention('a'.repeat(139) + '😀😀');
+    expect(rows()[0]!.intention).toBe('a'.repeat(139) + '😀');
+  });
   it('a focus end after a minute with an intention asks for the outcome and clears the field', async () => {
     const c = make();
     c.setIntention('Read ch. 4');

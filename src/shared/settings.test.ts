@@ -345,6 +345,9 @@ describe('v1.2 settings', () => {
     expect(sanitiseSettingsPatch({ revisionTags: Array.from({ length: 9 }, (_, i) => `t${i}`) })).toEqual({});
     expect(sanitiseSettingsPatch({ revisionTags: [] }).revisionTags).toEqual([]);
   });
+  it('dedupes revision tags after normalising', () => {
+    expect(sanitiseSettingsPatch({ revisionTags: ['Lecture', 'lecture', '#lecture'] }).revisionTags).toEqual(['lecture']);
+  });
   it('accepts 1–4 revision days of 1–90, sorted and without repeats', () => {
     expect(sanitiseSettingsPatch({ revisionDays: [7, 1, 3, 3] }).revisionDays).toEqual([1, 3, 7]);
     expect(sanitiseSettingsPatch({ revisionDays: [] })).toEqual({});

@@ -143,6 +143,7 @@ export const MIGRATIONS: Migration[] = [
         CREATE TABLE task_lists (
           id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, subject_id INTEGER NULL,
           sort INTEGER NOT NULL, created_at INTEGER NOT NULL);
+        -- 'Inbox' must equal INBOX_LIST_NAME in shared/planner.ts; this body is frozen, so it stays a literal.
         INSERT INTO task_lists (name, subject_id, sort, created_at)
           VALUES ('Inbox', NULL, 0, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
         INSERT INTO task_lists (name, subject_id, sort, created_at)

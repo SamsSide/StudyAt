@@ -850,6 +850,8 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.notes.popOut, (id) => {
     const noteId = assertInt(id);
     if (!notes.list().some((n) => n.id === noteId)) throw new IpcValidationError('No such note');
+    // Already popped: idempotent, the note keeps its place and doesn't count against the limit.
+    if (notes.list().some((n) => n.id === noteId && n.popped)) return notes.list();
     const count = notes.poppedCount();
     if (count >= MAX_POPPED_NOTES) throw new IpcValidationError(LIMIT_COPY.notes);
     const list = notes.popOut(noteId, cascadeAt(count));

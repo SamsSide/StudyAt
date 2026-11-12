@@ -906,8 +906,8 @@ export class TimerController {
   }
 }
 
-/** An intention as stored: trimmed, at most INTENTION_MAX characters, empty as null (§3.11). */
+/** An intention as stored: trimmed, at most INTENTION_MAX code points, empty as null (§3.11). */
 function clean(text: string | null): string | null {
-  const t = text?.trim().slice(0, INTENTION_MAX).trim() ?? '';
+  const t = Array.from(text?.trim() ?? '').slice(0, INTENTION_MAX).join('').trim() ?? '';
   return t === '' ? null : t;
 }

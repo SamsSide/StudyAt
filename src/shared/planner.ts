@@ -13,6 +13,8 @@ export const MAX_LISTS = 20;
 export const REPEAT_EVERY_MIN = 2;
 export const REPEAT_EVERY_MAX = 30;
 export const REMINDER_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** The subject-less list every install starts with; migration v4 seeds the same literal. */
+export const INBOX_LIST_NAME = 'Inbox';
 export const MAX_POPPED_NOTES = 12;
 export const MAX_STAT_WIDGETS = 6;
 export const DEADLINE_TITLE_MAX = 120;

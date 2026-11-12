@@ -19,8 +19,8 @@ import { settingsRepo } from '../db/repos/settings';
 import { soundsRepo } from '../db/repos/sounds';
 import { spacesRepo } from '../db/repos/spaces';
 import { subjectsRepo } from '../db/repos/subjects';
-import { all, bool, int, intOrNull, text } from '../db/sql';
 import { taskListsRepo } from '../db/repos/taskLists';
+import { all, bool, int, intOrNull, text } from '../db/sql';
 import { publicSettings } from './settings';
 import { IpcValidationError } from './validate';
 

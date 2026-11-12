@@ -26,6 +26,11 @@ describe('nextRepeatDay', () => {
   });
 });
 
+it('every-N with a non-finite N steps by 1', () => {
+  expect(nextRepeatDay({ kind: 'every', days: NaN }, '2026-11-11', '2026-11-11')).toBe('2026-11-12');
+  expect(nextRepeatDay({ kind: 'every', days: Infinity }, '2026-11-11', '2026-11-11')).toBe('2026-11-12');
+});
+
 describe('rollForwardMoves', () => {
   it('moves only open past-day tasks and keeps the first rolledFrom', () => {
     expect(rollForwardMoves([
@@ -38,6 +43,9 @@ describe('rollForwardMoves', () => {
       { id: 1, day: '2026-11-11', rolledFrom: '2026-11-10' },
       { id: 4, day: '2026-11-11', rolledFrom: '2026-11-05' },
     ]);
+  });
+  it('does not roll a future-dated open task', () => {
+    expect(rollForwardMoves([{ id: 1, day: '2026-11-12', done: false, rolledFrom: null }], '2026-11-11')).toEqual([]);
   });
   it('is idempotent', () => {
     expect(rollForwardMoves([{ id: 1, day: '2026-11-11', done: false, rolledFrom: '2026-11-10' }], '2026-11-11')).toEqual([]);
@@ -86,4 +94,5 @@ it('examLine', () => {
   expect(examLine('2026-12-04', '2026-11-11')).toBe('Exam in 23 days');
   expect(examLine('2026-11-12', '2026-11-11')).toBe('Exam in 1 day');
   expect(examLine('2026-11-11', '2026-11-11')).toBe('Exam today');
+  expect(examLine('2026-11-10', '2026-11-11')).toBe('');
 });

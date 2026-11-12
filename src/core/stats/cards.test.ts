@@ -119,7 +119,7 @@ describe('totalCard', () => {
       deltaPct: -50,
     });
   });
-  it('month clamps to the previous month length', () => {
+  it('month compares 31 March against all of February', () => {
     const march31 = { ...ctx, now: new Date(2027, 2, 31, 15).getTime() };
     const rows = [row('2027-03-31', 0, 30, 1), row('2027-02-28', 0, 30, 1)];
     expect(totalCard(rows, 'month', march31)).toMatchObject({

@@ -15,7 +15,7 @@ export function nextRepeatDay(rule: RepeatRule, taskDay: string, today: string):
     while (!isWeekday(day)) day = addDays(day, 1);
     return day;
   }
-  const step = rule.kind === 'daily' ? 1 : rule.kind === 'weekly' ? 7 : Math.max(1, Math.floor(rule.days));
+  const step = rule.kind === 'daily' ? 1 : rule.kind === 'weekly' ? 7 : Number.isFinite(rule.days) ? Math.max(1, Math.floor(rule.days)) : 1;
   const next = addDays(taskDay, step);
   if (next >= today) return next;
   // Matches are taskDay + k*step; take the first k that lands on or after today.
@@ -63,9 +63,10 @@ export function upcomingExam(deadlines: readonly Deadline[], subjectId: number |
   return best;
 }
 
-/** "Exam in 23 days" / "Exam in 1 day" / "Exam today" for an exam on `examDay` seen from `today`. */
+/** "Exam in 23 days" / "Exam in 1 day" / "Exam today" for an exam on `examDay` seen from `today`; '' once the exam day is past. */
 export function examLine(examDay: string, today: string): string {
   const n = daysBetween(today, examDay);
-  if (n <= 0) return 'Exam today';
+  if (n < 0) return '';
+  if (n === 0) return 'Exam today';
   return `Exam in ${n} day${n === 1 ? '' : 's'}`;
 }

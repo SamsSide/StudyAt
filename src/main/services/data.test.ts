@@ -96,12 +96,14 @@ describe('dataService', () => {
       taskLists: { name: string }[];
       tasks: { title: string; tags: string[] }[];
       deadlines: { due: string }[];
-      tasksV1: { text: string }[];
+      tasksV1: unknown[];
     };
     expect(json.taskLists.map((l) => l.name)).toContain('Revision');
     expect(json.tasks.find((t) => t.title === 'Past papers')!.tags).toEqual(['maths']);
     expect(json.deadlines[0]!.due).toBe('2026-12-01T09:00');
-    expect(json.tasksV1[0]!.text).toBe('Old sticky task');
+    expect(json.tasksV1).toEqual([
+      { id: expect.any(Number), text: 'Old sticky task', colour: 'pink', done: false, sort: 0, createdAt: NOW, doneAt: null },
+    ]);
     // The CSV is sessions only and unchanged.
     const csv = join(dir, 'sessions.csv');
     await service().svc.exportCsv(csv);
