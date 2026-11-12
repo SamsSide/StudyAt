@@ -746,7 +746,10 @@ test('The away switch persists across a relaunch', async ({ launch, dataDir }) =
 test('The Spotify widget still renders unconfigured', async ({ launch }) => {
   const { win } = await launch();
   await prepare(win);
-  await dock(win, 'Spotify').click();
+  // v1.2 spec §3.1: Spotify is switched on from the Widgets popover, not the dock.
+  await dock(win, 'Widgets').click();
+  await win.getByRole('dialog', { name: 'Widgets' }).getByRole('switch', { name: 'Spotify' }).click();
+  await win.keyboard.press('Escape');
   const spotify = widget(win, 'Spotify');
   await expect(spotify).toBeVisible();
   await expect(spotify.getByText('Set up Spotify in Settings')).toBeVisible();
