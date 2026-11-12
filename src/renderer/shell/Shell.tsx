@@ -4,10 +4,12 @@
 import { type ComponentType, useEffect, useState } from 'react';
 import type { WidgetId } from '../../shared/types';
 import { AddImageDialog } from '../images/AddImageDialog';
-import { ImageWidgets } from '../images/ImageWidget';
 import { useImagesStore } from '../images/imagesStore';
+import { useNotesStore } from '../notes/notesStore';
 import '../styles/tokens.css';
 import { Dock } from './Dock';
+import { FloatingInstances } from './FloatingInstances';
+import { Icon } from './icons';
 import { LoadFailed } from './LoadFailed';
 import { Overlay } from './Overlay';
 import styles from './shell.module.css';
@@ -80,22 +82,37 @@ function ShowInterface({ onShow }: { onShow: () => void }) {
   );
 }
 
-/** The Deadlines widget's bare mode (v1.2 spec §3.10): the header's toggle, kept in a toolbar when bare. */
+/**
+ * The Deadlines widget's bare mode (v1.2 spec §3.10): an icon in the header, as on an image
+ * widget; when bare, a "Show background" text button in the floating toolbar.
+ */
 function BackgroundToggle({ bare }: { bare: boolean }) {
   const patchWidget = useStudyStore((s) => s.patchWidget);
+  const toggle = (): void => void patchWidget('deadlines', { bare: !bare });
+  if (bare) {
+    return (
+      <button type="button" className={styles.toolText} onClick={toggle}>
+        Show background
+      </button>
+    );
+  }
   return (
     <button
       type="button"
       className={`${styles.iconButton} ${styles.small}`}
-      onClick={() => void patchWidget('deadlines', { bare: !bare })}
+      aria-label="Hide background"
+      title="Hide background"
+      onClick={toggle}
     >
-      {bare ? 'Show background' : 'Hide background'}
+      <Icon name="eyeOff" />
     </button>
   );
 }
 
+// Its body is a list with fields and buttons, so bare it is no drag-button (interactiveBody).
 const deadlinesFrame = (bare: boolean) => ({
   chrome: bare ? ('bare' as const) : ('framed' as const),
+  interactiveBody: true,
   headerExtra: <BackgroundToggle bare={bare} />,
 });
 
@@ -110,6 +127,8 @@ export function Shell({ registry }: { registry: Registry }) {
 
   useEffect(() => initStudyStore(), []);
   useEffect(() => void useImagesStore.getState().load(), []);
+  // Popped-out notes float whether or not the Notes widget is open (v1.2 spec §3.2).
+  useEffect(() => void useNotesStore.getState().load(), []);
   useShortcuts();
   const visible = useAutoHide(settings?.autoHideSeconds ?? DEFAULT_AUTO_HIDE_SECONDS);
   // An overlay always shows over everything; focus view keeps the chrome hidden whatever the mouse
@@ -147,8 +166,8 @@ export function Shell({ registry }: { registry: Registry }) {
             </WidgetFrame>
           );
         })}
-      {/* Image widgets float after the fixed ones (v1.1 spec §3.6). */}
-      {settings && <ImageWidgets />}
+      {/* Images, note stickies and the rest of the many-of-a-kind widgets float after the fixed ones. */}
+      {settings && <FloatingInstances />}
 
       <TopBar />
       <Dock />

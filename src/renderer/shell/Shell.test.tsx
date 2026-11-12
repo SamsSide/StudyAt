@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
@@ -24,6 +24,12 @@ async function renderShell(api: MockApi = onboardedApi()) {
 }
 
 beforeEach(() => resetStudyStore());
+
+/** Unmounts the shell and empties the store, for a second render in the same test. */
+function cleanupShell(): void {
+  cleanup();
+  resetStudyStore();
+}
 afterEach(() => vi.useRealTimers());
 
 describe('Shell', () => {
@@ -42,13 +48,84 @@ describe('Shell', () => {
   it('loads the image widgets on init and shows them after the fixed widgets', async () => {
     const api = onboardedApi();
     vi.mocked(api.images.list).mockResolvedValue([
-      { id: 2, url: 'studyat-media://image/2', width: 100, height: 100, x: 0.5, y: 0.5, scale: 1, bare: false },
+      {
+        id: 2,
+        url: 'studyat-media://image/2',
+        width: 100,
+        height: 100,
+        x: 0.5,
+        y: 0.5,
+        scale: 1,
+        bare: false,
+      },
     ]);
     await renderShell(api);
     const img = await screen.findByRole('img', { name: 'Image 1' });
     expect(api.images.list).toHaveBeenCalledTimes(1);
     const timer = screen.getByTestId('timer-widget');
     expect(timer.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('loads the notes on init and floats popped-out ones after the images (v1.2 spec §3.2)', async () => {
+    const api = onboardedApi();
+    vi.mocked(api.images.list).mockResolvedValue([
+      {
+        id: 2,
+        url: 'studyat-media://image/2',
+        width: 100,
+        height: 100,
+        x: 0.5,
+        y: 0.5,
+        scale: 1,
+        bare: false,
+      },
+    ]);
+    const base = {
+      colour: 'yellow' as const,
+      createdAt: 1,
+      updatedAt: 1,
+      x: 0.5,
+      y: 0.3,
+      scale: 1,
+      bare: false,
+    };
+    vi.mocked(api.notes.list).mockResolvedValue([
+      { ...base, id: 1, text: 'Shopping\nmilk', sort: 1, popped: true },
+      { ...base, id: 2, text: 'Docked', sort: 2, popped: false },
+    ]);
+    await renderShell(api);
+    const sticky = await screen.findByRole('group', { name: 'Shopping' });
+    expect(api.notes.list).toHaveBeenCalled();
+    expect(screen.queryByDisplayValue('Docked')).not.toBeInTheDocument();
+    const img = await screen.findByRole('img', { name: 'Image 1' });
+    expect(img.compareDocumentPosition(sticky) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  describe('Deadlines background toggle', () => {
+    const withDeadlines = (bare: boolean): MockApi => {
+      const s = onboarded();
+      s.widgets.deadlines = { ...s.widgets.deadlines, open: true, bare };
+      return mockApi({ settings: { get: vi.fn(() => Promise.resolve(s)) } });
+    };
+
+    it('framed, it is an icon named "Hide background"; bare, a "Show background" text button', async () => {
+      await renderShell(withDeadlines(false));
+      const hide = screen.getByRole('button', { name: 'Hide background' });
+      expect(hide.textContent).toBe('');
+      expect(hide).toHaveAttribute('title', 'Hide background');
+      cleanupShell();
+      await renderShell(withDeadlines(true));
+      const show = screen.getByRole('button', { name: 'Show background' });
+      expect(show.className).toMatch(/toolText/);
+      expect(show.className).not.toMatch(/small/);
+    });
+
+    it('bare, the body holding the list is no drag-button; a toolbar handle moves it', async () => {
+      await renderShell(withDeadlines(true));
+      const body = screen.getByTestId('deadlines-widget');
+      expect(body.closest('[role="button"]')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Move Deadlines' })).toBeInTheDocument();
+    });
   });
 
   it('dock opens sounds panel and closing it via Esc', async () => {

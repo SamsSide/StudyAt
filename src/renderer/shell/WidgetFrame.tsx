@@ -16,7 +16,12 @@
 // Settings widgets read `settings.widgets[id]` and save through `patchWidget`; an image widget
 // (spec §3.6) passes its own `pos`, `onPatch` and `onClose` instead. `chrome="bare"` drops the
 // glass and the header, and the body itself becomes the drag handle: focusable, labelled
-// `bodyLabel` (default "Move {title}"), and focused by a press so the arrow keys work next.
+// `bodyLabel` (default "Move {title}"), and focused by a press so the arrow keys work next. A body
+// that holds controls of its own (`interactiveBody`: a bare Deadlines widget, a note sticky, v1.2
+// spec §3.2) is no button: its non-interactive parts are still the drag handle, and the keyboard
+// moves it through a "Move {title}" handle in the bare toolbar. Either way a press or a key aimed
+// at a control inside the body (a button, link, field, `[contenteditable]` or anything marked
+// `data-no-drag`) reaches that control and never moves the widget.
 import {
   type KeyboardEvent,
   type PointerEvent,
@@ -27,7 +32,7 @@ import {
   useState,
 } from 'react';
 import type { WidgetId } from '../../shared/types';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { MAX_SCALE, MIN_SCALE, fitScale, layoutScale } from './layoutScale';
 import styles from './shell.module.css';
 import { useStudyStore } from './store';
@@ -111,6 +116,26 @@ const fractions = (left: number, top: number, frame: Box, win: Box) => ({
 
 const windowBox = (): Box => ({ w: window.innerWidth, h: window.innerHeight });
 
+/** What inside a bare body keeps its own pointer and keys. */
+const OWN_INPUT =
+  'button, a[href], input, select, textarea, [contenteditable]:not([contenteditable="false"]), [data-no-drag]';
+
+/** The event is aimed at a control inside `body` (not at the body itself). */
+const atControl = (target: EventTarget, body: Element): boolean => {
+  if (!(target instanceof Element)) return false;
+  const control = target.closest(OWN_INPUT);
+  return control !== null && control !== body && body.contains(control);
+};
+
+/** Six dots: the bare toolbar's move handle, drawn like the shell's icons (24-unit grid). */
+function GripIcon() {
+  return (
+    <svg className={styles.icon} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      {[8, 16].map((cx) => [6, 12, 18].map((cy) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.6" />))}
+    </svg>
+  );
+}
+
 interface WidgetFrameProps {
   /** A settings widget: its position comes from, and is saved to, `settings.widgets[id]`. */
   id?: WidgetId;
@@ -125,6 +150,11 @@ interface WidgetFrameProps {
   headerExtra?: ReactNode;
   /** The bare body's accessible name; "Move {title}" when not given. */
   bodyLabel?: string;
+  /** The bare body holds controls: it is no button, and a toolbar handle moves it by keyboard. */
+  interactiveBody?: boolean;
+  /** The framed close button's name and icon; "Close {title}" and a cross when not given. */
+  closeLabel?: string;
+  closeIcon?: IconName;
 }
 
 export function WidgetFrame({
@@ -137,6 +167,9 @@ export function WidgetFrame({
   onClose,
   headerExtra,
   bodyLabel,
+  interactiveBody = false,
+  closeLabel,
+  closeIcon = 'close',
 }: WidgetFrameProps) {
   const storedPos = useStudyStore((s) => (id ? s.settings?.widgets[id] : undefined));
   const patchWidget = useStudyStore((s) => s.patchWidget);
@@ -326,22 +359,52 @@ export function WidgetFrame({
     >
       {bare ? (
         <>
-          {headerExtra && <div className={`${styles.bareTools} ${styles.fades}`}>{headerExtra}</div>}
-          <div
-            role="button"
-            tabIndex={0}
-            className={`${styles.widgetBody} ${styles.bareBody}`}
-            aria-label={bodyLabel ?? `Move ${title}`}
-            title="Drag to move, or use the arrow keys"
-            onPointerDown={(e) => {
-              // The drag's preventDefault would stop the press focusing it.
-              e.currentTarget.focus({ preventScroll: true });
-              onMoveDown(e);
-            }}
-            onKeyDown={onMoveKey}
-          >
-            {children}
-          </div>
+          {(headerExtra || interactiveBody) && (
+            <div className={`${styles.bareTools} ${styles.fades}`}>
+              {interactiveBody && (
+                <button
+                  type="button"
+                  className={`${styles.iconButton} ${styles.small} ${styles.bareHandle}`}
+                  aria-label={`Move ${title}`}
+                  title="Drag to move, or use the arrow keys"
+                  onPointerDown={onMoveDown}
+                  onKeyDown={onMoveKey}
+                >
+                  <GripIcon />
+                </button>
+              )}
+              {headerExtra}
+            </div>
+          )}
+          {interactiveBody ? (
+            <div
+              className={`${styles.widgetBody} ${styles.bareBody}`}
+              onPointerDown={(e) => {
+                if (!atControl(e.target, e.currentTarget)) onMoveDown(e);
+              }}
+            >
+              {children}
+            </div>
+          ) : (
+            <div
+              role="button"
+              tabIndex={0}
+              className={`${styles.widgetBody} ${styles.bareBody}`}
+              aria-label={bodyLabel ?? `Move ${title}`}
+              title="Drag to move, or use the arrow keys"
+              onPointerDown={(e) => {
+                if (atControl(e.target, e.currentTarget)) return;
+                // The drag's preventDefault would stop the press focusing it.
+                e.currentTarget.focus({ preventScroll: true });
+                onMoveDown(e);
+              }}
+              onKeyDown={(e) => {
+                if (!atControl(e.target, e.currentTarget)) onMoveKey(e);
+              }}
+            >
+              {children}
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -361,10 +424,10 @@ export function WidgetFrame({
               type="button"
               className={`${styles.iconButton} ${styles.small}`}
               onClick={close}
-              aria-label={`Close ${title}`}
-              title="Close"
+              aria-label={closeLabel ?? `Close ${title}`}
+              title={closeLabel ?? 'Close'}
             >
-              <Icon name="close" />
+              <Icon name={closeIcon} />
             </button>
           </div>
           <div className={styles.widgetBody}>{children}</div>

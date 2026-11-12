@@ -520,6 +520,49 @@
   opacity: 0;
 }
 
+/* The bare toolbar's own controls sit on a little glass so they read over any space: the move
+   handle of a body that holds controls, and text buttons such as "Show background". */
+.bareHandle,
+.toolText {
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.bareHandle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragging .bareHandle {
+  cursor: grabbing;
+}
+
+.toolText {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease);
+}
+
+.toolText:hover {
+  background: var(--glass-fill-raised);
+}
+
+.toolText:focus-visible,
+.bareHandle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .widgetHeader {
   display: flex;
   align-items: center;

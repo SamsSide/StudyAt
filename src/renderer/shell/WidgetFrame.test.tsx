@@ -491,6 +491,109 @@ describe('WidgetFrame outside settings (image widgets, spec §3.6)', () => {
     expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
   });
 
+  it('a press on a [data-no-drag] part of a bare body moves nothing, nor do its arrow keys', () => {
+    const onPatch = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Note" chrome="bare" pos={imagePos} onPatch={onPatch}>
+        <textarea aria-label="Note text" data-no-drag />
+      </WidgetFrame>,
+    );
+    const group = screen.getByRole('group', { name: 'Note' });
+    const left = group.style.left;
+    const text = screen.getByRole('textbox', { name: 'Note text' });
+    fireEvent.pointerDown(text, { clientX: 960, clientY: 560, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(group.style.left).toBe(left);
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.keyDown(text, { key: 'ArrowDown' });
+    expect(onPatch).not.toHaveBeenCalled();
+    // The paper round it is still the handle.
+    const body = screen.getByRole('button', { name: 'Move Note' });
+    fireEvent.pointerDown(body, { clientX: 960, clientY: 560, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
+  });
+
+  it('a bare body with controls is no button: its button clicks, its input types, its arrows stay put', async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    const onClick = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Deadlines" chrome="bare" interactiveBody pos={imagePos} onPatch={onPatch}>
+        <div data-testid="paper">
+          <button type="button" onClick={onClick}>
+            Add
+          </button>
+          <input aria-label="Title" />
+        </div>
+      </WidgetFrame>,
+    );
+    // Nothing wraps the controls as a button; the move handle is its own button in the toolbar.
+    expect(screen.getByRole('button', { name: 'Add' }).closest('[role="button"]')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    const input = screen.getByRole('textbox', { name: 'Title' });
+    await user.click(input);
+    await user.keyboard('Exam{ArrowLeft}{ArrowLeft}');
+    expect(input).toHaveValue('Exam');
+    expect(input).toHaveFocus();
+    expect(onPatch).not.toHaveBeenCalled();
+    // The rest of the body still drags.
+    const paper = screen.getByTestId('paper');
+    fireEvent.pointerDown(paper, { clientX: 960, clientY: 560, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
+  });
+
+  it('a bare body with controls moves by keyboard through the toolbar handle', async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Deadlines" chrome="bare" interactiveBody pos={imagePos} onPatch={onPatch}>
+        <input aria-label="Title" />
+      </WidgetFrame>,
+    );
+    screen.getByRole('button', { name: 'Move Deadlines' }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(onPatch).toHaveBeenCalledWith({ x: 0.5, y: 0.52 });
+  });
+
+  it('an image-style bare body still lets a control inside it work without dragging', async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    const onClick = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Image 1" chrome="bare" pos={imagePos} onPatch={onPatch}>
+        <button type="button" onClick={onClick}>
+          Remove
+        </button>
+      </WidgetFrame>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Remove' }), { key: 'ArrowLeft' });
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('a framed close button can carry its own name and icon', () => {
+    installMockApi(mockApi());
+    const onClose = vi.fn();
+    render(
+      <WidgetFrame title="Note" pos={imagePos} onClose={onClose} closeLabel="Delete note" closeIcon="trash">
+        <p>body</p>
+      </WidgetFrame>,
+    );
+    expect(screen.queryByRole('button', { name: 'Close Note' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('bare moves with the arrow keys on the body', async () => {
     const user = userEvent.setup();
     const onPatch = vi.fn();
