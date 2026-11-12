@@ -1,10 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskList } from '../../../shared/types';
 import { resetStudyStore, useStudyStore } from '../../shell/store';
 import { installMockApi, mockApi, seedSubjects, type MockApi } from '../../test/mockApi';
-import { ListMenu } from '../ListMenu';
+import { ListMenu, menuSpot } from '../ListMenu';
 import { ListsView } from '../ListsView';
 import { resetPlannerStore, usePlannerStore } from '../plannerStore';
 
@@ -108,5 +108,68 @@ describe('ListMenu in the widget Lists view', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'List' })).toHaveFocus());
+  });
+});
+
+describe('menuSpot (the portalled panel, kept clear of the clipping list row)', () => {
+  const win = { w: 1000, h: 800 };
+  const panel = { w: 180, h: 200 };
+  const at = (left: number, top: number) => ({ left, top, right: left + 28, bottom: top + 28 });
+
+  it('opens below the trigger with right edges aligned', () => {
+    expect(menuSpot(at(500, 100), panel, win)).toEqual({ left: 528 - 180, top: 132 });
+  });
+
+  it('flips above when there is no room below', () => {
+    // Trigger 700-728: below would end at 932 > 792; above starts at 700 - 4 - 200.
+    expect(menuSpot(at(500, 700), panel, win)).toEqual({ left: 348, top: 496 });
+  });
+
+  it('opens rightwards from the left-most list, where right-aligned would leave the window', () => {
+    expect(menuSpot(at(20, 100), panel, win)).toEqual({ left: 20, top: 132 });
+  });
+
+  it('stays inside the window when neither way fits', () => {
+    const tall = { w: 180, h: 790 };
+    expect(menuSpot(at(500, 400), tall, win).top).toBe(8);
+  });
+});
+
+describe('ListMenu panel outside the list row', () => {
+  it('portals the panel to the body, fixed at the spot below its trigger', async () => {
+    const { container } = render(<ListMenu list={list()} />);
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      left: 500,
+      top: 100,
+      right: 528,
+      bottom: 128,
+      width: 28,
+      height: 28,
+      x: 500,
+      y: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+    await userEvent.click(trigger);
+    const panel = screen.getByRole('group', { name: 'List actions' });
+    expect(container.contains(panel)).toBe(false);
+    expect(panel.parentElement).toBe(document.body);
+    // jsdom lays out nothing, so the panel measures 0 × 0: its right edge sits at the trigger's.
+    expect(panel.style.left).toBe('528px');
+    expect(panel.style.top).toBe('132px');
+    expect(trigger).toHaveAttribute('aria-controls', panel.id);
+  });
+
+  it('Esc closes it and returns focus to the trigger; a click inside the panel keeps it open', async () => {
+    render(<ListMenu list={list()} />);
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    await userEvent.click(trigger);
+    expect(screen.getByRole('button', { name: 'Rename' })).toHaveFocus();
+    await userEvent.click(screen.getByRole('button', { name: 'Link subject' }));
+    const none = screen.getByRole('button', { name: 'None' });
+    expect(none).toHaveFocus();
+    fireEvent.keyDown(none, { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 });

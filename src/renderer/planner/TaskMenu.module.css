@@ -16,8 +16,20 @@
   border-radius: var(--radius);
   /* Opaque: the detail popover already holds a backdrop filter, so a glass menu inside it shows the
      title behind it (E11). */
-  background: var(--glass-sheen), #1b1e26;
+  background: var(--glass-sheen), var(--panel-solid);
   box-shadow: var(--shadow-lg);
+}
+
+/* The list menu's panel, portalled to the body and placed from its trigger (ListMenu.tsx), so a
+   scrolling row of lists can't clip it. Above the widgets, the board and the task detail. */
+.panel.fixed {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: calc(var(--z-overlay) + 2);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  color: var(--text);
 }
 
 .ask {

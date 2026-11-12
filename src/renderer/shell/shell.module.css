@@ -444,6 +444,12 @@
   animation: widgetPopIn var(--duration-slow) var(--ease-spring);
 }
 
+/* A frame with focus or an open pop-up inside (WidgetFrame sets data-raised) sits above the other
+   widgets, so its menu or list isn't painted under a later one; still below --z-chrome. */
+.widget[data-raised] {
+  z-index: calc(var(--z-widget) + 1);
+}
+
 /* The resize corner (spec §3.5): bottom-right, 16 × 16, shown on hover and keyboard focus, and
    faded with the chrome (it always carries .fades). */
 .resize {

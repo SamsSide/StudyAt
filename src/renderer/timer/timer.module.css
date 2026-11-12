@@ -244,8 +244,9 @@
   position: absolute;
   top: calc(100% + var(--space-1));
   left: 0;
-  /* Above floating widgets and stickies (--z-widget), below real overlays (E10). */
-  z-index: calc(var(--z-overlay) - 1);
+  /* Above the timer's own later parts (the frame's resize corner). Above other widgets comes from
+     the frame itself, raised while this list is open (WidgetFrame data-raised, E10). */
+  z-index: 1;
   width: max-content;
   min-width: 100%;
   max-width: 300px;

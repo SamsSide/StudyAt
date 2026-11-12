@@ -266,13 +266,11 @@
   box-sizing: border-box;
   min-height: 32px;
   padding: 6px var(--space-3);
-  opacity: 0.86;
-  border-radius: var(--radius-xs);
+  /* A solid card: glass let the cards it passes over read through its title. */
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--glass-sheen), var(--panel-strong);
-  backdrop-filter: var(--glass-filter-strong);
-  -webkit-backdrop-filter: var(--glass-filter-strong);
-  box-shadow: var(--shadow-lg);
+  background: var(--glass-sheen), var(--panel-solid);
+  box-shadow: var(--shadow);
   color: var(--text);
   font-family: var(--font);
   font-size: var(--text-md);

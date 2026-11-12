@@ -240,10 +240,29 @@ describe('PlannerWidget', () => {
     expect(screen.queryByRole('textbox', { name: 'Add to Mon 9 Nov' })).not.toBeInTheDocument();
   });
 
-  it('Week opens with today expanded and scrolled into view', async () => {
+  it("Week opens with today expanded, scrolled to the top of the week's own scroller only", async () => {
     const user = userEvent.setup();
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
+    // The scroller's top at 100, today's section at 340: today sits 240 px down its content.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const top = this.matches('section[data-today]') ? 340 : 100;
+      return {
+        top,
+        bottom: top + 40,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 40,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      };
+    });
+    const set = vi.fn();
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, v: number) {
+      set(this, v);
+    });
     setup({ tasks: [] });
     render(<PlannerWidget />);
     await user.click(screen.getByRole('tab', { name: 'Week' }));
@@ -251,8 +270,12 @@ describe('PlannerWidget', () => {
       h.closest('section')?.hasAttribute('data-today'),
     );
     expect(head).toHaveAttribute('aria-expanded', 'true');
-    expect(scroll).toHaveBeenCalled();
-    expect(scroll.mock.contexts.at(-1)).toHaveAttribute('data-today', 'true');
+    const today = head?.closest('section');
+    const scroller = today?.closest('[class*="weekDays"]');
+    expect(set).toHaveBeenCalledWith(scroller, 240);
+    // Never scrollIntoView, which would scroll the board page and the window around it too.
+    expect(scroll).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 
   it('a Week quick add places the task on that day', async () => {

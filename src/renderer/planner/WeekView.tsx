@@ -18,17 +18,11 @@ function DaySection({ day, today }: { day: string; today: string }) {
   const openCount = tasks.filter((t) => !t.done).length;
   const label = formatDayLabel(day);
   const bodyId = useId();
-  const ref = useRef<HTMLElement>(null);
   const isToday = day === today;
-
-  // Today's section is open and scrolled into view when the week opens (E8).
-  useEffect(() => {
-    if (isToday) ref.current?.scrollIntoView?.({ block: 'start' });
-  }, [isToday]);
 
   return (
     <DropZone id={dayZone(day)} className={styles.weekDay} items={tasks.map((t) => t.id)}>
-      <section ref={ref} aria-label={label} data-today={isToday ? 'true' : undefined}>
+      <section aria-label={label} data-today={isToday ? 'true' : undefined}>
         <button
           type="button"
           className={styles.weekHead}
@@ -71,6 +65,17 @@ export function WeekView() {
     void loadRange('week', start);
   }, [start, loadRange]);
 
+  // Today's section is scrolled to the top of the week's own scroller when a week holding it opens
+  // (E8). Its scrollTop only: scrollIntoView would scroll every ancestor too, the board's page and
+  // the window among them.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = scroller.current;
+    const section = box?.querySelector<HTMLElement>('section[data-today]');
+    if (!box || !section) return;
+    box.scrollTop = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+  }, [start, today]);
+
   // Landing on the week that holds today clears the day, so the Day tab opens on today.
   const go = (to: string): void => {
     const week = weekStartOf(to);
@@ -98,7 +103,7 @@ export function WeekView() {
           ›
         </button>
       </div>
-      <div className={styles.weekDays}>
+      <div ref={scroller} className={styles.weekDays}>
         {days.map((d) => (
           <DaySection key={d} day={d} today={today} />
         ))}

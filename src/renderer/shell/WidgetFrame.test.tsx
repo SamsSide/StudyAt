@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings } from '../../shared/types';
@@ -175,6 +176,57 @@ describe('WidgetFrame', () => {
     expect(api.settings.set).toHaveBeenCalledWith({
       widgets: { tasks: { open: false, x: 0.5, y: 0.5, autoHide: false, scale: 1 } },
     });
+  });
+});
+
+describe('WidgetFrame raised above other widgets (pop-ups under later widgets)', () => {
+  function Menu() {
+    const [open, setOpen] = useState(false);
+    return (
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        More
+      </button>
+    );
+  }
+
+  it('is raised while a control inside has aria-expanded="true", and drops back when it closes', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <Menu />
+      </WidgetFrame>,
+    );
+    expect(frame()).not.toHaveAttribute('data-raised');
+    const more = screen.getByRole('button', { name: 'More' });
+    fireEvent.click(more);
+    await waitFor(() => expect(frame()).toHaveAttribute('data-raised'));
+    // Opened by a click with no focus move, so only the open pop-up holds it up.
+    fireEvent.click(more);
+    await waitFor(() => expect(frame()).not.toHaveAttribute('data-raised'));
+  });
+
+  it('is raised while focus is inside it, and drops back when focus leaves', async () => {
+    const user = userEvent.setup();
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <>
+        <WidgetFrame id="tasks" title="Tasks">
+          <p>body</p>
+        </WidgetFrame>
+        <button type="button">Outside</button>
+      </>,
+    );
+    expect(frame()).not.toHaveAttribute('data-raised');
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Move Tasks' })).toHaveFocus();
+    expect(frame()).toHaveAttribute('data-raised');
+    // Focus moving between the frame's own controls keeps it raised.
+    await user.tab();
+    expect(frame()).toHaveAttribute('data-raised');
+    screen.getByRole('button', { name: 'Outside' }).focus();
+    await waitFor(() => expect(frame()).not.toHaveAttribute('data-raised'));
   });
 });
 

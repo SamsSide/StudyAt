@@ -203,6 +203,29 @@ export function WidgetFrame({
   }, []);
 
   const pos = givenPos ?? storedPos;
+
+  // Every frame is its own stacking context (z-index plus the scale transform), so a pop-up inside
+  // one paints under any widget later in the DOM. While the frame holds focus or an open pop-up
+  // (any `aria-expanded="true"` control), `data-raised` lifts it above the other widgets, still
+  // below the chrome and overlays.
+  const [focusWithin, setFocusWithin] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const mounted = pos !== undefined;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = (): void => setExpanded(el.querySelector('[aria-expanded="true"]') !== null);
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(el, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['aria-expanded'],
+    });
+    return () => observer.disconnect();
+  }, [mounted]);
+
   if (!pos) return null;
 
   const save = (patch: FramePatch): void => {
@@ -356,6 +379,11 @@ export function WidgetFrame({
       style={{ left, top, transform: `scale(${s})` }}
       role="group"
       aria-label={title}
+      data-raised={focusWithin || expanded ? '' : undefined}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+      }}
     >
       {bare ? (
         <>
