@@ -817,17 +817,27 @@ test('board shots: Week, the list row, a drag mid-move', async ({ launch }) => {
   const to = addDays(mon, 4);
   const toSection = board.locator(`section[aria-label="${formatDayLabel(to)}"]`);
   // The line is the handle now: the pointer starts on the title text (the grip is clipped to a pixel).
-  const grip = board.locator(`section[aria-label="${formatDayLabel(from)}"]`).locator('li[data-task-id]').filter({ hasText: 'Flashcards: graph theory' }).locator('span[role="button"]').first();
-  await grip.scrollIntoViewIfNeeded();
+  const title = board.locator(`section[aria-label="${formatDayLabel(from)}"]`).locator('li[data-task-id]').filter({ hasText: 'Flashcards: graph theory' }).locator('span[role="button"]').first();
+  // After the Lists shot the board is scrolled down and Friday's head is above the window: a target
+  // measured there sends the pointer off the window, dnd-kit autoscrolls the board and the drop
+  // misses. Bring Friday into view first, then the row, and check both points are on the window.
+  await toSection.scrollIntoViewIfNeeded();
+  await title.scrollIntoViewIfNeeded();
   await sleep(300);
-  const g = await grip.boundingBox();
+  // The centre of the title's first line of text (a wrapped title's box centre can fall between lines).
+  const start = await title.evaluate((n) => {
+    const r = n.getClientRects()[0]!;
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, h: window.innerHeight };
+  });
   const target = await toSection.boundingBox();
-  if (!g || !target) throw new Error('no grip or target');
-  await win.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
-  await win.mouse.down();
-  await win.mouse.move(g.x + g.width / 2 + 8, g.y + g.height / 2 + 8, { steps: 4 }); // past the 6 px activation distance first
+  if (!target) throw new Error('no target');
   const tx = target.x + target.width / 2;
   const ty = Math.min(target.y + 90, target.y + target.height - 10);
+  for (const y of [start.y, ty]) expect(y > 0 && y < start.h, `pointer y ${y} on the window`).toBe(true);
+  await win.mouse.move(start.x, start.y);
+  await win.mouse.down();
+  await win.mouse.move(start.x + 8, start.y + 8, { steps: 4 }); // past the 6 px activation distance first
+  await expect(win.locator('[data-drag-overlay]')).toBeVisible(); // the drag is live: the line follows the pointer
   await win.mouse.move(tx, ty, { steps: 20 });
   await sleep(400);
   await shot(win, 'tweek-03-drag.png');
