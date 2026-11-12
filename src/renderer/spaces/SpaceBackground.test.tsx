@@ -215,7 +215,7 @@ describe('SpaceBackground', () => {
         await waitFor(() => expect(h.opts()).toBeDefined());
         const host = screen.getByTestId('space-youtube');
         expect(host).toHaveStyle({ width: '3840px', height: '2160px' });
-        expect(host.style.transform).toBe('translate(-50%, -50%) scale(0.5)');
+        expect(host.style.transform).toBe('translate(-50%, -50%) scale(0.6)');
         act(() => h.opts()?.events.onReady?.());
         expect(h.player.setPlaybackQuality).toHaveBeenCalledWith('hd2160');
       });
@@ -228,8 +228,19 @@ describe('SpaceBackground', () => {
         vi.stubGlobal('innerHeight', 1200);
         act(() => void window.dispatchEvent(new Event('resize')));
         expect(screen.getByTestId('space-youtube').style.transform).toBe(
-          `translate(-50%, -50%) scale(${(1200 / 2160).toFixed(6)})`,
+          `translate(-50%, -50%) scale(${((1.2 * 1200) / 2160).toFixed(6)})`,
         );
+      });
+
+      it('an unknown stored quality behaves as Auto', async () => {
+        const s = q('2160');
+        s.opts.quality = 'bogus' as never;
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        act(() => h.opts()?.events.onReady?.());
+        expect(screen.getByTestId('space-youtube').style.transform).toBe('');
+        expect(h.player.setPlaybackQuality).not.toHaveBeenCalled();
       });
 
       it('Auto sets no size and never asks for a level', async () => {

@@ -16,7 +16,8 @@ import {
   playerBox,
   playerVars,
   QUALITY_POLL_MS,
-  QUALITY_TARGETS,
+  qualityTarget,
+  YOUTUBE_CHROME_CROP,
   type YTPlayer,
 } from './youtube';
 
@@ -192,8 +193,9 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
   // Ask for the target level (spec §3.3); Auto leaves the choice to YouTube.
   useEffect(() => {
     const p = player.current;
-    if (!p || !ready || quality === 'auto') return;
-    p.setPlaybackQuality?.(QUALITY_TARGETS[quality].level);
+    const target = qualityTarget(quality);
+    if (!p || !ready || !target) return;
+    p.setPlaybackQuality?.(target.level);
   }, [ready, quality]);
 
   // The badge: read the playing level every few seconds while it plays, and not while paused.
@@ -229,13 +231,13 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
   }, [ready, paused]);
 
   // Auto: a 16:9 frame scaled to cover the window. A target: the player at that many device
-  // pixels (so YouTube picks that rendition), scaled down to cover, centred.
+  // pixels (so YouTube picks that rendition), scaled down to cover, centred, with the same chrome crop as the CSS rule.
   const box = playerBox(quality, { w: viewport.w, h: viewport.h }, viewport.dpr);
   const style: CSSProperties | undefined = box
     ? {
         width: box.width,
         height: box.height,
-        transform: `translate(-50%, -50%) scale(${box.scale})`,
+        transform: `translate(-50%, -50%) scale(${box.scale * YOUTUBE_CHROME_CROP})`,
       }
     : undefined;
   return <div ref={host} data-testid="space-youtube" className={styles.youtube} style={style} />;

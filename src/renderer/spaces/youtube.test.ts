@@ -9,6 +9,9 @@ describe('playerBox', () => {
   it('covers a taller window by its height', () => {
     expect(playerBox('2160', { w: 1920, h: 1200 }, 1)?.scale).toBeCloseTo(1200 / 2160);
   });
+  it('treats an unknown quality as Auto', () => {
+    expect(playerBox('bogus' as never, { w: 1920, h: 1080 }, 1)).toBeNull();
+  });
   it('Auto has no box', () => {
     expect(playerBox('auto', { w: 1920, h: 1080 }, 1)).toBeNull();
   });

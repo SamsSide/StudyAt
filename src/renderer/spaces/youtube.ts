@@ -148,17 +148,30 @@ export function qualityLabel(level: string | null | undefined): string {
 }
 
 /**
+ * Extra enlargement that pushes the player's own chrome (title bar, logo, "More videos") outside
+ * the window (real-app finding F7). Must equal the `scale(1.2)` in the `.youtube` rule of
+ * spaces.module.css, which a quality target's inline transform replaces.
+ */
+export const YOUTUBE_CHROME_CROP = 1.2;
+
+/** The target a stored quality names, or null for Auto and for any value we don't know. */
+export function qualityTarget(q: string): (typeof QUALITY_TARGETS)[keyof typeof QUALITY_TARGETS] | null {
+  return Object.hasOwn(QUALITY_TARGETS, q) ? QUALITY_TARGETS[q as keyof typeof QUALITY_TARGETS] : null;
+}
+
+/**
  * CSS size of the player for a target (device pixels over the device pixel ratio, so the player
  * gets that many real pixels) and the scale that covers the window. Null for Auto, which keeps
- * the plain sizing.
+ * the plain sizing, as does any unknown value. The scale is the pure cover scale; callers
+ * multiply it by YOUTUBE_CHROME_CROP.
  */
 export function playerBox(
   q: SpaceQuality,
   win: { w: number; h: number },
   dpr: number,
 ): { width: number; height: number; scale: number } | null {
-  if (q === 'auto') return null;
-  const t = QUALITY_TARGETS[q];
+  const t = qualityTarget(q);
+  if (!t) return null;
   const width = t.w / dpr;
   const height = t.h / dpr;
   return { width, height, scale: Math.max(win.w / width, win.h / height) };
