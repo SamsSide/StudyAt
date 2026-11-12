@@ -247,6 +247,7 @@ describe('TaskSelect', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
   const todayKey = dayKeyOf(NOW, DEFAULT_SETTINGS.rolloverHour);
   const tomorrow = addDays(todayKey, 1);
@@ -290,6 +291,22 @@ describe('TaskSelect', () => {
     expect(screen.getByRole('option', { name: 'Essay plan' })).toHaveAttribute('title', 'Essay plan');
     await user.click(screen.getByRole('option', { name: 'Essay plan' }));
     expect(api.timer.setTask).toHaveBeenCalledWith(4);
+  });
+
+  it('the open task list scrolls within the room the window has, measured at the widget scale', async () => {
+    const user = userEvent.setup();
+    seedPlanner();
+    render(<TimerWidget />);
+    const box = screen.getByRole('combobox', { name: 'Task' });
+    // Drawn at half size near the window's foot, so it opens upwards into 120 window px above the
+    // box: 120 / 0.5 - 72 = 168 CSS px.
+    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 32 });
+    vi.spyOn(box, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ x: 0, y: 120, width: 100, height: 16 }),
+    );
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(366);
+    await user.click(box);
+    expect(screen.getByRole('listbox', { name: 'Task' })).toHaveStyle({ maxHeight: '168px' });
   });
 
   it('typing filters the titles', async () => {

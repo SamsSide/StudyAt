@@ -42,12 +42,17 @@
   outline: 2px solid #9db4ff;
   outline-offset: 2px;
 }
-.widget .primary {
+/* `button.` so these beat `.widget button:not(.row)` above; without it the accent fill was lost
+   and the dark text sat on grey glass, reading as disabled (P1, D9). */
+.widget button.primary {
   background: #7c9cff;
   color: #0b1020;
   border-color: transparent;
 }
-.widget .danger {
+.widget button.primary:hover {
+  background: #93adff;
+}
+.widget button.danger {
   border-color: #ff9d9d;
 }
 

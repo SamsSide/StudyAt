@@ -177,6 +177,18 @@ describe('PlannerWidget', () => {
     expect(screen.getByText(/Networks/)).toBeInTheDocument();
   });
 
+  it("Day's deadline chips say how long is left, without seconds", async () => {
+    setup({
+      deadlines: [
+        deadline({ id: 1, title: 'Problem sheet 6', kind: 'coursework', due: '2026-11-11T12:42' }),
+        deadline({ id: 2, title: 'Lab report', kind: 'coursework', due: '2026-11-11T23:30' }),
+      ],
+    });
+    render(<PlannerWidget />);
+    expect(await screen.findByText('· 42m')).toBeInTheDocument();
+    expect(screen.getByText('· 11h 30m')).toBeInTheDocument();
+  });
+
   it('a double Enter makes one task', async () => {
     const api = setup();
     let finish: (() => void) | undefined;

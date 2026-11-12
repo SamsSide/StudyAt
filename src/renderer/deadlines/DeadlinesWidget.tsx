@@ -104,11 +104,15 @@ export function DeadlinesWidget() {
       ) : (
         <>
           <div className={styles.bar}>
-            <button type="button" className={styles.primary} ref={addRef}
+            {/* The plain glass button, like Past (P1, D9). */}
+            <button
+              type="button"
+              ref={addRef}
               onClick={() => {
                 returnTo.current = 'add';
                 setEditing({ kind: 'add' });
-              }}>
+              }}
+            >
               + Add
             </button>
             <button type="button" aria-pressed={past} onClick={() => setPast((p) => !p)}>
@@ -161,7 +165,11 @@ export function DeadlinesWidget() {
                         />
                       )}
                       <span className={styles.title}>{d.title}</span>
-                      <span className={styles.countdown} aria-hidden="true" data-due={!d.done && countdown === 'Due'}>
+                      <span
+                        className={styles.countdown}
+                        aria-hidden="true"
+                        data-due={!d.done && countdown === 'Due'}
+                      >
                         {d.done ? 'Done' : countdown}
                       </span>
                     </button>

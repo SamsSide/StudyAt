@@ -63,7 +63,7 @@ export function DayView() {
       {deadlines.length > 0 && (
         <div className={styles.deadlines}>
           {deadlines.map((d) => (
-            <DeadlineChip key={d.id} deadline={d} />
+            <DeadlineChip key={d.id} deadline={d} countdown />
           ))}
         </div>
       )}

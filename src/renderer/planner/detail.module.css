@@ -49,6 +49,12 @@
   gap: var(--space-3);
 }
 
+/* Subject and Repeat take the wider column, so a long subject name fits (P1, D6); Estimate and
+   Reminder need little room. */
+.gridWide {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -82,8 +88,13 @@
 .titleInput {
   flex: 1;
   min-height: var(--control-h-lg);
-  padding: 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-lg);
+  line-height: 1.3;
+  /* Grows a line at a time with the title (P1, D6); never resized by hand. */
+  field-sizing: content;
+  resize: none;
+  overflow-wrap: anywhere;
 }
 
 .note {

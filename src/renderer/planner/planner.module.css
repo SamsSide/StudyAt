@@ -6,8 +6,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: 340px;
-  max-height: 460px;
+  /* Wide enough that a title gets its own line at the default scale (P1, D1/D2). */
+  width: 400px;
+  max-height: 560px;
   box-sizing: border-box;
   color: var(--text);
   font-family: var(--font);
@@ -44,10 +45,10 @@
 }
 
 .tab {
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
 }
 
 .tab[aria-selected='true'] {
@@ -55,10 +56,10 @@
 }
 
 .textButton {
-  min-height: 28px;
+  min-height: 30px;
   padding: 0 var(--space-3);
   border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
 }
 
 .textButton[data-active='true'] {
@@ -117,7 +118,7 @@
 .dayLabel {
   flex: 1;
   text-align: center;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   color: var(--text-muted);
 }
 
@@ -143,6 +144,16 @@
   font-size: var(--text-xs);
 }
 
+/* The Day view's chips read at the widget's chip size, with the countdown after the title. */
+.widget .deadline {
+  font-size: var(--text-sm);
+}
+
+.countdown {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .exam {
   margin: 0;
   font-size: var(--text-sm);
@@ -164,14 +175,18 @@
   padding: 0;
   list-style: none;
   overflow-y: auto;
-  max-height: 280px;
+  max-height: 320px;
 }
 
+/* Tweek-like rows: check, title and the hover tools on the first line; the chips wrap in a quiet
+   row of their own under the title, so a title never shares its width with them (P1, D1). */
 .row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  padding: 4px var(--space-2);
+  column-gap: var(--space-2);
+  row-gap: 2px;
+  padding: 5px var(--space-2);
   border-left: 3px solid transparent;
   border-radius: var(--radius-xs);
   cursor: pointer;
@@ -211,7 +226,7 @@
 }
 
 .title {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -231,11 +246,18 @@
 
 .chips {
   display: flex;
-  flex: 0 1 auto;
+  order: 3;
+  flex: 1 0 100%;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: var(--space-1);
+  /* Under the title: the check's width plus the gap. */
+  padding-left: 24px;
+}
+
+.chips:empty {
+  display: none;
 }
 
 .dot {
@@ -253,6 +275,11 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+.widget .chip {
+  padding: 1px 7px;
+  font-size: var(--text-sm);
 }
 
 /* Over the estimate: amber, and the text stays light on the dark glass. */
@@ -339,8 +366,17 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  max-height: 340px;
+  max-height: 380px;
   overflow-y: auto;
+  /* Room for the scrollbar beside the chips, and a little under the last row (P1, D4). */
+  scrollbar-gutter: stable;
+  padding: 0 var(--space-1) var(--space-2) 0;
+}
+
+/* The week scrolls as one; a day's rows never scroll on their own inside it. */
+.weekDays .rows {
+  max-height: none;
+  overflow: visible;
 }
 
 .weekDay {
@@ -363,7 +399,7 @@
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
   cursor: pointer;
 }
 

@@ -17,6 +17,11 @@ type Choice = { id: number | null; text: string; group: Group | null };
 const NO_TASK: Choice = { id: null, text: 'No task', group: null };
 /** Room the list needs below the box before it opens upwards instead. */
 const LIST_ROOM = 340;
+/** The options' tallest (as `.taskOptions` in timer.module.css) and shortest height, in CSS px. */
+const OPTIONS_MAX = 7 * 34 + 3 * 22;
+const OPTIONS_MIN = 2 * 34;
+/** What the open list adds around its options: the find box, gaps, padding and the window edge. */
+const LIST_CHROME = 72;
 
 type Found = { today: PlannerTask[]; week: PlannerTask[]; lists: PlannerTask[] };
 const EMPTY: Found = { today: [], week: [], lists: [] };
@@ -55,6 +60,8 @@ export function TaskSelect() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [upwards, setUpwards] = useState(false);
+  // The options' height for the room on the side it opens to, so it never runs off the window.
+  const [optionsMax, setOptionsMax] = useState(OPTIONS_MAX);
   const box = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -85,7 +92,13 @@ export function TaskSelect() {
 
   const show = (): void => {
     const rect = box.current?.getBoundingClientRect();
-    setUpwards(rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight);
+    const up = rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight;
+    setUpwards(up);
+    // The widget is drawn scaled (WidgetFrame), so window pixels become CSS pixels by its scale.
+    const drawn = box.current?.offsetHeight ?? 0;
+    const scale = rect !== undefined && drawn > 0 && rect.height > 0 ? rect.height / drawn : 1;
+    const room = rect === undefined ? Infinity : (up ? rect.top : window.innerHeight - rect.bottom) / scale;
+    setOptionsMax(Math.max(OPTIONS_MIN, Math.min(OPTIONS_MAX, room - LIST_CHROME)));
     setFilter('');
     setFailed(null);
     moved.current = false;
@@ -149,7 +162,7 @@ export function TaskSelect() {
   const shown = heldNow?.text ?? current.text;
 
   return (
-    <div className={styles.subject} ref={wrap} onBlur={onBlur}>
+    <div className={`${styles.subject} ${styles.taskPicker}`} ref={wrap} onBlur={onBlur}>
       <span id={labelId} className={styles.visuallyHidden}>
         Task
       </span>
@@ -202,7 +215,14 @@ export function TaskSelect() {
             }}
             onKeyDown={onKey}
           />
-          <ul id={listId} role="listbox" aria-labelledby={labelId} className={styles.taskOptions} tabIndex={-1}>
+          <ul
+            id={listId}
+            role="listbox"
+            aria-labelledby={labelId}
+            className={styles.taskOptions}
+            style={{ maxHeight: optionsMax }}
+            tabIndex={-1}
+          >
             {choices.map((c, i) => (
               <li key={c.id ?? 'none'} role="presentation">
                 {c.group !== null && choices[i - 1]?.group !== c.group && (

@@ -122,6 +122,18 @@ describe('TaskDetail', () => {
     expect(screen.getByLabelText('Title')).toHaveValue('Read chapter 4');
   });
 
+  it('keeps the wrapping title one line: Enter saves, a line break becomes a space', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    const title = screen.getByLabelText('Title');
+    await user.clear(title);
+    await user.type(title, 'Read chapter 5{Enter}');
+    expect(api.tasks.update).toHaveBeenCalledWith(1, { title: 'Read chapter 5' });
+    expect(title).toHaveValue('Read chapter 5');
+    fireEvent.change(title, { target: { value: 'Read\nchapter 6' } });
+    expect(title).toHaveValue('Read chapter 6');
+  });
+
   it('saves a note on blur', async () => {
     const user = userEvent.setup();
     const { api } = setup();

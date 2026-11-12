@@ -293,17 +293,22 @@ function Popover({ task }: { task: PlannerTask }) {
           aria-label={task.done ? 'Mark as not done' : 'Mark as done'}
           onChange={() => save({ done: !task.done })}
         />
-        <input
+        {/* A one-line title that wraps to fit (CSS field-sizing), so a long one is never cut. It is
+            still one line of text: Enter saves, and a pasted line break becomes a space. */}
+        <textarea
           className={styles.titleInput}
           aria-label="Title"
+          rows={1}
           value={title}
           onChange={(e) => {
             touch('title');
-            setTitle(cap(e.target.value, TASK_TITLE_MAX));
+            setTitle(cap(e.target.value.replace(/\r?\n/g, ' '), TASK_TITLE_MAX));
           }}
           onBlur={commitTitle}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            e.currentTarget.blur();
           }}
         />
       </div>
@@ -325,7 +330,7 @@ function Popover({ task }: { task: PlannerTask }) {
         <SubtaskList task={task} />
       </Field>
 
-      <div className={styles.grid}>
+      <div className={`${styles.grid} ${styles.gridWide}`}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Subject</span>
           <select
@@ -413,7 +418,7 @@ function Popover({ task }: { task: PlannerTask }) {
       </Field>
 
       {dated && (
-        <div className={styles.grid}>
+        <div className={`${styles.grid} ${styles.gridWide}`}>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Repeat</span>
             <select

@@ -410,17 +410,34 @@
   }
 }
 
-/* Task picker (v1.2 spec §3.8): a filter box over grouped options. */
+/* Task picker (v1.2 spec §3.8): a filter box over grouped options. The picker takes the widget's
+   full width, and its list stays inside that width, scrolling within itself (P1, D7). */
+.taskPicker {
+  align-self: stretch;
+}
+
+.taskPicker .combo {
+  max-width: none;
+}
+
 .taskList {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  right: 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
   max-height: none;
+  /* Room for the find box's focus ring inside the glass. */
+  padding: var(--space-2);
   overflow: visible;
-  min-width: 220px;
 }
 
 .taskFilter {
+  flex: none;
+  width: 100%;
+  min-width: 0;
   height: 30px;
   padding: 0 var(--space-3);
   border: 1px solid var(--border);
@@ -461,7 +478,9 @@
 
 /* Session intention and its outcome question (v1.2 spec §3.11). */
 .intention {
+  align-self: stretch;
   width: 100%;
+  min-width: 0;
   height: var(--control-h);
   padding: 0 var(--space-3);
   border: 1px solid var(--border);

@@ -6,6 +6,7 @@ import type { SettingsPatch } from '../../../shared/types';
 import { useStudyStore } from '../../shell/store';
 import { clamp, Toggle } from '../controls';
 import styles from '../settings.module.css';
+import own from './TasksSection.module.css';
 import type { SectionProps } from './types';
 
 const MAX_DAYS = 4;
@@ -139,13 +140,17 @@ export function TasksSection({ settings, update }: SectionProps) {
           </span>
           <div className={styles.hint}>Finishing a task with one of these tags schedules revision</div>
         </div>
-        <ul className={`${styles.list} ${styles.controls}`} style={wrapStyle} aria-labelledby={tagsHeadingId}>
+        <ul
+          className={`${styles.list} ${styles.controls} ${own.chips}`}
+          style={wrapStyle}
+          aria-labelledby={tagsHeadingId}
+        >
           {tags.map((tag) => (
-            <li key={tag} className={styles.controls}>
+            <li key={tag} className={own.chip}>
               <span>{tag}</span>
               <button
                 type="button"
-                className={styles.button}
+                className={own.remove}
                 aria-label={`Remove ${tag}`}
                 onClick={() => void save({ revisionTags: latest().tags.filter((t) => t !== tag) })}
               >
@@ -195,12 +200,12 @@ export function TasksSection({ settings, update }: SectionProps) {
         </div>
         <div className={styles.controls} style={wrapStyle}>
           {days.map((day, i) => (
-            <span key={i} className={styles.controls}>
+            <span key={i} className={own.day}>
               <DayField index={i} value={day} onCommit={(n) => setDay(i, n)} onFailed={setFailed} />
               {days.length > 1 && (
                 <button
                   type="button"
-                  className={styles.button}
+                  className={own.remove}
                   aria-label={`Remove revision day ${i + 1}`}
                   onClick={() => void save({ revisionDays: latest().days.filter((_, j) => j !== i) })}
                 >
