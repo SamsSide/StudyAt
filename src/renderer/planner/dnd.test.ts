@@ -91,6 +91,9 @@ describe('buildAnnouncements', () => {
     expect(a.onDragEnd?.(ev('task:1', 'day:2026-11-12') as DragEndEvent)).toBe('Moved "Read" to Thu 12 Nov.');
     expect(a.onDragEnd?.(ev('task:1', 'list:2') as DragEndEvent)).toBe('Moved "Read" to Someday.');
   });
+  it('says a task stays where it is when it is over its own place', () => {
+    expect(a.onDragOver?.(ev('task:1', 'task:1') as DragOverEvent)).toBe('"Read" stays where it is.');
+  });
   it('says it was put back when nothing moves or the drag is cancelled', () => {
     expect(a.onDragEnd?.(ev('task:1', null) as DragEndEvent)).toBe('Put "Read" back.');
     expect(a.onDragEnd?.(ev('task:1', 'day:2026-11-11') as DragEndEvent)).toBe('Put "Read" back.');

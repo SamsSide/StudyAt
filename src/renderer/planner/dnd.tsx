@@ -113,6 +113,7 @@ const zoneLabel = (zone: string, lists: TaskList[]): string | null => {
 export function buildAnnouncements(
   read: () => { tasks: Record<number, PlannerTask>; lists: TaskList[] },
   order: (zone: string) => number[],
+  landed: Map<string, string> = new Map(),
 ): Announcements {
   const titleOf = (id: string | number): string => {
     const n = taskIdOf(String(id));
@@ -129,22 +130,34 @@ export function buildAnnouncements(
   };
   return {
     onDragStart: ({ active }) => `Picked up "${titleOf(active.id)}".`,
-    onDragOver: ({ over }) => {
-      const where = over ? placeOf(over.id) : null;
+    onDragOver: ({ active, over }) => {
+      if (!over) return undefined;
+      const { tasks } = read();
+      if (!resolveDrop(String(active.id), String(over.id), tasks, order)) {
+        return `"${titleOf(active.id)}" stays where it is.`;
+      }
+      const where = placeOf(over.id);
       return where ? `Over ${where}.` : undefined;
     },
     onDragEnd: ({ active, over }) => {
       const title = titleOf(active.id);
-      const { tasks } = read();
-      const drop = resolveDrop(String(active.id), over ? String(over.id) : null, tasks, order);
-      const where = drop && over ? placeOf(over.id) : null;
+      // The drop PlannerDnd made (the store has already moved by now); else work it out afresh.
+      const key = String(active.id);
+      const recorded = landed.get(key);
+      landed.delete(key);
+      const drop =
+        recorded === undefined ? resolveDrop(key, over ? String(over.id) : null, read().tasks, order) : null;
+      const where = recorded !== undefined ? placeOf(recorded) : drop && over ? placeOf(over.id) : null;
       return where ? `Moved "${title}" to ${where}.` : `Put "${title}" back.`;
     },
     onDragCancel: ({ active }) => `Put "${titleOf(active.id)}" back.`,
   };
 }
 
-const announcements = buildAnnouncements(() => usePlannerStore.getState(), openOrder);
+/** Drops PlannerDnd has made, by dragged id to the id dropped on, for the drag-end announcement:
+ *  dnd-kit runs `onDragEnd` before announcing, and by then the store has moved the task. */
+const landed = new Map<string, string>();
+const announcements = buildAnnouncements(() => usePlannerStore.getState(), openOrder, landed);
 
 /** A task row under the pointer wins over the zone around it; the keyboard has no pointer, so the
  *  nearest centre decides. */
@@ -169,7 +182,10 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
       usePlannerStore.getState().tasks,
       openOrder,
     );
-    if (drop) void move(drop.id, drop.to);
+    if (drop && over) {
+      landed.set(String(active.id), String(over.id));
+      void move(drop.id, drop.to);
+    }
   };
 
   return (

@@ -1,5 +1,5 @@
 import type * as DndKit from '@dnd-kit/core';
-import type { DragEndEvent } from '@dnd-kit/core';
+import type { Announcements, DragEndEvent } from '@dnd-kit/core';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,12 +16,14 @@ import { WeekView } from './WeekView';
 
 // Capture PlannerDnd's drag-end handler so a test can drop a task without a real pointer.
 let dragEnd: ((e: DragEndEvent) => void) | undefined;
+let announce: Announcements | undefined;
 vi.mock('@dnd-kit/core', async (importOriginal) => {
   const actual = await importOriginal<typeof DndKit>();
   return {
     ...actual,
     DndContext: (props: React.ComponentProps<typeof actual.DndContext>) => {
       dragEnd = props.onDragEnd as typeof dragEnd;
+      announce = props.accessibility?.announcements;
       return <actual.DndContext {...props} />;
     },
   };
@@ -86,6 +88,38 @@ describe('a filter and drag and drop', () => {
     });
     // Alpha lands on Gamma's place: index 2 among all three open tasks, not 1 among the two shown.
     expect(api.tasks.move).toHaveBeenCalledWith(1, { day, index: 2 });
+  });
+});
+
+describe('the drag-end announcement', () => {
+  it('names the drop that was made, although the store has moved first', async () => {
+    const day = today();
+    const tomorrow = addDays(day, 1);
+    const tasks = [
+      minimalPlannerTask({ id: 1, title: 'Alpha', day, sort: 0 }),
+      minimalPlannerTask({ id: 2, title: 'Beta', day: tomorrow, sort: 0 }),
+    ];
+    installMockApi(
+      mockApi({
+        planner: {
+          day: vi.fn((d: string) =>
+            Promise.resolve({ from: d, to: d, tasks: tasks.filter((t) => t.day === d), deadlines: [], studiedMs: {} }),
+          ),
+          week: vi.fn(weekOf),
+        },
+        tasks: { move: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })) },
+      }),
+    );
+    render(<PlannerWidget />);
+    await screen.findByText('Alpha');
+    const ev = { active: { id: 'task:1' }, over: { id: `day:${tomorrow}` } } as unknown as DragEndEvent;
+    let said: string | undefined;
+    act(() => {
+      dragEnd?.(ev); // dnd-kit runs the context's handler first ...
+      expect(usePlannerStore.getState().tasks[1]?.day).toBe(tomorrow);
+      said = announce?.onDragEnd?.(ev) as string | undefined; // ... then the announcement.
+    });
+    expect(said).toMatch(/^Moved "Alpha" to .+\.$/);
   });
 });
 
