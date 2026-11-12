@@ -816,7 +816,8 @@ test('board shots: Week, the list row, a drag mid-move', async ({ launch }) => {
   const from = addDays(mon, 3);
   const to = addDays(mon, 4);
   const toSection = board.locator(`section[aria-label="${formatDayLabel(to)}"]`);
-  const grip = board.locator(`section[aria-label="${formatDayLabel(from)}"]`).getByRole('button', { name: 'Move "Flashcards: graph theory"' }).first();
+  // The line is the handle now: the pointer starts on the title text (the grip is clipped to a pixel).
+  const grip = board.locator(`section[aria-label="${formatDayLabel(from)}"]`).locator('li[data-task-id]').filter({ hasText: 'Flashcards: graph theory' }).locator('span[role="button"]').first();
   await grip.scrollIntoViewIfNeeded();
   await sleep(300);
   const g = await grip.boundingBox();
@@ -824,6 +825,7 @@ test('board shots: Week, the list row, a drag mid-move', async ({ launch }) => {
   if (!g || !target) throw new Error('no grip or target');
   await win.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
   await win.mouse.down();
+  await win.mouse.move(g.x + g.width / 2 + 8, g.y + g.height / 2 + 8, { steps: 4 }); // past the 6 px activation distance first
   const tx = target.x + target.width / 2;
   const ty = Math.min(target.y + 90, target.y + target.height - 10);
   await win.mouse.move(tx, ty, { steps: 20 });
