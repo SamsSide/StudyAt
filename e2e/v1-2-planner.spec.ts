@@ -632,6 +632,130 @@ test('list menus: left-most and right edge open whole inside the board; Tab and 
   await shot(win, 't35-2-list-menu-scrolled-away.png');
 });
 
+test('board row tools: after a title click and a mouse close, hover shows ▶ and it starts focus; Tab to a title hides the pill', async ({ launch }) => {
+  const { win } = await launch();
+  await prepare(win);
+  const today = studyDay(Date.now());
+  const comp2221 = await subjectId(win, 'COMP2221');
+  const [id] = await seed(win, [
+    { title: 'Lab 4 write-up', day: today, estimateMin: 60, subjectId: comp2221 },
+    { title: 'Plan next week', day: today, estimateMin: 15 },
+  ]);
+  await reload(win);
+  const board = await openBoard(win);
+  await boardView(board, 'Week');
+  const row = rowOf(daySection(board, today), 'Lab 4 write-up');
+  const pillOf = (r: Locator) => r.locator('button[aria-label^="Start focus on"]').locator('xpath=..');
+  const opacity = (l: Locator) => l.evaluate((n) => Number(getComputedStyle(n).opacity));
+
+  // A click on the title opens its detail; the detail's Close, clicked with the mouse, shuts it.
+  await row.locator('span[role="button"]').first().click();
+  const detail = win.getByRole('dialog', { name: 'Task: Lab 4 write-up' });
+  await expect(detail).toBeVisible();
+  await detail.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(detail).toBeHidden();
+  await expect(board).toBeVisible();
+  const afterClose = await row.evaluate((li) => ({
+    titleFocus: li.getAttribute('data-title-focus'),
+    focusInRow: li.contains(document.activeElement),
+    focusVisible: !!document.activeElement?.matches(':focus-visible'),
+  }));
+  test.info().annotations.push({ type: 'after mouse close', description: JSON.stringify(afterClose) });
+  expect(afterClose.titleFocus).toBeNull();
+
+  // Hovered: the pill shows, and ▶ starts focus on the task and its subject.
+  await row.hover();
+  await sleep(300);
+  expect(await opacity(pillOf(row))).toBe(1);
+  const play = row.getByRole('button', { name: 'Start focus on "Lab 4 write-up"', exact: true });
+  await expect(play).toBeVisible();
+  await shot(win, 't35-6-row-hover-after-mouse-close.png');
+  await play.click();
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.timer.get())).status).toBe('running');
+  const started = await win.evaluate(() => window.studyat.timer.get());
+  expect({ mode: started.mode, taskId: started.taskId, subjectId: started.subjectId }).toEqual({ mode: 'focus', taskId: id, subjectId: comp2221 });
+  // Provenance: main wrote the focus session's row at its start (study-dev rule 2).
+  await expect
+    .poll(async () => (await win.evaluate(() => window.studyat.stats.sessions())).filter((s) => s.taskId === id).map((s) => s.subjectId))
+    .toEqual([comp2221]);
+  await win.evaluate(() => window.studyat.timer.reset());
+  await expect.poll(async () => (await win.evaluate(() => window.studyat.timer.get())).status).not.toBe('running');
+
+  // Tab to a title: its keyboard ring is whole, so the pill is hidden, hovered or not.
+  await win.keyboard.press('Escape');
+  await expect(board).toBeHidden();
+  const board2 = await openBoard(win);
+  await boardView(board2, 'Week');
+  const row2 = rowOf(daySection(board2, today), 'Plan next week');
+  await calm(win);
+  await row2.getByRole('checkbox').focus();
+  await win.keyboard.press('Tab');
+  await expect(row2.locator('span[role="button"]').first()).toBeFocused();
+  await expect(row2).toHaveAttribute('data-title-focus', 'true');
+  await sleep(300);
+  expect(await opacity(pillOf(row2))).toBe(0);
+  await row2.hover();
+  await sleep(300);
+  expect(await opacity(pillOf(row2))).toBe(0);
+  await shot(win, 't35-6-title-tab-focus.png');
+});
+
+test('board list menu: scrolling its ⋯ under the board header closes it', async ({ launch }) => {
+  const { win } = await launch();
+  await prepare(win);
+  // Rows in the Inbox lengthen the list row past the body's height, so the body can scroll its ⋯
+  // under the header.
+  const inbox = await listId(win, 'Inbox');
+  await seed(win, Array.from({ length: 28 },(_, i) => ({ title: `Inbox item ${i + 1}`, listId: inbox })));
+  await reload(win);
+  const board = await openBoard(win);
+  await boardView(board, 'Week');
+  const trigger = board.getByRole('button', { name: 'Inbox menu' });
+  // The board's body is the list row's vertically scrolling ancestor; its header sits above it.
+  const geo = () => trigger.evaluate((t) => {
+    let b = t.closest('[data-list-row]')!.parentElement;
+    while (b && !/auto|scroll/.test(getComputedStyle(b).overflowY)) b = b.parentElement;
+    const head = document.querySelector('[role="group"][aria-label="Board view"]')!.parentElement!;
+    const tr = t.getBoundingClientRect();
+    return {
+      trigger: { top: tr.top, bottom: tr.bottom },
+      bodyTop: b!.getBoundingClientRect().top,
+      headBottom: head.getBoundingClientRect().bottom,
+      scrollTop: b!.scrollTop,
+      max: b!.scrollHeight - b!.clientHeight,
+    };
+  });
+  // ⋯ 40 px below the body's top, then its menu opened.
+  await trigger.evaluate((t) => {
+    let b = t.closest('[data-list-row]')!.parentElement;
+    while (b && !/auto|scroll/.test(getComputedStyle(b).overflowY)) b = b.parentElement;
+    b!.scrollTop += t.getBoundingClientRect().top - b!.getBoundingClientRect().top - 40;
+  });
+  await sleep(300);
+  const before = await geo();
+  test.info().annotations.push({ type: 'before', description: JSON.stringify(before) });
+  expect(before.trigger.top).toBeGreaterThan(before.bodyTop);
+  expect(before.max - before.scrollTop, 'the body can scroll ⋯ under the header').toBeGreaterThan(before.trigger.bottom - before.bodyTop);
+  await trigger.click();
+  const panel = win.getByRole('group', { name: 'List actions' });
+  await expect(panel).toBeVisible();
+  await shot(win, 't35-7-list-menu-open.png');
+
+  // The wheel over the week, not the panel, scrolls the body until ⋯ is under the header.
+  const bb = (await board.boundingBox())!;
+  await win.mouse.move(bb.x + bb.width - 160, before.bodyTop + 20);
+  for (let i = 0; i < 12 && (await panel.count()) > 0; i++) {
+    await win.mouse.wheel(0, 40);
+    await sleep(250);
+  }
+  const after = await geo();
+  test.info().annotations.push({ type: 'after', description: JSON.stringify(after) });
+  expect(after.scrollTop).toBeGreaterThan(before.scrollTop);
+  expect(after.trigger.top).toBeLessThan(after.bodyTop);
+  await expect(panel).toHaveCount(0);
+  await shot(win, 't35-7-list-menu-under-header.png');
+});
+
 test('pop-ups over another widget: the timer task picker and the stats menu are opaque and on top', async ({ launch }) => {
   const { win } = await launch();
   await prepare(win);
@@ -700,7 +824,7 @@ test('pop-ups over another widget: the timer task picker and the stats menu are 
   await win.keyboard.press('Escape');
 });
 
-test('Week tab with tasks before today opens with today at the top', async ({ launch }) => {
+test('Week tab with tasks before today opens with today flush at the top, and keeps it until the user scrolls', async ({ launch }) => {
   const { win } = await launch();
   await prepare(win);
   const today = studyDay(Date.now());
@@ -713,35 +837,86 @@ test('Week tab with tasks before today opens with today at the top', async ({ la
   test.skip(before.length === 0, 'today is a Monday: no days before it this week');
   await reload(win);
   const w = await openTasks(win, 'Week');
-  const sec = daySection(w, today);
-  // Read once the week's tasks have loaded and been drawn, and again after a further settle.
-  await sleep(800);
-  const measure = () => sec.evaluate((s) => {
-    let n = s.parentElement;
-    while (n && !(n.scrollHeight > n.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(n).overflowY))) n = n.parentElement;
-    if (!n) return null;
-    const pad = parseFloat(getComputedStyle(n).paddingTop) || 0;
+  const opened = Date.now();
+  const at = async (ms: number): Promise<void> => sleep(Math.max(0, opened + ms - Date.now()));
+  const scroller = w.locator('section[aria-label="Week"] > div').last();
+  // Today's section against the week's own scroller, the scroller's state, and the spacer after
+  // Sunday with what lies between the last day's bottom and the content's end. The widget renders
+  // through `transform: scale(s)` (WidgetFrame), so a rect is in screen px and scrollTop in CSS px:
+  // every rect distance is divided by `scale` (the rect's height over the layout height) to compare
+  // like with like; `gapScreen` is the same distance as it shows on screen.
+  const measure = () => scroller.evaluate((n, day) => {
+    const s = n.querySelector<HTMLElement>(`section[aria-label="${day}"]`);
+    const box = n.getBoundingClientRect();
+    const scale = box.height / (n as HTMLElement).offsetHeight;
+    const spacer = n.lastElementChild as HTMLElement;
+    const last = spacer.previousElementSibling as HTMLElement;
+    const padBottom = parseFloat(getComputedStyle(n).paddingBottom) || 0;
+    const gapScreen = s ? s.getBoundingClientRect().top - box.top : null;
     return {
-      gap: s.getBoundingClientRect().top - n.getBoundingClientRect().top,
-      pad,
+      scale: Math.round(scale * 1000) / 1000,
+      gap: gapScreen === null ? null : gapScreen / scale,
+      gapScreen,
+      pad: parseFloat(getComputedStyle(n).paddingTop) || 0,
       scrollTop: n.scrollTop,
       max: n.scrollHeight - n.clientHeight,
+      spacer: spacer.offsetHeight,
+      // Content past the last day (beyond the scroller's own bottom padding): 0 when no blank space.
+      tail: n.scrollHeight - ((last.getBoundingClientRect().bottom - box.top) / scale + n.scrollTop) - padBottom,
       first: n.querySelector('section')?.getAttribute('aria-label') ?? null,
     };
-  });
+  }, formatDayLabel(today));
+  // Flush: today's top within 2 px of the scroller's top as it shows on screen (the unit the
+  // earlier rounds measured in); the CSS px distance is in the annotation.
+  const flush = (m: Awaited<ReturnType<typeof measure>>) => {
+    expect(m.gapScreen, JSON.stringify(m)).not.toBeNull();
+    expect(Math.abs(m.gapScreen! - m.pad * m.scale), JSON.stringify(m)).toBeLessThanOrEqual(2);
+  };
+
+  // Flush at 0.8 s and at 3 s after opening: once the week's tasks have drawn, and once they settle.
+  await at(800);
   const early = await measure();
-  await sleep(2_500);
-  const gap = await measure();
-  test.info().annotations.push({ type: 'today offset', description: `${JSON.stringify(early)} then ${JSON.stringify(gap)}` });
+  await at(3_000);
+  const settled = await measure();
+  test.info().annotations.push({ type: 'today at 0.8 s / 3 s', description: `${JSON.stringify(early)} then ${JSON.stringify(settled)}` });
   await calm(win);
   await shot(win, 't35-5-week-tab-today-top.png');
-  expect(gap).not.toBeNull();
-  expect(gap!.scrollTop).toBeGreaterThan(0);
-  // Today's section starts at the scroller's top, or the scroller is at its end (the days after
-  // today are too short to lift it further).
-  const atTop = Math.abs(gap!.gap - gap!.pad) <= 2;
-  const atEnd = Math.abs(gap!.scrollTop - gap!.max) <= 1;
-  expect(atTop || atEnd, JSON.stringify(gap)).toBe(true);
+  expect(settled.scrollTop).toBeGreaterThan(0);
+  flush(early);
+  flush(settled);
+
+  // Next week holds no today: no blank space after Sunday.
+  await w.getByRole('button', { name: 'Next week', exact: true }).click();
+  await expect(scroller.locator(`section[aria-label="${formatDayLabel(addDays(mon, 7))}"]`)).toBeVisible();
+  await sleep(800);
+  const next = await measure();
+  test.info().annotations.push({ type: 'next week', description: JSON.stringify(next) });
+  expect(next.spacer, JSON.stringify(next)).toBe(0);
+  expect(Math.abs(next.tail), JSON.stringify(next)).toBeLessThanOrEqual(1);
+
+  // Back on this week: flush again.
+  await w.getByRole('button', { name: 'Previous week', exact: true }).click();
+  await expect(scroller.locator(`section[aria-label="${formatDayLabel(today)}"]`)).toBeVisible();
+  await sleep(800);
+  const back = await measure();
+  await sleep(1_500);
+  const backSettled = await measure();
+  test.info().annotations.push({ type: 'back on this week', description: `${JSON.stringify(back)} then ${JSON.stringify(backSettled)}` });
+  flush(back);
+  flush(backSettled);
+
+  // A wheel up inside the widget hands the week to the user: it does not snap back to today.
+  const sb = (await scroller.boundingBox())!;
+  await win.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await win.mouse.wheel(0, -200);
+  await sleep(400);
+  const wheeled = await measure();
+  await sleep(2_000);
+  const later = await measure();
+  test.info().annotations.push({ type: 'after wheel up', description: `${JSON.stringify(wheeled)} then ${JSON.stringify(later)}` });
+  expect(wheeled.scrollTop, JSON.stringify(wheeled)).toBeLessThan(backSettled.scrollTop - 50);
+  expect(Math.abs(later.scrollTop - wheeled.scrollTop), JSON.stringify(later)).toBeLessThanOrEqual(1);
+  expect(later.gap!, JSON.stringify(later)).toBeGreaterThan(later.pad + 50);
 });
 
 test('a playing 4K YouTube space switched to Auto: the badge changes promptly', async ({ launch }) => {
