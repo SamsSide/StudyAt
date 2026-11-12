@@ -27,7 +27,7 @@ export function plannedMs(tasks: readonly PlannerTask[]): number {
 }
 
 /** The day's open deadlines; the day comes from `deadlineDayKey` (rollover applied), never the text. */
-function deadlinesFor(s: PlannerState, day: string, rolloverHour: number): Deadline[] {
+export function deadlinesFor(s: PlannerState, day: string, rolloverHour: number): Deadline[] {
   return Object.values(s.deadlines)
     .filter((d) => !d.done && deadlineDayKey(d.due, rolloverHour) === day)
     .sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : a.id - b.id));

@@ -152,12 +152,14 @@ export function BoardLists({ perRow = LISTS_PER_ROW }: { perRow?: number }) {
 
   return (
     <section className={styles.lists} aria-label="Lists">
-      <div
-        className={styles.listGrid}
-        style={{ gridTemplateColumns: `repeat(${perRow}, minmax(0, 1fr))` }}
-      >
+      <div className={styles.listGrid} style={{ gridTemplateColumns: `repeat(${perRow}, minmax(0, 1fr))` }}>
         {lists.map((l) => (
-          <ListCard key={l.id} list={l} fresh={l.id === freshId} onDeleted={() => addButton.current?.focus()} />
+          <ListCard
+            key={l.id}
+            list={l}
+            fresh={l.id === freshId}
+            onDeleted={() => addButton.current?.focus()}
+          />
         ))}
       </div>
       <div className={styles.newList}>
