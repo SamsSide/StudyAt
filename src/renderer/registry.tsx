@@ -1,6 +1,7 @@
 // What fills each slot of the shell (spec §4 + widgets addendum): the two side panels, the seven
 // widgets, the two full-window overlays and the space behind everything.
 import { CalendarWidget } from './calendar/CalendarWidget';
+import { DeadlinesWidget } from './deadlines/DeadlinesWidget';
 import { NotesWidget } from './notes/NotesWidget';
 import { QuoteWidget } from './quote/QuoteWidget';
 import type { Registry } from './shell/Shell';
@@ -39,6 +40,7 @@ export const registry: Registry = {
     weather: WeatherWidget,
     quote: QuoteWidget,
     notes: NotesWidget,
+    deadlines: DeadlinesWidget,
   },
   overlays: { stats: StatsOverlay, settings: SettingsOverlay },
   background: Background,

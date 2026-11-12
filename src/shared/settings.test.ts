@@ -54,6 +54,7 @@ describe('DEFAULT_SETTINGS', () => {
       weather: { w: 320, h: 271 },
       quote: { w: 352, h: 178 },
       notes: { w: 313, h: 329 },
+      deadlines: { w: 336, h: 210 },
     };
     const W = 1280;
     const H = 800;
@@ -73,6 +74,9 @@ describe('DEFAULT_SETTINGS', () => {
     for (const a of rects)
       for (const b of rects) {
         if (a.id >= b.id) continue;
+        // Deadlines and Spotify share a spot and are both closed by default (v1.2 spec §3.10).
+        if ((a.id === 'deadlines' && b.id === 'spotify') || (a.id === 'spotify' && b.id === 'deadlines'))
+          continue;
         const apart = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
         expect(apart, `${a.id} / ${b.id}`).toBe(true);
       }
@@ -160,6 +164,34 @@ describe('sanitiseSettingsPatch', () => {
   it('drops spotifyTokens: the renderer never sets them', () => {
     expect(sanitiseSettingsPatch({ spotifyTokens: 'abc', focusMinutes: 30 })).toEqual({ focusMinutes: 30 });
     expect(sanitiseSettingsPatch({ spotifyTokens: null })).toEqual({});
+  });
+});
+
+describe('deadlines widget settings', () => {
+  it("is closed by default at Spotify's spot", () => {
+    expect(DEFAULT_SETTINGS.widgets.deadlines).toEqual({
+      open: false,
+      x: 0.82,
+      y: 0.42,
+      autoHide: false,
+      scale: 1,
+    });
+  });
+
+  it('keeps a boolean bare through the sanitiser and reads a missing one as absent', () => {
+    const pos = { open: true, x: 0.5, y: 0.5, autoHide: false, scale: 1 };
+    expect(
+      sanitiseSettingsPatch({ widgets: { deadlines: { ...pos, bare: true } } }).widgets?.deadlines,
+    ).toEqual({
+      ...pos,
+      bare: true,
+    });
+    const plain = sanitiseSettingsPatch({ widgets: { deadlines: pos } }).widgets?.deadlines;
+    expect(plain).toEqual(pos);
+    expect(plain).not.toHaveProperty('bare');
+    expect(
+      sanitiseSettingsPatch({ widgets: { deadlines: { ...pos, bare: 'yes' } } }).widgets?.deadlines,
+    ).not.toHaveProperty('bare');
   });
 });
 

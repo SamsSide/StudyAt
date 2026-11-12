@@ -17,6 +17,7 @@ export const testRegistry = (): Registry => ({
     weather: stub('weather-widget'),
     quote: stub('quote-widget'),
     notes: stub('notes-widget'),
+    deadlines: stub('deadlines-widget'),
   },
   overlays: { stats: stub('stats-overlay'), settings: stub('settings-overlay') },
   background: stub('background'),

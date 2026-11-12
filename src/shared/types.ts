@@ -393,9 +393,12 @@ export interface WidgetPos {
   autoHide: boolean;
   /** 0.5..2, default 1 (spec §3.5). */
   scale: number;
+  /** No glass and no header (v1.2 spec §3.10); only the Deadlines widget reads it. */
+  bare?: boolean;
 }
 
-export type WidgetId = 'timer' | 'tasks' | 'spotify' | 'calendar' | 'weather' | 'quote' | 'notes';
+export type WidgetId =
+  'timer' | 'tasks' | 'spotify' | 'calendar' | 'weather' | 'quote' | 'notes' | 'deadlines';
 
 export type WeatherUnits = 'celsius' | 'fahrenheit';
 

@@ -42,6 +42,8 @@ export const DEFAULT_SETTINGS: Settings = {
     weather: { open: false, x: 0.22, y: 0.1, autoHide: false, scale: 1 },
     quote: { open: false, x: 0.82, y: 0.76, autoHide: false, scale: 1 },
     notes: { open: false, x: 0.5, y: 0.56, autoHide: false, scale: 1 },
+    // v1.2 spec §3.10: Spotify's spot; both start closed, so they never show together by default.
+    deadlines: { open: false, x: 0.82, y: 0.42, autoHide: false, scale: 1 },
   },
   spotifyClientId: '',
   spotifyTokens: null,
@@ -70,6 +72,7 @@ const WIDGET_IDS: readonly WidgetId[] = [
   'weather',
   'quote',
   'notes',
+  'deadlines',
 ];
 const WEATHER_UNITS: readonly WeatherUnits[] = ['celsius', 'fahrenheit'];
 /** Longest place name or region kept (a real one is far shorter). */
@@ -124,13 +127,16 @@ const widgetPos = (v: unknown): WidgetPos | typeof NONE => {
   if (x === NONE || y === NONE || open === NONE || autoHide === NONE) return NONE;
   // A missing or invalid scale reads as 1 (spec §3.5).
   const scale = num(0.5, 2, false)(v.scale);
-  return {
+  const out: WidgetPos = {
     open: open as boolean,
     x: x as number,
     y: y as number,
     autoHide: autoHide as boolean,
     scale: scale === NONE ? 1 : (scale as number),
   };
+  // `bare` is kept only when it is a boolean; a missing one reads as absent.
+  if (typeof v.bare === 'boolean') out.bare = v.bare;
+  return out;
 };
 
 /** A partial widgets map: valid entries are kept, the rest dropped. */

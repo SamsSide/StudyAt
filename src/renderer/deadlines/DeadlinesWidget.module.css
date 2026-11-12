@@ -1,0 +1,166 @@
+/* The Deadlines widget's contents; the glass frame and title come from the shell's WidgetFrame. */
+.widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 300px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.bar {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.widget button,
+.widget input,
+.widget select,
+.widget textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.widget button:not(.row) {
+  padding: 4px 12px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.08);
+  cursor: pointer;
+}
+.widget button:not(.row):hover {
+  background: rgb(255 255 255 / 0.16);
+}
+.widget button[aria-pressed='true'] {
+  background: rgb(255 255 255 / 0.22);
+}
+.widget button:focus-visible,
+.widget input:focus-visible,
+.widget select:focus-visible,
+.widget textarea:focus-visible {
+  outline: 2px solid #9db4ff;
+  outline-offset: 2px;
+}
+.widget .primary {
+  background: #7c9cff;
+  color: #0b1020;
+  border-color: transparent;
+}
+.widget .danger {
+  border-color: #ff9d9d;
+}
+
+/* Scrolls past eight rows (spec §3.10). */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.row:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+
+.badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  font-size: 0.8em;
+}
+.badge[data-kind='exam'] {
+  background: rgb(255 157 157 / 0.25);
+}
+
+.dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.countdown {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.countdown[data-due='true'] {
+  color: #ffb4b4;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-2);
+  opacity: 0.75;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pair {
+  display: flex;
+  gap: var(--space-2);
+}
+.field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 0.85em;
+}
+.field input,
+.field select,
+.field textarea {
+  padding: 4px 8px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 0.25);
+}
+.field textarea {
+  resize: vertical;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.error {
+  margin: 0;
+  color: #ffb4b4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .row,
+  .widget button {
+    transition: background 120ms ease;
+  }
+}

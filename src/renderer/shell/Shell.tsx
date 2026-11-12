@@ -36,6 +36,7 @@ export const WIDGET_TITLES: Record<WidgetId, string> = {
   weather: 'Weather',
   quote: 'Quote',
   notes: 'Notes',
+  deadlines: 'Deadlines',
 };
 const WIDGET_ORDER: readonly WidgetId[] = [
   'timer',
@@ -45,6 +46,7 @@ const WIDGET_ORDER: readonly WidgetId[] = [
   'weather',
   'quote',
   'notes',
+  'deadlines',
 ];
 const OVERLAY_TITLES = { stats: 'Stats', settings: 'Settings', help: 'Keyboard shortcuts' } as const;
 
@@ -77,6 +79,25 @@ function ShowInterface({ onShow }: { onShow: () => void }) {
     </button>
   );
 }
+
+/** The Deadlines widget's bare mode (v1.2 spec §3.10): the header's toggle, kept in a toolbar when bare. */
+function BackgroundToggle({ bare }: { bare: boolean }) {
+  const patchWidget = useStudyStore((s) => s.patchWidget);
+  return (
+    <button
+      type="button"
+      className={`${styles.iconButton} ${styles.small}`}
+      onClick={() => void patchWidget('deadlines', { bare: !bare })}
+    >
+      {bare ? 'Show background' : 'Hide background'}
+    </button>
+  );
+}
+
+const deadlinesFrame = (bare: boolean) => ({
+  chrome: bare ? ('bare' as const) : ('framed' as const),
+  headerExtra: <BackgroundToggle bare={bare} />,
+});
 
 export function Shell({ registry }: { registry: Registry }) {
   const settings = useStudyStore((s) => s.settings);
@@ -116,7 +137,12 @@ export function Shell({ registry }: { registry: Registry }) {
         WIDGET_ORDER.filter((id) => settings.widgets[id].open).map((id) => {
           const Widget = registry.widgets[id];
           return (
-            <WidgetFrame key={id} id={id} title={WIDGET_TITLES[id]}>
+            <WidgetFrame
+              key={id}
+              id={id}
+              title={WIDGET_TITLES[id]}
+              {...(id === 'deadlines' ? deadlinesFrame(settings.widgets.deadlines.bare === true) : {})}
+            >
               <Widget />
             </WidgetFrame>
           );
