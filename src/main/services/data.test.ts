@@ -2,9 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db/db';
+import { deadlinesRepo } from '../db/repos/deadlines';
 import { notesRepo } from '../db/repos/notes';
+import { plannerTasksRepo } from '../db/repos/plannerTasks';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
+import { taskListsRepo } from '../db/repos/taskLists';
+import { tasksRepo } from '../db/repos/tasks';
 import { subjectsRepo } from '../db/repos/subjects';
 import { nodeFs, type DbFs } from '../db/db-fs';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
@@ -76,6 +80,32 @@ describe('dataService', () => {
     ]);
   });
 
+  it('JSON export has taskLists, tasks, deadlines and tasksV1', async () => {
+    tasksRepo(db).create({ text: 'Old sticky task', colour: 'pink' }, NOW);
+    const list = taskListsRepo(db).create({ name: 'Revision', subjectId: null }, NOW);
+    plannerTasksRepo(db).create({ title: 'Past papers', day: null, listId: list.id, tags: ['maths'] }, NOW);
+    deadlinesRepo(db).create(
+      { title: 'Calculus exam', kind: 'exam', subjectId: null, due: '2026-12-01T09:00', note: '' },
+      NOW,
+    );
+    const out = join(dir, 'export.json');
+    await service().svc.exportJson(out);
+    const json = JSON.parse(readFileSync(out, 'utf8')) as {
+      taskLists: { name: string }[];
+      tasks: { title: string; tags: string[] }[];
+      deadlines: { due: string }[];
+      tasksV1: { text: string }[];
+    };
+    expect(json.taskLists.map((l) => l.name)).toContain('Revision');
+    expect(json.tasks.find((t) => t.title === 'Past papers')!.tags).toEqual(['maths']);
+    expect(json.deadlines[0]!.due).toBe('2026-12-01T09:00');
+    expect(json.tasksV1[0]!.text).toBe('Old sticky task');
+    // The CSV is sessions only and unchanged.
+    const csv = join(dir, 'sessions.csv');
+    await service().svc.exportCsv(csv);
+    expect(readFileSync(csv, 'utf8')).toBe('date,start,end,minutes,subject\r\n');
+  });
+
   it('quotes CSV fields that need it', () => {
     expect(csvLine(['a,b', 'say "hi"', 'plain'])).toBe('"a,b","say ""hi""",plain');
     expect(localStamp(new Date(2026, 0, 2, 3, 4).getTime())).toBe('2026-01-02 03:04');
@@ -99,7 +129,10 @@ describe('dataService', () => {
       'schemaVersion',
       'subjects',
       'sessions',
+      'taskLists',
       'tasks',
+      'deadlines',
+      'tasksV1',
       'spaces',
       'sounds',
       'mixes',

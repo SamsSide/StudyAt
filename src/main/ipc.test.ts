@@ -4,7 +4,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNELS } from '../shared/ipc';
 import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { Note, PlannerTask, TaskChange, TaskList, TimerState } from '../shared/types';
+import type { DeadlinesView, Note, PlannerTask, TaskChange, TaskList, TimerState } from '../shared/types';
 import type { CalendarAgenda, CalendarStatus, Place, WeatherReport } from '../shared/widgets';
 import type { Db } from './db/db';
 import { sessionsRepo } from './db/repos/sessions';
@@ -869,5 +869,132 @@ describe('createBroadcaster', () => {
       'pink',
     ]);
     await expect(invoke(CHANNELS.notes.remove, '1')).rejects.toThrow(IpcValidationError);
+  });
+
+  it('notes:popOut places the note at the cascade and refuses a 13th with "Up to 12 notes on the screen"', async () => {
+    const { invoke } = setup();
+    for (let i = 0; i < 13; i++) await invoke(CHANNELS.notes.create);
+    const ids = ((await invoke(CHANNELS.notes.list)) as Note[]).map((n) => n.id);
+    const first = (await invoke(CHANNELS.notes.popOut, ids[0])) as Note[];
+    expect(first[0]).toMatchObject({ popped: true, x: 0.5, y: 0.3 });
+    const second = (await invoke(CHANNELS.notes.popOut, ids[1])) as Note[];
+    expect(second[1]!.x).toBeCloseTo(0.53);
+    expect(second[1]!.y).toBeCloseTo(0.34);
+    for (const id of ids.slice(2, 12)) await invoke(CHANNELS.notes.popOut, id);
+    await expect(invoke(CHANNELS.notes.popOut, ids[12])).rejects.toThrow('Up to 12 notes on the screen');
+    // Docking one back frees a place.
+    const docked = (await invoke(CHANNELS.notes.dockBack, ids[0])) as Note[];
+    expect(docked[0]!.popped).toBe(false);
+    expect(((await invoke(CHANNELS.notes.popOut, ids[12])) as Note[])[12]!.popped).toBe(true);
+    for (const channel of [CHANNELS.notes.popOut, CHANNELS.notes.dockBack]) {
+      await expect(invoke(channel, 9999)).rejects.toThrow('No such note');
+      await expect(invoke(channel, 1.5)).rejects.toThrow(IpcValidationError);
+    }
+  });
+
+  it('notes:update accepts x, y, scale and bare', async () => {
+    const { invoke } = setup();
+    const [note] = (await invoke(CHANNELS.notes.create)) as Note[];
+    const out = (await invoke(CHANNELS.notes.update, note!.id, {
+      x: 5,
+      y: -1,
+      scale: 1.5,
+      bare: true,
+    })) as Note[];
+    expect(out[0]).toMatchObject({ x: 1, y: 0, scale: 1.5, bare: true });
+    for (const patch of [{ x: Number.NaN }, { y: Number.POSITIVE_INFINITY }, { scale: '2' }, { bare: 1 }])
+      await expect(invoke(CHANNELS.notes.update, note!.id, patch)).rejects.toThrow(IpcValidationError);
+  });
+
+  it('deadlines channels validate and return the view', async () => {
+    const { invoke } = setup();
+    const input = { title: '  Calculus exam ', kind: 'exam', subjectId: null, due: '2026-12-01T09:00' };
+    const view = (await invoke(CHANNELS.deadlines.create, input)) as DeadlinesView;
+    expect(view.upcoming).toHaveLength(1);
+    expect(view.upcoming[0]).toMatchObject({ title: 'Calculus exam', kind: 'exam', due: '2026-12-01T09:00' });
+    const id = view.upcoming[0]!.id;
+    expect(await invoke(CHANNELS.deadlines.list, { past: false })).toHaveLength(1);
+    expect(await invoke(CHANNELS.deadlines.list, { past: true })).toEqual([]);
+    const done = (await invoke(CHANNELS.deadlines.update, id, { done: true })) as DeadlinesView;
+    expect(done.upcoming).toEqual([]);
+    expect(done.past).toHaveLength(1);
+    for (const bad of [
+      { ...input, title: '   ' },
+      { ...input, title: 'x'.repeat(121) },
+      { ...input, kind: 'quiz' },
+      { ...input, due: '2026-12-01 09:00' },
+      { ...input, due: '2026-02-30T09:00' },
+      { ...input, due: '2026-12-01T24:00' },
+      { ...input, note: 'x'.repeat(5001) },
+    ])
+      await expect(invoke(CHANNELS.deadlines.create, bad)).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.deadlines.create, 'exam')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.deadlines.update, id, { done: 'yes' })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.deadlines.update, id, null)).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.deadlines.update, 9999, { done: true })).rejects.toThrow('No such deadline');
+    await expect(invoke(CHANNELS.deadlines.remove, 1.5)).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.deadlines.list, { past: 'no' })).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.deadlines.list)).rejects.toThrow(IpcValidationError);
+    const gone = (await invoke(CHANNELS.deadlines.remove, id)) as DeadlinesView;
+    expect(gone).toEqual({ upcoming: [], past: [] });
+  });
+
+  it('statWidgets:add refuses a 7th', async () => {
+    const { invoke } = setup();
+    const first = (await invoke(CHANNELS.statWidgets.add)) as {
+      card: string;
+      range: string;
+      x: number;
+      y: number;
+    };
+    expect(first).toMatchObject({ card: 'total', range: 'week', x: 0.5, y: 0.3 });
+    for (let i = 1; i < 6; i++) await invoke(CHANNELS.statWidgets.add);
+    await expect(invoke(CHANNELS.statWidgets.add)).rejects.toThrow('Up to 6 stats widgets');
+    expect(await invoke(CHANNELS.statWidgets.list)).toHaveLength(6);
+  });
+
+  it('statWidgets:update and remove validate, and reject a missing id', async () => {
+    const { invoke } = setup();
+    const { id } = (await invoke(CHANNELS.statWidgets.add)) as { id: number };
+    expect(
+      await invoke(CHANNELS.statWidgets.update, id, {
+        card: 'goal',
+        range: 'today',
+        x: 3,
+        scale: 1.5,
+        bare: true,
+      }),
+    ).toMatchObject({ card: 'goal', range: 'today', x: 1, scale: 1.5, bare: true });
+    for (const patch of [
+      { card: 'pie' },
+      { range: 'year' },
+      { x: Number.NaN },
+      { y: Number.NEGATIVE_INFINITY },
+      { scale: '1' },
+      { bare: 'true' },
+    ])
+      await expect(invoke(CHANNELS.statWidgets.update, id, patch)).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.statWidgets.update, id, null)).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.statWidgets.update, 9999, { x: 0.1 })).rejects.toThrow(
+      'No such stats widget',
+    );
+    await expect(invoke(CHANNELS.statWidgets.remove, 9999)).rejects.toThrow('No such stats widget');
+    await expect(invoke(CHANNELS.statWidgets.remove, '1')).rejects.toThrow(IpcValidationError);
+    await invoke(CHANNELS.statWidgets.remove, id);
+    expect(await invoke(CHANNELS.statWidgets.list)).toEqual([]);
+  });
+
+  it('stats:card validates card and range', async () => {
+    const { invoke } = setup();
+    expect(await invoke(CHANNELS.stats.card, 'total', 'week')).toMatchObject({
+      card: 'total',
+      range: 'week',
+    });
+    for (const card of ['total', 'subjects', 'goal', 'estimates'])
+      expect(await invoke(CHANNELS.stats.card, card, 'today')).toMatchObject({ card });
+    await expect(invoke(CHANNELS.stats.card, 'pie', 'week')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.stats.card, 'total', 'year')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.stats.card, 'total')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.stats.card, 7, 'week')).rejects.toThrow(IpcValidationError);
   });
 });

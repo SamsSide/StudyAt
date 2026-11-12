@@ -4,6 +4,11 @@
 import type {
   AwayPrompt,
   BackupInfo,
+  CardData,
+  Deadline,
+  DeadlineInput,
+  DeadlinePatch,
+  DeadlinesView,
   Device,
   HeatmapCell,
   ImageAddResult,
@@ -29,7 +34,11 @@ import type {
   Space,
   SpaceOpts,
   SpotifyStatus,
+  StatCard,
+  StatRange,
   StatsOverview,
+  StatWidget,
+  StatWidgetPatch,
   Subject,
   SubjectRange,
   SubjectTotal,
@@ -69,10 +78,17 @@ export interface TaskPatch {
   done?: boolean;
 }
 
-/** Widgets addendum §4b: text is at most 5000 chars (longer is rejected). */
+/**
+ * Widgets addendum §4b: text is at most 5000 chars (longer is rejected). v1.2 spec §3.2: a popped
+ * note's `x`, `y` (0..1) and `scale` (0.5..2) are clamped, non-finite numbers rejected.
+ */
 export interface NotePatch {
   text?: string;
   colour?: TaskColour;
+  x?: number;
+  y?: number;
+  scale?: number;
+  bare?: boolean;
 }
 
 export interface SpacePatch {
@@ -117,6 +133,8 @@ export interface StudyAtApi {
     bySubject(range: SubjectRange): Promise<SubjectTotal[]>;
     /** Top 10 tasks for the range, largest first; untagged rows are left out (v1.1 spec §3.3). */
     byTask(range: SubjectRange): Promise<TaskTotal[]>;
+    /** Data for one stats widget card (v1.2 spec §3.12); `card` and `range` are checked in main. */
+    card(card: StatCard, range: StatRange): Promise<CardData>;
     sessions(filter?: SessionFilter): Promise<Session[]>;
     updateSession(id: number, patch: { subjectId: number | null }): Promise<void>;
     deleteSession(id: number): Promise<void>;
@@ -258,6 +276,26 @@ export interface StudyAtApi {
     /** Rejects for an unknown id or text over 5000 chars. */
     update(id: number, patch: NotePatch): Promise<Note[]>;
     remove(id: number): Promise<Note[]>;
+    /** Pops a note out at the next cascade step (v1.2 spec §3.2). Rejects "Up to 12 notes on the screen". */
+    popOut(id: number): Promise<Note[]>;
+    dockBack(id: number): Promise<Note[]>;
+  };
+  /** Exams and coursework (v1.2 spec §3.10). Writes return both lists; a bad id or field rejects. */
+  deadlines: {
+    /** `past: false` is the upcoming list, `true` the ten most recent past or done. */
+    list(opts: { past: boolean }): Promise<Deadline[]>;
+    create(input: DeadlineInput): Promise<DeadlinesView>;
+    update(id: number, patch: DeadlinePatch): Promise<DeadlinesView>;
+    remove(id: number): Promise<DeadlinesView>;
+  };
+  /** Stats cards pinned on the study space (v1.2 spec §3.12), up to six. */
+  statWidgets: {
+    list(): Promise<StatWidget[]>;
+    /** A Total time · This week card at the next cascade step; rejects "Up to 6 stats widgets". */
+    add(): Promise<StatWidget>;
+    /** Rejects "No such stats widget" for an unknown id. */
+    update(id: number, patch: StatWidgetPatch): Promise<StatWidget | null>;
+    remove(id: number): Promise<void>;
   };
   app: {
     toggleFullscreen(): Promise<void>;
@@ -305,6 +343,7 @@ export const CHANNELS = {
     trend: 'stats:trend',
     bySubject: 'stats:bySubject',
     byTask: 'stats:byTask',
+    card: 'stats:card',
     sessions: 'stats:sessions',
     updateSession: 'stats:updateSession',
     deleteSession: 'stats:deleteSession',
@@ -392,7 +431,26 @@ export const CHANNELS = {
   },
   weather: { searchPlaces: 'weather:searchPlaces', setPlace: 'weather:setPlace', current: 'weather:current' },
   calendar: { status: 'calendar:status', setUrls: 'calendar:setUrls', agenda: 'calendar:agenda' },
-  notes: { list: 'notes:list', create: 'notes:create', update: 'notes:update', remove: 'notes:remove' },
+  notes: {
+    list: 'notes:list',
+    create: 'notes:create',
+    update: 'notes:update',
+    remove: 'notes:remove',
+    popOut: 'notes:popOut',
+    dockBack: 'notes:dockBack',
+  },
+  deadlines: {
+    list: 'deadlines:list',
+    create: 'deadlines:create',
+    update: 'deadlines:update',
+    remove: 'deadlines:remove',
+  },
+  statWidgets: {
+    list: 'statWidgets:list',
+    add: 'statWidgets:add',
+    update: 'statWidgets:update',
+    remove: 'statWidgets:remove',
+  },
   app: { toggleFullscreen: 'app:toggleFullscreen', showMini: 'app:showMini', flushed: 'app:flushed' },
   events: {
     timerState: 'timer:state',

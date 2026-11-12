@@ -58,6 +58,35 @@ describe('preload api', () => {
     expect(ipc.invoke).toHaveBeenCalledWith('stats:byTask', 'month');
   });
 
+  it('exposes the sticky, deadline, stats widget and card channels (v1.2 spec §5)', async () => {
+    const { ipc } = fakeIpc();
+    const api = buildApi(ipc);
+    await api.notes.popOut(2);
+    await api.notes.dockBack(2);
+    await api.deadlines.list({ past: true });
+    await api.deadlines.create({ title: 'Exam', kind: 'exam', subjectId: null, due: '2026-12-01T09:00' });
+    await api.deadlines.update(1, { done: true });
+    await api.deadlines.remove(1);
+    await api.statWidgets.list();
+    await api.statWidgets.add();
+    await api.statWidgets.update(4, { range: 'month' });
+    await api.statWidgets.remove(4);
+    await api.stats.card('goal', 'week');
+    expect((ipc.invoke as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+      ['notes:popOut', 2],
+      ['notes:dockBack', 2],
+      ['deadlines:list', { past: true }],
+      ['deadlines:create', { title: 'Exam', kind: 'exam', subjectId: null, due: '2026-12-01T09:00' }],
+      ['deadlines:update', 1, { done: true }],
+      ['deadlines:remove', 1],
+      ['statWidgets:list'],
+      ['statWidgets:add'],
+      ['statWidgets:update', 4, { range: 'month' }],
+      ['statWidgets:remove', 4],
+      ['stats:card', 'goal', 'week'],
+    ]);
+  });
+
   it('exposes the planner, task, subtask, list and legacy groups on their channels', async () => {
     const { ipc } = fakeIpc();
     const api = buildApi(ipc);

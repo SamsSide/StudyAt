@@ -7,6 +7,8 @@ import { SEED_SUBJECTS } from '../../shared/subjects';
 import type { CalendarAgenda, CalendarStatus, WeatherReport } from '../../shared/widgets';
 import type {
   AwayPrompt,
+  CardData,
+  DeadlinesView,
   ListsView,
   NowPlaying,
   PlannerRange,
@@ -15,7 +17,10 @@ import type {
   SegmentEnd,
   Settings,
   SettingsPatch,
+  StatCard,
+  StatRange,
   StatsOverview,
+  StatWidget,
   Subject,
   TimerState,
   WeekBars,
@@ -56,6 +61,33 @@ export const idleTimerState = (): TimerState => ({
 
 export const seedSubjects = (): Subject[] =>
   SEED_SUBJECTS.map((s, i) => ({ id: i + 1, name: s.name, colour: s.colour, archived: false, sort: i }));
+
+/** A card with nothing in it, of the kind and range asked for. */
+const emptyCard = (card: StatCard, range: StatRange): CardData => {
+  switch (card) {
+    case 'total':
+      return { card, range, totalMs: 0, previousMs: 0, deltaPct: null, todayMs: 0 };
+    case 'subjects':
+      return { card, range, bars: [] };
+    case 'goal':
+      return { card, range, goalMs: 0, todayMs: 0, days: [], hitDays: 0, elapsedDays: 0, streak: 0 };
+    case 'estimates':
+      return { card, range, tasks: 0, plannedMs: 0, focusedMs: 0, ratio: null, overruns: [], bySubject: [] };
+  }
+};
+
+const emptyDeadlines = (): DeadlinesView => ({ upcoming: [], past: [] });
+
+/** A Total time · This week widget at the first cascade step. */
+const defaultStatWidget = (): StatWidget => ({
+  id: 1,
+  card: 'total',
+  range: 'week',
+  x: 0.5,
+  y: 0.3,
+  scale: 1,
+  bare: false,
+});
 
 const emptyOverview = (): StatsOverview => ({
   todayMs: 0,
@@ -190,6 +222,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       trend: resolves([]),
       bySubject: resolves([]),
       byTask: resolves([]),
+      card: vi.fn((card: StatCard, range: StatRange) => Promise.resolve(emptyCard(card, range))),
       sessions: resolves([]),
       updateSession: resolves(undefined),
       deleteSession: resolves(undefined),
@@ -311,6 +344,20 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       create: resolves([]),
       update: resolves([]),
       remove: resolves([]),
+      popOut: resolves([]),
+      dockBack: resolves([]),
+    },
+    deadlines: {
+      list: resolves([]),
+      create: vi.fn(() => Promise.resolve(emptyDeadlines())),
+      update: vi.fn(() => Promise.resolve(emptyDeadlines())),
+      remove: vi.fn(() => Promise.resolve(emptyDeadlines())),
+    },
+    statWidgets: {
+      list: resolves([]),
+      add: vi.fn(() => Promise.resolve(defaultStatWidget())),
+      update: resolves(null),
+      remove: resolves(undefined),
     },
     app: {
       toggleFullscreen: resolves(undefined),
@@ -346,6 +393,8 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     weather: { ...base.weather, ...overrides.weather },
     calendar: { ...base.calendar, ...overrides.calendar },
     notes: { ...base.notes, ...overrides.notes },
+    deadlines: { ...base.deadlines, ...overrides.deadlines },
+    statWidgets: { ...base.statWidgets, ...overrides.statWidgets },
     app: { ...base.app, ...overrides.app },
   };
 

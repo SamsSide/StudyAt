@@ -9,14 +9,17 @@ import { BACKUPS_DIR, DB_FILE, fileStamp, listBackups, localDateKey } from '../d
 import type { Db } from '../db/db';
 import { copyAtomic, nodeFs, type DbFs } from '../db/db-fs';
 import { schemaVersion } from '../db/migrations';
+import { deadlinesRepo } from '../db/repos/deadlines';
 import { mixesRepo } from '../db/repos/mixes';
 import { notesRepo } from '../db/repos/notes';
+import { plannerTasksRepo } from '../db/repos/plannerTasks';
 import { recapsRepo } from '../db/repos/recaps';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { soundsRepo } from '../db/repos/sounds';
 import { spacesRepo } from '../db/repos/spaces';
 import { subjectsRepo } from '../db/repos/subjects';
+import { taskListsRepo } from '../db/repos/taskLists';
 import { tasksRepo } from '../db/repos/tasks';
 import { publicSettings } from './settings';
 import { IpcValidationError } from './validate';
@@ -55,14 +58,20 @@ export function dataService(deps: DataServiceDeps) {
   const { db } = deps;
 
   return {
-    /** Spec §3.11: everything Sam owns, settings without `spotifyTokens`. */
+    /**
+     * Spec §3.11: everything Sam owns, settings without `spotifyTokens`. v1.2: `tasks` is the
+     * planner's task table, `tasksV1` the old sticky-note rows archived by migration v4.
+     */
     async exportJson(path: string): Promise<void> {
       const data = {
         exportedAt: deps.now(),
         schemaVersion: schemaVersion(db.raw),
         subjects: subjectsRepo(db).list(),
         sessions: sessionsRepo(db).all(),
-        tasks: tasksRepo(db).list(),
+        taskLists: taskListsRepo(db).list(),
+        tasks: plannerTasksRepo(db).all(),
+        deadlines: deadlinesRepo(db).all(),
+        tasksV1: tasksRepo(db).list(),
         spaces: spacesRepo(db)
           .list()
           .map(({ missing: _missing, ...s }) => s),
