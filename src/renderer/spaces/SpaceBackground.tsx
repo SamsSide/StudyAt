@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
 import { useYouTubeQuality } from './qualityStore';
-import { mediaUrl, useSpacesStore } from './spacesStore';
+import { isBackgroundPaused, mediaUrl, useSpacesStore } from './spacesStore';
 import { useWindowVisibility } from './windowVisibility';
 import {
   captionsOff,
@@ -55,7 +55,7 @@ export function useOnline(): boolean {
 }
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
-const readReduced = (): boolean =>
+export const readReduced = (): boolean =>
   typeof window.matchMedia === 'function' && window.matchMedia(REDUCED).matches;
 
 export function useReducedMotion(): boolean {
@@ -266,14 +266,13 @@ export function SpaceBackground() {
   const documentHidden = useDocumentHidden();
   const online = useOnline();
   const reduced = useReducedMotion();
-  const [playId, setPlayId] = useState<number | null>(null);
+  const stillPlayId = useSpacesStore((s) => s.stillPlayId);
 
   useEffect(() => {
     if (!loaded) void useSpacesStore.getState().load();
   }, [loaded]);
 
   const space = spaces.find((s) => s.id === activeId) ?? null;
-  const userPlay = space !== null && playId === space.id;
 
   if (!space)
     return (
@@ -293,9 +292,10 @@ export function SpaceBackground() {
       </div>
     );
 
-  const stillFirst = reduced && !userPlay && space.kind !== 'image';
+  // Under reduced motion a space shows its still until Sam plays it, and again once he pauses it.
+  const stillFirst = reduced && space.kind !== 'image' && (stillPlayId !== space.id || backgroundPaused);
   const paused = !windowVisible || documentHidden || stillFirst || backgroundPaused;
-  const playing = userPlay && !backgroundPaused;
+  const playing = !isBackgroundPaused({ backgroundPaused, stillPlayId, activeId }, reduced);
   const { dim, blur } = space.opts;
   const videoError = embedErrors[space.id];
 
@@ -357,15 +357,8 @@ export function SpaceBackground() {
           <button
             type="button"
             className={styles.btn}
-            onClick={() => {
-              // The footer, the top bar's button and V share one state: starting here also clears a
-              // pause made elsewhere, and the label follows what is really happening.
-              if (playing) setPlayId(null);
-              else {
-                setPlayId(space.id);
-                useSpacesStore.getState().setBackgroundPaused(false);
-              }
-            }}
+            // The footer, the top bar's button and V share one state (isBackgroundPaused).
+            onClick={() => useSpacesStore.getState().toggleBackground(true)}
           >
             {playing ? 'Pause background' : 'Play background'}
           </button>

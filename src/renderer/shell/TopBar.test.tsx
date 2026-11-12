@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StatsOverview } from '../../shared/types';
 import { makeSpace, sampleSpaces } from '../spaces/fixtures';
 import { resetSpacesStore, useSpacesStore } from '../spaces/spacesStore';
@@ -27,6 +27,8 @@ beforeEach(() => {
   resetStudyStore();
   resetSpacesStore();
 });
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe('format', () => {
   it('formats study time as Hh MMm, never rounding up', () => {
@@ -117,13 +119,54 @@ describe('TopBar background button (v1.2 spec §3.4)', () => {
     expect(bar().getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
   });
 
-  it('is hidden for an image space and when there is no space', () => {
+  it('is hidden for an image space', () => {
     installMockApi(mockApi());
     useSpace(2);
     render(<TopBar />);
     expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
-    useSpacesStore.setState({ activeId: null });
+  });
+
+  it('is hidden once there is no active space', () => {
+    installMockApi(mockApi());
+    useSpace(3);
+    render(<TopBar />);
+    expect(bar().getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+    act(() => useSpacesStore.setState({ activeId: null }));
     expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
+  });
+
+  describe('under reduced motion', () => {
+    const reducedMotion = () =>
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q.includes('reduce'),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+
+    it('reads "Play background" on the still, and clicking it plays', async () => {
+      const user = userEvent.setup();
+      reducedMotion();
+      installMockApi(mockApi());
+      useSpace(3);
+      render(<TopBar />);
+      await user.click(bar().getByRole('button', { name: 'Play background' }));
+      expect(useSpacesStore.getState().stillPlayId).toBe(3);
+      expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+      await user.click(bar().getByRole('button', { name: 'Pause background' }));
+      expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+      expect(bar().getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+    });
+
+    it('goes back to "Play background" when the space changes', () => {
+      reducedMotion();
+      installMockApi(mockApi());
+      useSpace(3);
+      render(<TopBar />);
+      act(() => useSpacesStore.getState().playBackground());
+      expect(bar().getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+      act(() => useSpacesStore.setState({ activeId: 1 }));
+      expect(bar().getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+    });
   });
 
   it('is hidden for a missing file, a blocked embed and an offline YouTube space', () => {

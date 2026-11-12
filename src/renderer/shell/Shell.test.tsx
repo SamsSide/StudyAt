@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings } from '../../shared/types';
 import { idleTimerState, installMockApi, mockApi, type MockApi } from '../test/mockApi';
-import { sampleSpaces } from '../spaces/fixtures';
+import { makeSpace, sampleSpaces } from '../spaces/fixtures';
 import { resetSpacesStore, useSpacesStore } from '../spaces/spacesStore';
 import { useImagesStore } from '../images/imagesStore';
 import { useStatWidgetsStore } from '../statWidgets/statWidgetsStore';
@@ -37,7 +37,10 @@ function cleanupShell(): void {
   cleanup();
   resetStudyStore();
 }
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('Shell', () => {
   it('renders the background, the seven dock items and the timer widget open by default', async () => {
@@ -304,6 +307,47 @@ describe('Shell', () => {
     act(() => useStudyStore.getState().setOverlay('settings'));
     await user.keyboard('v');
     expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('V does nothing for a missing file, a blocked embed or an offline YouTube space', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    act(() =>
+      useSpacesStore.setState({
+        spaces: [...sampleSpaces(), makeSpace({ id: 9, kind: 'video', missing: true })],
+        activeId: 9,
+        loaded: true,
+      }),
+    );
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    act(() => useSpacesStore.setState({ activeId: 3, embedErrors: { 3: 'embed' } }));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    act(() => useSpacesStore.setState({ embedErrors: {} }));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    vi.restoreAllMocks();
+  });
+
+  it('under reduced motion V plays the still first, then pauses', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('reduce'),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const user = userEvent.setup();
+    await renderShell();
+    act(() => useSpacesStore.setState({ spaces: sampleSpaces(), activeId: 3, loaded: true }));
+    const bar = () => within(screen.getByRole('banner'));
+    expect(bar().getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().stillPlayId).toBe(3);
+    expect(bar().getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    expect(bar().getByRole('button', { name: 'Play background' })).toBeInTheDocument();
   });
 
   it('V does nothing for an image space', async () => {

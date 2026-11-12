@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { Space } from '../../shared/types';
+import { TopBar } from '../shell/TopBar';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { makeSpace } from './fixtures';
 import { useYouTubeQuality } from './qualityStore';
@@ -515,6 +516,28 @@ describe('SpaceBackground', () => {
         removeEventListener: vi.fn(),
       }));
     const tube = makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ', thumb: 'data:x' });
+
+    it('the footer and the top bar never disagree, and a space change resets both', async () => {
+      reducedMotion();
+      await mount([tube, makeSpace({ id: 4, kind: 'youtube', source: 'abcdefghijk', thumb: 'data:y' })]);
+      render(<TopBar />);
+      const labels = () =>
+        screen
+          .getAllByRole('button', { name: /background$/ })
+          .map((b) => b.getAttribute('aria-label') ?? b.textContent);
+      expect(labels()).toEqual(['Play background', 'Play background']);
+      act(() => within(screen.getByRole('banner')).getByRole('button', { name: 'Play background' }).click());
+      expect(labels()).toEqual(['Pause background', 'Pause background']);
+      act(() =>
+        within(screen.getByTestId('space-background'))
+          .getByRole('button', { name: 'Pause background' })
+          .click(),
+      );
+      expect(labels()).toEqual(['Play background', 'Play background']);
+      act(() => useSpacesStore.getState().playBackground());
+      act(() => useSpacesStore.setState({ activeId: 4 }));
+      expect(labels()).toEqual(['Play background', 'Play background']);
+    });
 
     it('has no play button while a YouTube space is offline', async () => {
       reducedMotion();

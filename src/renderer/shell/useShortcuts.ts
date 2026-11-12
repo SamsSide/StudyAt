@@ -1,11 +1,13 @@
 // In-app shortcuts (spec §3.7, plus W for the Widgets popover from widgets addendum §1, and H for
-// focus view and 4 for Countdown from the v1.1 polish spec §3.2 and §3.4). Ignored
-// while typing in an input, textarea, select or contenteditable, and when a modifier is held. While
-// an overlay is open only Esc, ? S and B act (v1.2 spec §4; V, the background pause, waits for the overlay to close). In focus view W, K, G (and T on an auto-hide Tasks
-// widget) leave it, so what they open is visible. Space is also left alone on buttons and other
-// controls, where it already means "press this".
+// focus view and 4 for Countdown from the v1.1 polish spec §3.2 and §3.4). Ignored while typing in
+// an input, textarea, select or contenteditable, and when a modifier is held. While an overlay is
+// open only Esc, ?, S and B act (v1.2 spec §4; V, the background pause, waits for the overlay to
+// close). In focus view W, K, G (and T on an auto-hide Tasks widget) leave it, so what they open
+// is visible. Space is also left alone on buttons and other controls, where it already means
+// "press this".
 import { useEffect } from 'react';
 import type { Mode } from '../../shared/types';
+import { backgroundPlayable, readReduced } from '../spaces/SpaceBackground';
 import { useSpacesStore } from '../spaces/spacesStore';
 import { useStudyStore } from './store';
 
@@ -99,8 +101,15 @@ export function useShortcuts(): void {
       else if (key === 'n') void studyat.timer.skip();
       else if (key === 's') store.toggleOverlay('stats');
       else if (key === 'b') store.toggleOverlay('tasks');
-      else if (key === 'v') useSpacesStore.getState().toggleBackground();
-      else if (key === 't') {
+      else if (key === 'v') {
+        // Only when the top bar would show its button: not an image, a missing file, a blocked
+        // embed or an offline YouTube space.
+        const spaces = useSpacesStore.getState();
+        const space = spaces.spaces.find((s) => s.id === spaces.activeId);
+        const embedError = spaces.activeId === null ? undefined : spaces.embedErrors[spaces.activeId];
+        if (!space || !backgroundPlayable(space, embedError, navigator.onLine)) return;
+        spaces.toggleBackground(readReduced());
+      } else if (key === 't') {
         // An auto-hide Tasks widget is hidden in focus view, so T leaves focus view and opens it;
         // one that doesn't auto-hide is already visible and just toggles.
         const tasks = store.settings?.widgets.tasks;

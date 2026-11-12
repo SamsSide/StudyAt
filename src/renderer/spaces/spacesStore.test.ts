@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Space } from '../../shared/types';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { makeSpace } from './fixtures';
-import { resetSpacesStore, useSpacesStore } from './spacesStore';
+import { isBackgroundPaused, resetSpacesStore, useSpacesStore } from './spacesStore';
 
 const deferred = <T>() => {
   let resolve!: (v: T) => void;
@@ -114,6 +114,34 @@ describe('spacesStore.backgroundPaused (spec §3.4)', () => {
     useSpacesStore.setState({ activeId: null });
     useSpacesStore.getState().toggleBackground();
     expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('playBackground records the still as started for the active space and clears a pause', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.getState().playBackground();
+    expect(useSpacesStore.getState().stillPlayId).toBe(3);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('under reduced motion toggleBackground plays the still first, then pauses', () => {
+    seed(3);
+    const s = useSpacesStore.getState();
+    expect(isBackgroundPaused(useSpacesStore.getState(), true)).toBe(true);
+    expect(isBackgroundPaused(useSpacesStore.getState(), false)).toBe(false);
+    s.toggleBackground(true);
+    expect(isBackgroundPaused(useSpacesStore.getState(), true)).toBe(false);
+    s.toggleBackground(true);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+  });
+
+  it('a space change forgets that the still was started', () => {
+    seed(3);
+    useSpacesStore.getState().playBackground();
+    useSpacesStore.setState({ activeId: 1 });
+    expect(useSpacesStore.getState().stillPlayId).toBeNull();
+    useSpacesStore.setState({ activeId: 3 });
+    expect(isBackgroundPaused(useSpacesStore.getState(), true)).toBe(true);
   });
 
   it('setActive to another space resets it to playing', async () => {
