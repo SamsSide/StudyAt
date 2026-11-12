@@ -35,7 +35,9 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
   const startTask = usePlannerStore((s) => s.startTask);
   const estimate = task.estimateMin === null ? null : estimateChip(task.actualMs, task.estimateMin);
   const subtasks = subtaskCount(task);
-  // The compact row hides its ▶ + grip overlay while the title has focus, so the ring is whole.
+  // The compact row hides its ▶ + grip overlay while the title has keyboard-visible focus, so the
+  // ring is whole. Not after a mouse click: focus comes back to the title when the detail closes,
+  // and ▶ must still work on hover then.
   const [titleFocus, setTitleFocus] = useState(false);
 
   const onRowClick = (e: MouseEvent<HTMLElement>): void => {
@@ -98,7 +100,7 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
           tabIndex={0}
           className={styles.title}
           onKeyDown={onTitleKey}
-          onFocus={() => setTitleFocus(true)}
+          onFocus={(e) => setTitleFocus(e.currentTarget.matches(':focus-visible'))}
           onBlur={() => setTitleFocus(false)}
         >
           {task.title}

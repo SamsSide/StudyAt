@@ -126,6 +126,7 @@ const scrollIntoView = Element.prototype.scrollIntoView;
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   Element.prototype.scrollIntoView = scrollIntoView;
 });
 
@@ -285,7 +286,7 @@ describe('PlannerWidget', () => {
   it('Week pads after Sunday so the content after today fills the scroller, and scrolls to the exact offset', async () => {
     const user = userEvent.setup();
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-      const top = this.matches('section[data-today]') ? 340 : 100;
+      const top = this.matches('section[data-today]') ? 340 : this.matches('[class*="weekSpacer"]') ? 700 : 100;
       return {
         top,
         bottom: top + 40,
@@ -298,11 +299,9 @@ describe('PlannerWidget', () => {
         toJSON: () => ({}),
       };
     });
-    // The scroller shows 380 px; its content is 600 px with no spacer, today 240 px down, so only
-    // 360 px follows today: 20 px short.
+    // The scroller shows 380 px; today's top is at 340 and the spacer's at 700, so only 360 px of
+    // content follows today: 20 px short.
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(380);
-    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(600);
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(0);
     const set = vi.fn();
     vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, v: number) {
       set(this, v);
@@ -346,6 +345,85 @@ describe('PlannerWidget', () => {
     await user.click(screen.getByRole('tab', { name: 'Week' }));
     await screen.findByText('Early');
     await waitFor(() => expect(set).toHaveBeenLastCalledWith(expect.anything(), 300));
+  });
+
+  // A ResizeObserver stand-in: every live observer's callback, so a test can report a size change.
+  function fakeResizeObserver(): { fire: () => void } {
+    const live = new Set<(entries: ResizeObserverEntry[]) => void>();
+    class Fake {
+      constructor(private readonly cb: (entries: ResizeObserverEntry[]) => void) {
+        live.add(cb);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {
+        live.delete(this.cb);
+      }
+    }
+    vi.stubGlobal('ResizeObserver', Fake);
+    return { fire: () => act(() => live.forEach((cb) => cb([]))) };
+  }
+
+  // Today's section 240 px down the scroller, plus `pushed.by` once the days above it have grown.
+  function todayAt(pushed: { by: number }): void {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const top = this.matches('section[data-today]') ? 340 + pushed.by : 100;
+      return { top, bottom: top + 40, left: 0, right: 300, width: 300, height: 40, x: 0, y: top, toJSON: () => ({}) };
+    });
+  }
+
+  it('Week scrolls to today again when the content grows late, after the load has settled', async () => {
+    const user = userEvent.setup();
+    const observer = fakeResizeObserver();
+    const pushed = { by: 0 };
+    todayAt(pushed);
+    const set = vi.fn();
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, v: number) {
+      set(this, v);
+    });
+    setup({ tasks: [] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    await waitFor(() => expect(set).toHaveBeenLastCalledWith(expect.anything(), 240));
+    pushed.by = 46;
+    observer.fire();
+    expect(set).toHaveBeenLastCalledWith(expect.anything(), 286);
+  });
+
+  it('Week stops following today once the user scrolls by hand', async () => {
+    const user = userEvent.setup();
+    const observer = fakeResizeObserver();
+    const pushed = { by: 0 };
+    todayAt(pushed);
+    const set = vi.fn();
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, v: number) {
+      set(this, v);
+    });
+    setup({ tasks: [] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    await waitFor(() => expect(set).toHaveBeenLastCalledWith(expect.anything(), 240));
+    const scroller = document.querySelector('[class*="weekDays"]') as HTMLElement;
+    fireEvent.wheel(scroller, { deltaY: 120 });
+    set.mockClear();
+    pushed.by = 46;
+    observer.fire();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('Week resets the spacer to nothing on a week without today', async () => {
+    const user = userEvent.setup();
+    todayAt({ by: 0 });
+    // Every spacer top reads 100, above today's 340, so this week's spacer is padded.
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(380);
+    setup({ tasks: [] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    await screen.findAllByRole('button', { name: /open$/ });
+    const pad = document.querySelector<HTMLElement>('[class*="weekSpacer"]') as HTMLElement;
+    await waitFor(() => expect(pad.style.height).toBe('620px'));
+    await user.click(screen.getByRole('button', { name: 'Next week' }));
+    await waitFor(() => expect(pad.style.height).toBe('0px'));
   });
 
   it('a Week quick add places the task on that day', async () => {

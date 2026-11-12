@@ -62,28 +62,51 @@ export function WeekView() {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
   // Today's section is scrolled to the top of the week's own scroller when a week holding it opens
-  // (E8), and again once the week's tasks have loaded and been drawn (the frame after), since the
-  // days above today grow when theirs arrive. Its scrollTop only: scrollIntoView would scroll every
-  // ancestor too, the board's page and the window among them. A spacer after Sunday tops the content
-  // after today up to the scroller's height, so a week whose later days are short can still scroll
-  // far enough to put today at the very top.
+  // (E8), and again whenever the week's content changes size while it shows, until the user scrolls
+  // by hand: the days above today grow as their tasks load and draw, frames after the first scroll.
+  // Its scrollTop only: scrollIntoView would scroll every ancestor too, the board's page and the
+  // window among them. A spacer after Sunday tops the content after today (from today's top to the
+  // spacer's, plus the scroller's bottom padding) up to the scroller's height, so a week whose later
+  // days are short can still scroll far enough to put today at the very top. A week without today
+  // has no spacer.
   const scroller = useRef<HTMLDivElement>(null);
   const spacer = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let live = true;
+    let follow = true;
     let frame = 0;
+    const box = scroller.current;
+    const pad = spacer.current;
     const toToday = (): void => {
-      const box = scroller.current;
-      const section = box?.querySelector<HTMLElement>('section[data-today]');
-      if (!live || !box || !section) return;
-      const offset = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
-      const pad = spacer.current;
+      if (!live || !follow || !box) return;
+      const section = box.querySelector<HTMLElement>('section[data-today]');
+      if (!section) {
+        if (pad) pad.style.height = '0px';
+        return;
+      }
+      const top = section.getBoundingClientRect().top;
+      const offset = top - box.getBoundingClientRect().top + box.scrollTop;
       if (pad) {
-        const after = box.scrollHeight - pad.offsetHeight - offset;
+        const bottom = parseFloat(getComputedStyle(box).paddingBottom) || 0;
+        const after = pad.getBoundingClientRect().top - top + bottom;
         pad.style.height = `${Math.max(0, Math.ceil(box.clientHeight - after))}px`;
       }
       box.scrollTop = offset;
     };
+    // A wheel, a touch, a key or a press in the scroller (its scrollbar too) hands it to the user.
+    const stop = (): void => {
+      follow = false;
+    };
+    const hands = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    for (const type of hands) box?.addEventListener(type, stop, { passive: true });
+    // Each day's section (today's among them): together they are the content's size. jsdom has no
+    // ResizeObserver; the frame after the load below covers it there.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(toToday);
+    if (box && observer) {
+      for (const child of Array.from(box.children)) if (child !== pad) observer.observe(child);
+      const section = box.querySelector('section[data-today]');
+      if (section) observer.observe(section);
+    }
     toToday();
     void loadRange('week', start).then(() => {
       if (live) frame = requestAnimationFrame(toToday);
@@ -91,6 +114,8 @@ export function WeekView() {
     return () => {
       live = false;
       cancelAnimationFrame(frame);
+      observer?.disconnect();
+      for (const type of hands) box?.removeEventListener(type, stop);
     };
   }, [start, today, loadRange]);
 

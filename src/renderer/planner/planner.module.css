@@ -379,9 +379,11 @@
   overflow: visible;
 }
 
+/* Its top margin cancels the column's gap, so a week without today (height 0) ends as before. */
 .weekSpacer {
   flex: none;
   height: 0;
+  margin-top: calc(-1 * var(--space-1));
 }
 
 .weekDay {
@@ -463,10 +465,13 @@
 /* The board's compact row (TaskRow variant="compact", v1.2 spec §3.7): a Tweek line. The title flows
    like text across the whole column, after a small check and the subject dot, and a long one wraps
    onto the next rule: the line height is the rule height and the rules are drawn under every line.
-   Words break only when one alone is wider than the column. ▶ and the grip are overlaid at the row's
-   right end on hover, or while ▶ or the grip has focus, on a solid panel with a short fade on its left
-   so text under it isn't cut abruptly. They reserve no room, so the title never reflows, and they
-   hide while the title itself has focus (data-title-focus) so its ring is fully visible. */
+   Words break only when one alone is wider than the column. The estimate chip is one inline box
+   right after the title's last word: it stays on that line when it fits and moves to the next rule
+   only when it doesn't, and its spacing is kept tight so a short title keeps it more often. ▶ and
+   the grip are overlaid at the row's right end on hover, or while ▶ or the grip has focus, on a
+   solid panel with a short fade on its left so text under it isn't cut abruptly. They reserve no
+   room, so the title never reflows and runs to 2px from the edge, and they hide while the
+   title has keyboard-visible focus (data-title-focus, never after a click) so its ring is whole. */
 .compact {
   --rule: 32px;
   --rules: repeating-linear-gradient(
@@ -477,7 +482,7 @@
   display: block;
   position: relative;
   min-height: var(--rule);
-  padding: 0 var(--space-1) 0 2px;
+  padding: 0 2px;
   border-left-width: 2px;
   border-radius: 0;
   background: var(--rules);
@@ -516,8 +521,10 @@
 }
 
 .compact .chip {
-  margin-left: 6px;
-  padding: 0 5px;
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
   line-height: 16px;
   vertical-align: middle;
   font-size: var(--text-xs);

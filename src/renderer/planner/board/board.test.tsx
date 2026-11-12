@@ -475,6 +475,25 @@ describe('TasksBoard, the Tweek look', () => {
     expect(row).not.toHaveAttribute('data-title-focus');
   });
 
+  it('a compact title focused by the mouse keeps the hover tools working', async () => {
+    await renderBoard({ tasks: [busy] });
+    const mon = screen.getByRole('region', { name: 'Mon 9 Nov' });
+    const row = (await within(mon).findByText(busy.title)).closest('li') as HTMLElement;
+    const title = within(row).getByRole('button', { name: busy.title });
+    // A click, or focus handed back after one, is not :focus-visible in Chromium.
+    const matches = Element.prototype.matches;
+    const spy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, sel: string) {
+      return sel === ':focus-visible' ? false : matches.call(this, sel);
+    });
+    try {
+      act(() => title.focus());
+      expect(title).toHaveFocus();
+      expect(row).not.toHaveAttribute('data-title-focus');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('Enter or Space on a compact title opens its detail', async () => {
     await renderBoard({ tasks: [busy] });
     const title = await screen.findByRole('button', { name: busy.title });

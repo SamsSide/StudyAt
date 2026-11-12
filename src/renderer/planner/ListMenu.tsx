@@ -27,13 +27,26 @@ import { useStudyStore } from '../shell/store';
 import { usePlannerStore } from './plannerStore';
 import styles from './TaskMenu.module.css';
 
-/** The nearest ancestor that scrolls (the board body, the widget's body), or null. */
-function scrollParent(el: HTMLElement | null): HTMLElement | null {
-  for (let p = el?.parentElement ?? null; p; p = p.parentElement) {
+type Box = Pick<DOMRect, 'top' | 'bottom' | 'left' | 'right'>;
+
+/** Where `el` can be seen: `area` cut down by every ancestor that clips its overflow (the board's
+ *  sideways list row, the board body under its header, the widget's body), up to the one holding
+ *  `host`. Stopping at the nearest one would let a trigger in the list row, scrolled under the
+ *  board's header, still count as in view. */
+function visibleBox(el: HTMLElement | null, host: HTMLElement | null, area: Box): Box {
+  let box = { ...area };
+  for (let p = el?.parentElement ?? null; p && !(host && p.contains(host)); p = p.parentElement) {
     const { overflowX, overflowY } = getComputedStyle(p);
-    if (/(auto|scroll)/.test(`${overflowX} ${overflowY}`)) return p;
+    if (!/(auto|scroll|hidden|clip)/.test(`${overflowX} ${overflowY}`)) continue;
+    const r = p.getBoundingClientRect();
+    box = {
+      top: Math.max(box.top, r.top),
+      bottom: Math.min(box.bottom, r.bottom),
+      left: Math.max(box.left, r.left),
+      right: Math.min(box.right, r.right),
+    };
   }
-  return null;
+  return box;
 }
 
 type Pane = 'menu' | 'rename' | 'subject' | 'delete';
@@ -120,17 +133,15 @@ export function ListMenu({ list, onDeleted }: { list: TaskList; onDeleted?: () =
       const p = panel.current;
       if (!t || !p) return;
       const area = host?.getBoundingClientRect();
-      // Scrolled out of view means out of the nearest scroll container (the board body), so a
-      // trigger under the board's header closes its menu; the host only places the panel.
-      const clip = scrollParent(button.current)?.getBoundingClientRect() ?? area;
       const x = area?.left ?? 0;
       const y = area?.top ?? 0;
       const w = area?.width ?? window.innerWidth;
       const h = area?.height ?? window.innerHeight;
       const local = { left: t.left - x, right: t.right - x, top: t.top - y, bottom: t.bottom - y };
-      const out = clip
-        ? t.bottom < clip.top || t.top > clip.bottom || t.right < clip.left || t.left > clip.right
-        : local.bottom < 0 || local.top > h || local.right < 0 || local.left > w;
+      // Scrolled out of view means out of any clipping ancestor as well as the host (or window),
+      // so a trigger under the board's header closes its menu.
+      const clip = visibleBox(button.current, host, { left: x, top: y, right: x + w, bottom: y + h });
+      const out = t.bottom < clip.top || t.top > clip.bottom || t.right < clip.left || t.left > clip.right;
       if (out) {
         if (p.contains(document.activeElement)) button.current?.focus({ preventScroll: true });
         setPane(null);
