@@ -62,3 +62,18 @@ export function startReminders(deps: RemindersDeps): () => void {
   const handle = deps.setInterval(check, REMINDER_CHECK_MS);
   return () => deps.clearInterval(handle);
 }
+
+/**
+ * A study day starting (at launch, on a rollover, on resume): one reminder pass, then `roll`. The
+ * order matters: rolling forward moves a task to today and its reminder with it, so yesterday's
+ * reminder (03:30 with the rollover at 4, seen at 04:15) must fire or be dropped first. A failing
+ * pass is logged and never stops the roll.
+ */
+export function startOfStudyDay(deps: RemindersDeps, roll: () => void): void {
+  try {
+    checkReminders(deps);
+  } catch (err) {
+    console.error('StudyAt: checking reminders failed', err);
+  }
+  roll();
+}

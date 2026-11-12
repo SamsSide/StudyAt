@@ -33,7 +33,7 @@ import { createRendererFlush } from './flush';
 import { createBroadcaster, registerIpc, type Dialogs } from './ipc';
 import { MiniWindow } from './mini';
 import { createNotifier } from './notify';
-import { startReminders } from './reminders';
+import { startOfStudyDay, startReminders, type RemindersDeps } from './reminders';
 import { applyUserDataOverride } from './paths';
 import { installMediaProtocol, registerMediaScheme } from './protocol';
 import { CSP, DEV_CSP, hardenWebContents, installPermissionHandlers, shouldApplyCsp } from './security';
@@ -339,7 +339,13 @@ async function boot(): Promise<void> {
     app,
     () =>
       runShutdown(
-        [() => stopReminders?.(), () => stopDateWatch?.(), () => main?.flush(), () => mini?.flush(), () => hotkey.dispose()],
+        [
+          () => stopReminders?.(),
+          () => stopDateWatch?.(),
+          () => main?.flush(),
+          () => mini?.flush(),
+          () => hotkey.dispose(),
+        ],
         async () => {
           await renderers.flush().catch((err: unknown) => console.error('StudyAt: window flush failed', err));
           await stopTimerAndDb();
@@ -391,13 +397,23 @@ async function boot(): Promise<void> {
   services.recaps.computePending(Date.now());
   // v1.2 spec §3.6, §7: with `rollTasksForward` on, open tasks on past days move to today at launch
   // and at every study-day change (idempotent: only days before today move); the renderer refetches.
-  const rollTasksForward = (now: number): void => {
-    if (services.taskWrites.rollForward(now).tasks.length > 0) {
-      broadcaster.send(CHANNELS.events.plannerChanged, null);
-    }
+  // A reminder pass runs first, so yesterday's due reminders fire before their task changes day.
+  const reminderDeps: RemindersDeps = {
+    db,
+    now: Date.now,
+    setInterval,
+    clearInterval,
+    settings: () => settingsStore.get(),
+    notify: (id, title) => void notifier.notifyReminder(id, title),
   };
+  const startStudyDay = (now: number): void =>
+    startOfStudyDay(reminderDeps, () => {
+      if (services.taskWrites.rollForward(now).tasks.length > 0) {
+        broadcaster.send(CHANNELS.events.plannerChanged, null);
+      }
+    });
   try {
-    rollTasksForward(Date.now());
+    startStudyDay(Date.now());
   } catch (err) {
     console.error('StudyAt: rolling tasks forward failed', err);
   }
@@ -420,7 +436,7 @@ async function boot(): Promise<void> {
     // While the corrupt dialog is unresolved the file is the fresh one, never a daily (R16, R32).
     backup: (now) => dailyBackup(userData, now, { skip: corruptState(db.raw).pendingAt !== null }),
     recaps: (now) => void services.recaps.computePending(now),
-    newStudyDay: rollTasksForward,
+    newStudyDay: startStudyDay,
     log: (msg, err) => console.error(msg, err),
   });
 
@@ -470,14 +486,7 @@ async function boot(): Promise<void> {
     mainWindow = null;
   });
   // v1.2 spec §3.6: reminders fire from main, so they reach Sam while the window is in the tray.
-  stopReminders = startReminders({
-    db,
-    now: Date.now,
-    setInterval,
-    clearInterval,
-    settings: () => settingsStore.get(),
-    notify: (id, title) => void notifier.notifyReminder(id, title),
-  });
+  stopReminders = startReminders(reminderDeps);
 
   try {
     const image = await trayImage(paths.assets).catch((err: unknown) => {

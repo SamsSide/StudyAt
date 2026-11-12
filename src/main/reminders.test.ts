@@ -3,7 +3,8 @@ import { REMINDER_CHECK_MS } from '../core/planner/reminders';
 import type { Db } from './db/db';
 import { plannerTasksRepo, type PlannerTasksRepo } from './db/repos/plannerTasks';
 import { openTestDb, tempDir } from './db/test-helpers';
-import { checkReminders, startReminders, type RemindersDeps } from './reminders';
+import type { Settings } from '../shared/types';
+import { checkReminders, startOfStudyDay, startReminders, type RemindersDeps } from './reminders';
 import { FakeClock } from './timer/test-clock';
 
 const SEC = 1000;
@@ -147,6 +148,34 @@ describe('reminders', () => {
     expect(notify).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenCalled();
     expect(repo.get(a.id)?.remindedDay).toBe('2026-11-11');
+    log.mockRestore();
+  });
+
+  it("a study day starting fires yesterday's 03:30 reminder before the roll moves the task", () => {
+    const t = task('Early', '03:30');
+    clock = new FakeClock(at(12, 4, 15));
+    // Stands in for taskWrites.rollForward with the setting on: open tasks before today move to today.
+    const roll = vi.fn(() => repo.update(t.id, { day: '2026-11-12' }, clock.now()));
+    startOfStudyDay(deps(), roll);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(t.id, 'Early');
+    expect(roll).toHaveBeenCalledTimes(1);
+    expect(repo.get(t.id)?.day).toBe('2026-11-12');
+    // Today's own pass finds nothing left to fire for the moved task.
+    expect(checkReminders(deps()).fired).toEqual([]);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failing reminder pass is logged and the roll still runs', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    clock = new FakeClock(at(12, 4, 15));
+    const roll = vi.fn();
+    const failing = (): Pick<Settings, 'notifications' | 'rolloverHour'> => {
+      throw new Error('boom');
+    };
+    startOfStudyDay({ ...deps(), settings: failing }, roll);
+    expect(roll).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalled();
     log.mockRestore();
   });
 
