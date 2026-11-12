@@ -91,6 +91,7 @@ describe('preload api', () => {
     const { ipc } = fakeIpc();
     const api = buildApi(ipc);
     await api.planner.week('2026-11-09');
+    await api.planner.task(7);
     await api.tasks.move(3, { day: '2026-11-10', index: 0 });
     await api.subtasks.reorder(3, [2, 1]);
     await api.lists.clearDone(4);
@@ -100,6 +101,7 @@ describe('preload api', () => {
     await api.timer.setOutcome('p1', 'partly');
     expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
       ['planner:week', '2026-11-09'],
+      ['planner:task', 7],
       ['tasks:move', 3, { day: '2026-11-10', index: 0 }],
       ['subtasks:reorder', 3, [2, 1]],
       ['lists:clearDone', 4],

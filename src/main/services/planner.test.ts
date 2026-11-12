@@ -94,6 +94,16 @@ describe('plannerService', () => {
     expect(repo.all().find((r) => r.id === running.id)?.focusMs).toBe(2 * MIN);
   });
 
+  it('task reads a dated task, a list task with its effective subject, and null when missing', () => {
+    const s = svc();
+    const old = dated('old', '2026-11-01');
+    expect(s.task(old.id)).toMatchObject({ id: old.id, day: '2026-11-01', actualMs: 0 });
+    const list = taskListsRepo(db).create({ name: 'Revision', subjectId: 3 }, NOW);
+    const listed = plannerTasksRepo(db).create({ title: 'l', day: null, listId: list.id }, NOW);
+    expect(s.task(listed.id)).toMatchObject({ listId: list.id, effectiveSubjectId: 3, tags: [], subtasks: [] });
+    expect(s.task(old.id + 1000)).toBeNull();
+  });
+
   it('week returns Mon..Sun tasks open before done, deadlines due that week and studied per day', () => {
     const tasks = plannerTasksRepo(db);
     dated('mon', '2026-11-09');

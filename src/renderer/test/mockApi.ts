@@ -243,6 +243,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       month: vi.fn((month: string) => Promise.resolve(emptyRange(`${month}-01`, `${month}-01`))),
       day: vi.fn((day: string) => Promise.resolve(emptyRange(day, day))),
       lists: vi.fn(() => Promise.resolve(emptyLists())),
+      task: vi.fn(() => Promise.resolve(null)),
       onOpenTask: vi.fn(openTask.subscribe),
       onChanged: vi.fn((cb: () => void) => plannerChanged.subscribe(() => cb())),
     },

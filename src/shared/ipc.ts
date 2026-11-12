@@ -156,6 +156,8 @@ export interface StudyAtApi {
     month(month: string): Promise<PlannerRange>;
     day(day: string): Promise<PlannerRange>;
     lists(): Promise<ListsView>;
+    /** One task by id wherever it sits (a late reminder for yesterday's task), or null if gone. */
+    task(id: number): Promise<PlannerTask | null>;
     /** Main asks the planner to open this task (a reminder was clicked). */
     onOpenTask(cb: (taskId: number) => void): Unsubscribe;
     /** A task, subtask or list changed in main (roll forward, a reminder); refetch what is shown. */
@@ -355,7 +357,7 @@ export const CHANNELS = {
     update: 'subjects:update',
     archive: 'subjects:archive',
   },
-  planner: { week: 'planner:week', month: 'planner:month', day: 'planner:day', lists: 'planner:lists' },
+  planner: { week: 'planner:week', month: 'planner:month', day: 'planner:day', lists: 'planner:lists', task: 'planner:task' },
   tasks: {
     create: 'tasks:create',
     update: 'tasks:update',

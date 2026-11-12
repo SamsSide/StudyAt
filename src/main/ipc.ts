@@ -684,6 +684,11 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.planner.month, (month) => planner.month(monthKey(month)));
   handle(C.planner.day, (day) => planner.day(dayKey(day, 'day')));
   handle(C.planner.lists, () => planner.lists());
+  handle(C.planner.task, (id) => {
+    const n = assertInt(id, 'taskId');
+    if (n < 1) throw new IpcValidationError('taskId must be a positive whole number');
+    return planner.task(n);
+  });
   handle(C.tasks.create, (input) => taskWrites.create(taskInput(input)));
   handle(C.tasks.update, (id, patch) => taskWrites.update(assertInt(id), taskUpdate(patch)));
   handle(C.tasks.move, (id, to) => taskWrites.move(assertInt(id), taskMove(to)));

@@ -104,6 +104,7 @@ describe('mockApi', () => {
     const api = mockApi();
     expect(await api.planner.week('2026-11-09')).toMatchObject({ tasks: [], deadlines: [], studiedMs: {} });
     expect(await api.planner.lists()).toEqual({ lists: [], tasks: [], deadlines: [] });
+    expect(await api.planner.task(1)).toBeNull();
     expect(await api.tasks.create({ title: 'x' })).toEqual({ tasks: [], removed: [] });
     expect((await api.subtasks.add(1, 'x')).subtasks).toEqual([]);
     expect(await api.lists.remove(1)).toEqual({ lists: [], removed: [] });

@@ -222,6 +222,17 @@ describe('registerIpc', () => {
       return Number(row?.values[0]?.[0]);
     };
 
+    it('planner:task returns one task, null when missing, and rejects a bad id', async () => {
+      const { invoke } = setup();
+      const made = (await invoke(CHANNELS.tasks.create, { title: 'Old', day: '2026-11-01' })) as TaskChange;
+      const id = made.tasks[0]!.id;
+      expect(await invoke(CHANNELS.planner.task, id)).toMatchObject({ id, title: 'Old', actualMs: 0 });
+      expect(await invoke(CHANNELS.planner.task, 99999)).toBeNull();
+      for (const bad of [0, -1, 1.5, '1', null, undefined]) {
+        await expect(invoke(CHANNELS.planner.task, bad)).rejects.toThrow(IpcValidationError);
+      }
+    });
+
     it('timer:setTask passes the task title and its list subject, and an own subject wins', async () => {
       const { invoke } = setup();
       const subject = subjectId('COMP2181 Theory of Computation');
