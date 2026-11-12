@@ -18,6 +18,11 @@ export interface SpacesState {
   loadFailed: boolean;
   /** YouTube spaces that failed this session, by id. */
   embedErrors: Record<number, VideoError>;
+  /**
+   * Sam paused the moving background (spec §3.4). Renderer only, never saved: it goes back to
+   * playing whenever the active space changes and on app start.
+   */
+  backgroundPaused: boolean;
   load(): Promise<void>;
   apply(spaces: Space[]): void;
   /** Re-reads the list from main, e.g. after a failed call left the mirror unsure. */
@@ -29,6 +34,9 @@ export interface SpacesState {
   clearPlayErrors(): void;
   /** Forgets one space's mark: its player has reached PLAYING, so it plainly can play. */
   clearVideoError(id: number): void;
+  setBackgroundPaused(paused: boolean): void;
+  /** No-op unless the active space is a video or YouTube space. */
+  toggleBackground(): void;
 }
 
 // The newest update per space. A reply to an older one is dropped, so a slider dragged quickly
@@ -41,6 +49,7 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   loaded: false,
   loadFailed: false,
   embedErrors: {},
+  backgroundPaused: false,
   async load() {
     try {
       const [spaces, settings] = await Promise.all([
@@ -56,7 +65,9 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
     }
   },
   apply(spaces) {
-    set({ spaces });
+    // The active space was removed: nothing is left to be paused.
+    const gone = !spaces.some((s) => s.id === get().activeId);
+    set({ spaces, ...(gone ? { backgroundPaused: false } : {}) });
   },
   async reload() {
     try {
@@ -107,11 +118,34 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
     const { [id]: mark, ...rest } = get().embedErrors;
     if (mark) set({ embedErrors: rest });
   },
+  setBackgroundPaused(paused) {
+    set({ backgroundPaused: paused });
+  },
+  toggleBackground() {
+    const { spaces, activeId, backgroundPaused } = get();
+    const active = spaces.find((s) => s.id === activeId);
+    if (!active || active.kind === 'image') return;
+    set({ backgroundPaused: !backgroundPaused });
+  },
 }));
+
+// Whatever changes the active space (a pick, a load, a failed pick rolling back) starts it playing.
+useSpacesStore.subscribe((state, prev) => {
+  if (state.activeId !== prev.activeId && state.backgroundPaused) {
+    useSpacesStore.setState({ backgroundPaused: false });
+  }
+});
 
 export const resetSpacesStore = (): void => {
   updateSeq = new Map();
-  useSpacesStore.setState({ spaces: [], activeId: null, loaded: false, loadFailed: false, embedErrors: {} });
+  useSpacesStore.setState({
+    spaces: [],
+    activeId: null,
+    loaded: false,
+    loadFailed: false,
+    embedErrors: {},
+    backgroundPaused: false,
+  });
 };
 
 export const mediaUrl = (id: number): string => `studyat-media://space/${id}`;

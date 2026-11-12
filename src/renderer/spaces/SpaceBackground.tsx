@@ -1,6 +1,7 @@
 // The full-window background (spec §3.8): local video/image through the media protocol, YouTube
 // through the IFrame API, dim overlay and blur. Paused while the window is hidden; under
-// reduced motion it stays on a still until Sam presses play on the footer.
+// reduced motion it stays on a still until Sam presses play on the footer. Sam can also pause it
+// (`backgroundPaused`, spec §3.4), which pauses the video's own audio with it.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
@@ -249,6 +250,7 @@ export function SpaceBackground() {
   const loaded = useSpacesStore((s) => s.loaded);
   const loadFailed = useSpacesStore((s) => s.loadFailed);
   const embedErrors = useSpacesStore((s) => s.embedErrors);
+  const backgroundPaused = useSpacesStore((s) => s.backgroundPaused);
   // Minimised or in the tray: main says so (document.hidden stays false there, see windowVisibility).
   const windowVisible = useWindowVisibility((s) => s.visible);
   const documentHidden = useDocumentHidden();
@@ -282,7 +284,7 @@ export function SpaceBackground() {
     );
 
   const stillFirst = reduced && !userPlay && space.kind !== 'image';
-  const paused = !windowVisible || documentHidden || stillFirst;
+  const paused = !windowVisible || documentHidden || stillFirst || backgroundPaused;
   const { dim, blur } = space.opts;
   const videoError = embedErrors[space.id];
 

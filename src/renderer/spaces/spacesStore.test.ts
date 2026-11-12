@@ -85,3 +85,63 @@ describe('spacesStore.load', () => {
     warn.mockRestore();
   });
 });
+
+describe('spacesStore.backgroundPaused (spec §3.4)', () => {
+  const youtube = makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ' });
+  const image = makeSpace({ id: 2, kind: 'image', source: 'images/a.jpg' });
+  const seed = (activeId: number) =>
+    useSpacesStore.setState({ spaces: [makeSpace({ id: 1 }), image, youtube], activeId, loaded: true });
+
+  it('starts playing', () => {
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('toggleBackground flips it for a YouTube or video space', () => {
+    seed(3);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    seed(1);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+  });
+
+  it('toggleBackground does nothing for an image space or with no active space', () => {
+    seed(2);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    useSpacesStore.setState({ activeId: null });
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('setActive to another space resets it to playing', async () => {
+    installMockApi(mockApi());
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    await useSpacesStore.getState().setActive(1);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('any change of the active id resets it, e.g. a load that finds another space', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.setState({ activeId: 1 });
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('apply keeps the pause while the active space is unchanged', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.getState().apply([makeSpace({ id: 1 }), image, youtube]);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+  });
+
+  it('apply resets it when the active space is no longer in the list', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.getState().apply([makeSpace({ id: 1 }), image]);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+});

@@ -128,6 +128,61 @@ describe('SpaceBackground', () => {
     expect(pause).toHaveBeenCalled();
   });
 
+  describe('background pause (spec §3.4)', () => {
+    it('pausing the background pauses a local video, and playing again resumes it', async () => {
+      await mount([makeSpace({ id: 1 })]);
+      const v = (await screen.findByTestId('space-video')) as HTMLVideoElement;
+      const pause = vi.spyOn(v, 'pause').mockImplementation(() => undefined);
+      const play = vi.spyOn(v, 'play').mockImplementation(() => Promise.resolve());
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(pause).toHaveBeenCalled();
+      act(() => useSpacesStore.getState().setBackgroundPaused(false));
+      expect(play).toHaveBeenCalled();
+    });
+
+    it('an image space is unaffected', async () => {
+      await mount([makeSpace({ id: 2, kind: 'image', source: 'images/a.jpg' })]);
+      const img = await screen.findByTestId('space-image');
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(screen.getByTestId('space-image')).toBe(img);
+    });
+
+    it('a YouTube player is paused and played with it', async () => {
+      const pauseVideo = vi.fn();
+      const playVideo = vi.fn();
+      let opts: YTPlayerOptions | undefined;
+      const player = {
+        playVideo,
+        pauseVideo,
+        mute: vi.fn(),
+        unMute: vi.fn(),
+        setVolume: vi.fn(),
+        setPlaybackRate: vi.fn(),
+        destroy: vi.fn(),
+        unloadModule: vi.fn(),
+        setOption: vi.fn(),
+        getPlaybackQuality: vi.fn(() => 'hd1080'),
+        setPlaybackQuality: vi.fn(),
+      };
+      class FakePlayer {
+        constructor(_el: HTMLElement, o: YTPlayerOptions) {
+          opts = o;
+          return player as unknown as FakePlayer;
+        }
+      }
+      window.YT = { Player: FakePlayer as never };
+      await mount([makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ', thumb: 'data:x' })]);
+      await waitFor(() => expect(opts).toBeDefined());
+      act(() => opts?.events.onReady?.());
+      pauseVideo.mockClear();
+      playVideo.mockClear();
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(pauseVideo).toHaveBeenCalled();
+      act(() => useSpacesStore.getState().setBackgroundPaused(false));
+      expect(playVideo).toHaveBeenCalled();
+    });
+  });
+
   describe('YouTube', () => {
     const yt = (space: Space) => {
       let opts: YTPlayerOptions | undefined;
