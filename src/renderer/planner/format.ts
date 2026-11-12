@@ -1,5 +1,6 @@
 // Planner display helpers (v1.2 spec §3.7). Pure; day keys are strings, never Date arithmetic.
 import { addDays, dayKeyOf, daysBetween, weekStartOf } from '../../core/time';
+import { parseDue } from '../../core/wallclock';
 import type { PlannerTask } from '../../shared/types';
 import { formatDayLabel } from '../stats/format';
 
@@ -21,6 +22,11 @@ const MONTHS = [
 /** The planner's today: the same study day the stats use. */
 export function plannerToday(rolloverHour: number, now?: number): string {
   return dayKeyOf(now ?? Date.now(), rolloverHour);
+}
+
+/** The study day a deadline's due time falls on (rollover applied), never `due.slice(0, 10)`. */
+export function deadlineDayKey(due: string, rolloverHour: number): string {
+  return dayKeyOf(parseDue(due), rolloverHour);
 }
 
 /** "45m", "1h", "1h 30m". */

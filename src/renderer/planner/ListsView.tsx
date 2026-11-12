@@ -3,11 +3,10 @@
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { examLine, upcomingExam } from '../../core/planner/schedule';
-import { dayKeyOf } from '../../core/time';
-import { parseDue, wallStamp } from '../../core/wallclock';
+import { wallStamp } from '../../core/wallclock';
 import type { Deadline } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
-import { plannerToday } from './format';
+import { deadlineDayKey, plannerToday } from './format';
 import { tasksInList, usePlannerStore } from './plannerStore';
 import { QuickAdd } from './QuickAdd';
 import { TaskRow } from './TaskRow';
@@ -18,7 +17,7 @@ import styles from './planner.module.css';
 function examTextFor(deadlines: Deadline[], subjectId: number | null, rolloverHour: number): string | null {
   const exam = upcomingExam(deadlines, subjectId, wallStamp(Date.now()));
   if (!exam) return null;
-  return examLine(dayKeyOf(parseDue(exam.due), rolloverHour), plannerToday(rolloverHour));
+  return examLine(deadlineDayKey(exam.due, rolloverHour), plannerToday(rolloverHour));
 }
 
 export function ListsView() {

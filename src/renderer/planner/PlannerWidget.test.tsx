@@ -1,7 +1,9 @@
+import type * as DndKit from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addDays } from '../../core/time';
+import { addDays, weekStartOf } from '../../core/time';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { Deadline, PlannerTask } from '../../shared/types';
 import { resetStudyStore, useStudyStore } from '../shell/store';
@@ -17,6 +19,19 @@ import { plannerToday } from './format';
 import { PlannerWidget } from './PlannerWidget';
 import { resetPlannerStore, usePlannerStore } from './plannerStore';
 import { usePlannerEvents } from './usePlannerEvents';
+
+// Capture PlannerDnd's drag-end handler so a test can drop a task without a real pointer.
+let dragEnd: ((e: DragEndEvent) => void) | undefined;
+vi.mock('@dnd-kit/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof DndKit>();
+  return {
+    ...actual,
+    DndContext: (props: React.ComponentProps<typeof actual.DndContext>) => {
+      dragEnd = props.onDragEnd as typeof dragEnd;
+      return <actual.DndContext {...props} />;
+    },
+  };
+});
 
 const MIN = 60_000;
 const today = () => plannerToday(DEFAULT_SETTINGS.rolloverHour);
@@ -51,6 +66,17 @@ function setup(opts: { tasks?: PlannerTask[]; deadlines?: Deadline[]; lists?: bo
   const tasks = opts.tasks ?? [];
   const api: MockApi = mockApi({
     planner: {
+      week: vi.fn((day: string) =>
+        Promise.resolve({
+          from: weekStartOf(day),
+          to: addDays(weekStartOf(day), 6),
+          tasks: tasks.filter(
+            (t) => t.day !== null && t.day >= weekStartOf(day) && t.day <= addDays(weekStartOf(day), 6),
+          ),
+          deadlines: [],
+          studiedMs: {},
+        }),
+      ),
       day: vi.fn((day: string) =>
         Promise.resolve({
           from: day,
@@ -76,6 +102,7 @@ function setup(opts: { tasks?: PlannerTask[]; deadlines?: Deadline[]; lists?: bo
         Promise.resolve({ tasks: [minimalPlannerTask({ id: 99, title: 'made' })], removed: [] }),
       ),
       update: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
+      move: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
     },
   });
   installMockApi(api);
@@ -98,13 +125,13 @@ afterEach(() => {
 });
 
 describe('PlannerWidget', () => {
-  it('has Day and Lists tabs', async () => {
+  it('has Day, Week and Lists tabs', async () => {
     setup();
     render(<PlannerWidget />);
     const tabs = within(screen.getByRole('tablist')).getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Day', 'Lists']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Day', 'Week', 'Lists']);
     expect(screen.getByRole('tab', { name: 'Day' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Task notice' })).toBeInTheDocument();
   });
 
   it("Day shows today's tasks open then done, with their chips, and deadlines on top", async () => {
@@ -148,6 +175,109 @@ describe('PlannerWidget', () => {
     expect(screen.getByRole('checkbox', { name: 'Mark "Done one" as not done' })).toBeChecked();
     expect(screen.getByText('Exam')).toBeInTheDocument();
     expect(screen.getByText(/Networks/)).toBeInTheDocument();
+  });
+
+  it('a double Enter makes one task', async () => {
+    const api = setup();
+    let finish: (() => void) | undefined;
+    vi.mocked(api.tasks.create).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ tasks: [minimalPlannerTask({ id: 99, title: 'made' })], removed: [] });
+        }),
+    );
+    render(<PlannerWidget />);
+    const box = screen.getByRole('textbox', { name: 'Add a task' });
+    fireEvent.change(box, { target: { value: 'Once' } });
+    fireEvent.submit(box);
+    fireEvent.submit(box);
+    await waitFor(() => expect(api.tasks.create).toHaveBeenCalledTimes(1));
+    await act(async () => finish?.());
+    await waitFor(() => expect(box).toHaveValue(''));
+    expect(api.tasks.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('Week shows Mon-Sun sections with open counts, which collapse', async () => {
+    const user = userEvent.setup();
+    setup({
+      tasks: [
+        minimalPlannerTask({ id: 1, title: 'One', day: '2026-11-09', sort: 0 }),
+        minimalPlannerTask({ id: 2, title: 'Two', day: '2026-11-09', sort: 1 }),
+        minimalPlannerTask({ id: 3, title: 'Done', day: '2026-11-09', sort: 2, done: true }),
+      ],
+    });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    const heads = await screen.findAllByRole('button', { name: /open$/ });
+    expect(heads.map((h) => h.textContent?.replace('›', ''))).toEqual([
+      'Mon 9 Nov · 2 open',
+      'Tue 10 Nov · 0 open',
+      'Wed 11 Nov · 0 open',
+      'Thu 12 Nov · 0 open',
+      'Fri 13 Nov · 0 open',
+      'Sat 14 Nov · 0 open',
+      'Sun 15 Nov · 0 open',
+    ]);
+    const mon = heads[0] as HTMLElement;
+    expect(mon).toHaveAttribute('aria-expanded', 'true');
+    expect(await screen.findByText('One')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Add to Mon 9 Nov' })).toBeInTheDocument();
+    await user.click(mon);
+    expect(mon).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('One')).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Add to Mon 9 Nov' })).not.toBeInTheDocument();
+  });
+
+  it('a Week quick add places the task on that day', async () => {
+    const user = userEvent.setup();
+    const api = setup();
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Add to Tue 10 Nov' }), 'Read{Enter}');
+    await waitFor(() =>
+      expect(api.tasks.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Read', day: '2026-11-10' }),
+      ),
+    );
+  });
+
+  it('dropping a task on another day calls tasks.move; dropping outside moves nothing', async () => {
+    const user = userEvent.setup();
+    const api = setup({ tasks: [minimalPlannerTask({ id: 1, title: 'One', day: '2026-11-09' })] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    await screen.findByText('One');
+    expect(screen.getByRole('button', { name: 'Move "One"' })).toBeInTheDocument();
+    act(() => dragEnd?.({ active: { id: 'task:1' }, over: { id: 'day:2026-11-12' } } as DragEndEvent));
+    await waitFor(() => expect(api.tasks.move).toHaveBeenCalledWith(1, { day: '2026-11-12', index: 0 }));
+    act(() => dragEnd?.({ active: { id: 'task:1' }, over: null } as DragEndEvent));
+    expect(api.tasks.move).toHaveBeenCalledTimes(1);
+  });
+
+  it('the filter hides other subjects and the button reads as pressed', async () => {
+    const user = userEvent.setup();
+    const day = today();
+    setup({
+      tasks: [
+        minimalPlannerTask({ id: 1, title: 'Maths', day, effectiveSubjectId: 3, tags: ['lecture'] }),
+        minimalPlannerTask({ id: 2, title: 'Chem', day, effectiveSubjectId: 2 }),
+      ],
+    });
+    render(<PlannerWidget />);
+    await screen.findByText('Chem');
+    const button = screen.getByRole('button', { name: 'Filter' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    await user.click(button);
+    expect(screen.getByRole('option', { name: 'All subjects' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'All tags' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), '3');
+    expect(screen.queryByText('Chem')).not.toBeInTheDocument();
+    expect(screen.getByText('Maths')).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Subject' }), '');
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Tag' }), 'lecture');
+    expect(screen.queryByText('Chem')).not.toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('a task under its estimate is not amber', async () => {
@@ -211,7 +341,9 @@ describe('PlannerWidget', () => {
     render(<PlannerWidget />);
     await user.click(await screen.findByRole('button', { name: 'Start focus on "Read"' }));
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent('Task set for your next focus.'),
+      expect(screen.getByRole('status', { name: 'Task notice' })).toHaveTextContent(
+        'Task set for your next focus.',
+      ),
     );
   });
 

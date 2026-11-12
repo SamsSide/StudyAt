@@ -6,10 +6,10 @@ import { addDays } from '../../core/time';
 import { formatDayLabel } from '../stats/format';
 import { useStudyStore } from '../shell/store';
 import { DeadlineChip } from './DeadlineChip';
+import { DropZone, dayZone, SortableTask } from './dnd';
 import { plannerToday } from './format';
 import { deadlinesOn, tasksOnDay, usePlannerStore } from './plannerStore';
 import { QuickAdd } from './QuickAdd';
-import { TaskRow } from './TaskRow';
 import { useToday } from './useToday';
 import styles from './planner.module.css';
 
@@ -67,15 +67,17 @@ export function DayView() {
           ))}
         </div>
       )}
-      {tasks.length === 0 ? (
-        <p className={styles.empty}>Nothing planned for this day.</p>
-      ) : (
-        <ul className={styles.rows}>
-          {tasks.map((t) => (
-            <TaskRow key={t.id} task={t} />
-          ))}
-        </ul>
-      )}
+      <DropZone id={dayZone(day)} items={tasks.map((t) => t.id)}>
+        {tasks.length === 0 ? (
+          <p className={styles.empty}>Nothing planned for this day.</p>
+        ) : (
+          <ul className={styles.rows}>
+            {tasks.map((t) => (
+              <SortableTask key={t.id} task={t} />
+            ))}
+          </ul>
+        )}
+      </DropZone>
       <QuickAdd
         label="Add a task"
         place={chosen === null ? () => ({ day: plannerToday(rolloverHour) }) : { day }}

@@ -1,13 +1,22 @@
 // One task row (v1.2 spec §3.7): a checkbox, the title, then chips; ▶ and the grip appear on hover
 // or focus. Clicking the row opens its detail.
-import type { MouseEvent, ReactNode } from 'react';
+import type { CSSProperties, MouseEvent, ReactNode, Ref } from 'react';
 import type { PlannerTask } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { estimateChip, rolledLabel, subtaskCount } from './format';
 import { usePlannerStore } from './plannerStore';
 import styles from './planner.module.css';
 
-export function TaskRow({ task, grip }: { task: PlannerTask; grip?: ReactNode }) {
+interface RowProps {
+  task: PlannerTask;
+  grip?: ReactNode;
+  /** For a sortable row: the li's ref, its drag transform and whether it is being dragged. */
+  rowRef?: Ref<HTMLLIElement>;
+  style?: CSSProperties;
+  dragging?: boolean;
+}
+
+export function TaskRow({ task, grip, rowRef, style, dragging }: RowProps) {
   const subject = useStudyStore((s) => s.subjects.find((x) => x.id === task.effectiveSubjectId));
   const update = usePlannerStore((s) => s.update);
   const openDetail = usePlannerStore((s) => s.openDetail);
@@ -23,6 +32,9 @@ export function TaskRow({ task, grip }: { task: PlannerTask; grip?: ReactNode })
   return (
     <li
       className={styles.row}
+      ref={rowRef}
+      style={style}
+      data-dragging={dragging ? 'true' : undefined}
       data-task-id={task.id}
       data-done={task.done}
       data-colour={task.colour ?? undefined}
