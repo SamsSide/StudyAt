@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import { addDays } from '../../core/time';
 import { NEXT_FOCUS_NOTE, TASK_GONE } from '../../shared/planner';
+import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type {
   Deadline,
   ListInput,
@@ -338,7 +339,7 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
     closeDetail: () => set({ detailTaskId: null }),
     offerRevision: (taskId) => {
       const settings = useStudyStore.getState().settings;
-      set({ revisionOffer: { taskId, days: [...(settings?.revisionDays ?? [1, 3, 7, 21])] } });
+      set({ revisionOffer: { taskId, days: [...(settings?.revisionDays ?? DEFAULT_SETTINGS.revisionDays)] } });
     },
     setOfferDays: (days) =>
       set((s) => (s.revisionOffer ? { revisionOffer: { ...s.revisionOffer, days } } : {})),
