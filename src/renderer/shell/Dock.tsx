@@ -1,7 +1,7 @@
-// The dock on the left (spec §4): icon + label for Spaces, Sounds, Timer, Tasks, Spotify, Widgets,
-// Stats and Settings. Spaces/Sounds open the side panel, Timer/Tasks/Spotify toggle their widgets,
-// Widgets opens a popover of the other widgets' switches (widgets addendum §1), and Stats and
-// Settings open full-window overlays. Each item is a glass tile that lifts on hover, with
+// The dock on the left (spec §4, v1.2 spec §3.1): icon + label for Spaces, Sounds, Timer, Tasks and
+// Widgets, a divider, then Stats and Settings. Spaces/Sounds open the side panel, Timer/Tasks toggle
+// their widgets, Widgets opens a popover of the other widgets' switches (Spotify among them, widgets
+// addendum §1), and Stats and Settings open full-window overlays. Each item is a glass tile that lifts on hover, with
 // a small dot beside it while its panel, widget or overlay is open.
 import { useCallback, useId, useRef } from 'react';
 import type { WidgetId } from '../../shared/types';
@@ -21,7 +21,6 @@ const ITEMS: readonly DockItem[] = [
   { kind: 'panel', id: 'sounds', label: 'Sounds', icon: 'sounds', key: 'K' },
   { kind: 'widget', id: 'timer', label: 'Timer', icon: 'timer' },
   { kind: 'widget', id: 'tasks', label: 'Tasks', icon: 'tasks', key: 'T' },
-  { kind: 'widget', id: 'spotify', label: 'Spotify', icon: 'spotify' },
   { kind: 'popover', id: 'widgets', label: 'Widgets', icon: 'widgets', key: 'W' },
   { kind: 'overlay', id: 'stats', label: 'Stats', icon: 'stats', key: 'S' },
   { kind: 'overlay', id: 'settings', label: 'Settings', icon: 'settings' },

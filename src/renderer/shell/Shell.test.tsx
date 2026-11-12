@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings } from '../../shared/types';
 import { idleTimerState, installMockApi, mockApi, type MockApi } from '../test/mockApi';
+import { useImagesStore } from '../images/imagesStore';
+import { useStatWidgetsStore } from '../statWidgets/statWidgetsStore';
 import { Shell } from './Shell';
 import { resetStudyStore, useStudyStore } from './store';
 import { testRegistry } from './testRegistry';
@@ -33,14 +35,14 @@ function cleanupShell(): void {
 afterEach(() => vi.useRealTimers());
 
 describe('Shell', () => {
-  it('renders the background, the eight dock items and the timer widget open by default', async () => {
+  it('renders the background, the seven dock items and the timer widget open by default', async () => {
     await renderShell();
     expect(screen.getByTestId('background')).toBeInTheDocument();
     const dock = screen.getByRole('navigation', { name: 'Dock' });
     const labels = within(dock)
       .getAllByRole('button')
       .map((b) => b.textContent);
-    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Widgets', 'Stats', 'Settings']);
+    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Widgets', 'Stats', 'Settings']);
     expect(screen.getByTestId('timer-widget')).toBeInTheDocument();
     expect(screen.queryByTestId('tasks-widget')).not.toBeInTheDocument();
   });
@@ -377,7 +379,7 @@ describe('Shell', () => {
   describe('Widgets popover', () => {
     const popover = () => screen.getByRole('dialog', { name: 'Widgets' });
 
-    it('the dock Widgets item opens a popover of four switches, focusing the first', async () => {
+    it('the dock Widgets item opens a popover of six switches, focusing the first', async () => {
       const user = userEvent.setup();
       await renderShell();
       const trigger = screen.getByRole('button', { name: 'Widgets' });
@@ -385,7 +387,14 @@ describe('Shell', () => {
       await user.click(trigger);
       expect(trigger).toHaveAttribute('aria-expanded', 'true');
       const switches = within(popover()).getAllByRole('switch');
-      expect(switches.map((s) => s.textContent)).toEqual(['Calendar', 'Weather', 'Quote', 'Notes']);
+      expect(switches.map((s) => s.textContent)).toEqual([
+        'Spotify',
+        'Calendar',
+        'Weather',
+        'Quote',
+        'Notes',
+        'Deadlines',
+      ]);
       for (const s of switches) expect(s).toHaveAttribute('aria-checked', 'false');
       expect(switches[0]).toHaveFocus();
     });
@@ -405,6 +414,70 @@ describe('Shell', () => {
       );
       await user.click(within(popover()).getByRole('switch', { name: 'Notes' }));
       await waitFor(() => expect(screen.queryByTestId('notes-widget')).not.toBeInTheDocument());
+    });
+
+    it('the Spotify switch toggles widgets.spotify.open through settings.set', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('switch', { name: 'Spotify' }));
+      expect(api.settings.set).toHaveBeenCalledWith({
+        widgets: { spotify: { ...DEFAULT_SETTINGS.widgets.spotify, open: true } },
+      });
+    });
+
+    it('has no Spotify button in the dock and a divider before Stats', async () => {
+      await renderShell();
+      const dock = screen.getByRole('navigation', { name: 'Dock' });
+      expect(within(dock).queryByRole('button', { name: 'Spotify' })).not.toBeInTheDocument();
+      const stats = within(dock).getByRole('button', { name: /^Stats/ });
+      expect(stats.closest('li')?.querySelector('[aria-hidden="true"]:not(span)')).not.toBeNull();
+      expect(stats.previousElementSibling).not.toBeNull();
+    });
+
+    it('"Add stats widget…" adds one through statWidgets.add and closes the popover', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('button', { name: 'Add stats widget…' }));
+      expect(api.statWidgets.add).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+    });
+
+    it('"Add stats widget…" is disabled at six, saying why', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      const w = (id: number) => ({
+        id,
+        card: 'total' as const,
+        range: 'week' as const,
+        x: 0.5,
+        y: 0.3,
+        scale: 1,
+        bare: false,
+      });
+      useStatWidgetsStore.setState({ widgets: [1, 2, 3, 4, 5, 6].map(w) });
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      const add = within(popover()).getByRole('button', { name: 'Add stats widget…' });
+      expect(add).toHaveAttribute('aria-disabled', 'true');
+      expect(add).toHaveAttribute('title', 'Up to 6 stats widgets');
+      expect(add).toHaveAccessibleDescription('Up to 6 stats widgets');
+      add.focus();
+      expect(add).toHaveFocus();
+      await user.click(add);
+      expect(popover()).toBeInTheDocument();
+      expect(api.statWidgets.add).not.toHaveBeenCalled();
+      useStatWidgetsStore.setState({ widgets: [] });
+    });
+
+    it('"Add image…" still opens the image dialog', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('button', { name: 'Add image…' }));
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+      expect(useImagesStore.getState().adding).toBe(true);
+      useImagesStore.getState().setAdding(false);
     });
 
     it('Esc closes only the popover and gives focus back to the dock item', async () => {

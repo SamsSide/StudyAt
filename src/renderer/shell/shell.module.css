@@ -346,8 +346,13 @@
   transition: background-color var(--duration) var(--ease);
 }
 
-.popoverRow:hover {
+.popoverRow:hover:not([aria-disabled='true']) {
   background: var(--hover);
+}
+
+.popoverRow[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .popoverRow:focus-visible {
@@ -836,4 +841,14 @@
     opacity: 0;
     transform: translateX(-10px);
   }
+}
+
+/* Text for assistive tech only (the limit hint on a disabled popover row). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
