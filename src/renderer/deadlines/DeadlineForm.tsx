@@ -1,7 +1,7 @@
 // The deadline form (v1.2 spec §3.10): add or edit one. Time follows the kind (exam 09:00,
 // coursework 12:00) until the time is edited by hand. Mark done and Delete (asked in place) show
 // when editing an existing deadline.
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DEADLINE_DEFAULT_TIME } from '../../core/deadlines';
 import { DEADLINE_NOTE_MAX, DEADLINE_TITLE_MAX } from '../../shared/planner';
 import type { Deadline, DeadlineInput, DeadlineKind } from '../../shared/types';
@@ -21,6 +21,10 @@ const KINDS: readonly { kind: DeadlineKind; label: string }[] = [
   { kind: 'exam', label: 'Exam' },
   { kind: 'coursework', label: 'Coursework' },
 ];
+
+const SAVE_FAILED = "That didn't save. Try again.";
+const DELETE_FAILED = "Couldn't delete that. Try again.";
+const UPDATE_FAILED = "Couldn't update that. Try again.";
 
 export function DeadlineForm({ deadline, onSave, onDone, onDelete, onCancel }: Props) {
   const subjects = useStudyStore((s) => s.subjects);
@@ -42,13 +46,27 @@ export function DeadlineForm({ deadline, onSave, onDone, onDelete, onCancel }: P
     if (!timeEdited) setTime(DEADLINE_DEFAULT_TIME[next]);
   };
 
-  const run = async (job: () => Promise<void>): Promise<void> => {
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  const askedToDelete = useRef(false);
+  // The in-place confirm takes focus (on "Keep it", the safe answer); backing out returns it.
+  useEffect(() => {
+    if (confirming) {
+      askedToDelete.current = true;
+      keepRef.current?.focus();
+    } else if (askedToDelete.current) {
+      askedToDelete.current = false;
+      deleteRef.current?.focus();
+    }
+  }, [confirming]);
+
+  const run = async (job: () => Promise<void>, failure = SAVE_FAILED): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
       await job();
     } catch {
-      setError("That didn't save. Try again.");
+      setError(failure);
       setBusy(false);
     }
   };
@@ -131,11 +149,11 @@ export function DeadlineForm({ deadline, onSave, onDone, onDelete, onCancel }: P
             type="button"
             className={styles.danger}
             disabled={busy}
-            onClick={() => void run(() => onDelete?.() ?? Promise.resolve())}
+            onClick={() => void run(() => onDelete?.() ?? Promise.resolve(), DELETE_FAILED)}
           >
             Yes, delete
           </button>
-          <button type="button" onClick={() => setConfirming(false)}>
+          <button type="button" ref={keepRef} onClick={() => setConfirming(false)}>
             Keep it
           </button>
         </div>
@@ -148,12 +166,12 @@ export function DeadlineForm({ deadline, onSave, onDone, onDelete, onCancel }: P
             Cancel
           </button>
           {deadline && onDone && (
-            <button type="button" disabled={busy} onClick={() => void run(() => onDone(!deadline.done))}>
+            <button type="button" disabled={busy} onClick={() => void run(() => onDone(!deadline.done), UPDATE_FAILED)}>
               {deadline.done ? 'Mark not done' : 'Mark done'}
             </button>
           )}
           {deadline && onDelete && (
-            <button type="button" className={styles.danger} onClick={() => setConfirming(true)}>
+            <button type="button" className={styles.danger} ref={deleteRef} onClick={() => setConfirming(true)}>
               Delete
             </button>
           )}

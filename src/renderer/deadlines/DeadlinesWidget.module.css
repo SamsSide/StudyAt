@@ -55,8 +55,10 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 320px;
+  --row-height: 34px;
+  --row-gap: 2px;
+  gap: var(--row-gap);
+  max-height: calc(var(--row-height) * 8 + var(--row-gap) * 7);
   margin: 0;
   padding: 0;
   overflow-y: auto;
@@ -68,7 +70,9 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 6px 8px;
+  height: var(--row-height);
+  box-sizing: border-box;
+  padding: 0 8px;
   border: 0;
   border-radius: 10px;
   background: transparent;

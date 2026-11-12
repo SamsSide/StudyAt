@@ -181,6 +181,90 @@ describe('DeadlinesWidget', () => {
     await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
     await waitFor(() => expect(api.deadlines.remove).toHaveBeenCalledWith(7));
   });
+
+  it('re-lists when the calendar date changes and when the window regains focus', async () => {
+    const api = setup([deadline({ title: 'Networks' })]);
+    vi.setSystemTime(new Date(2026, 10, 20, 23, 59, 58).getTime());
+    await open();
+    const calls = vi.mocked(api.deadlines.list).mock.calls.length;
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(api.deadlines.list).toHaveBeenCalledTimes(calls);
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(api.deadlines.list).toHaveBeenCalledTimes(calls + 1);
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(api.deadlines.list).toHaveBeenCalledTimes(calls + 2);
+  });
+
+  it('names a row from its title, kind and subject, not its countdown', async () => {
+    setup([deadline({ title: 'Report', kind: 'coursework', subjectId: 2 })]);
+    await open();
+    const name = seedSubjects().find((x) => x.id === 2)!.name;
+    expect(screen.getByRole('button', { name: `Report, Coursework, ${name}` })).toBeInTheDocument();
+    expect(screen.getByText('CW')).toBeInTheDocument();
+  });
+
+  it('saves edits to an existing deadline through deadlines.update', async () => {
+    const api = setup([deadline({ id: 7, title: 'Networks', due: '2030-01-01T09:00' })]);
+    const user = await open();
+    await user.click(screen.getByRole('button', { name: /Networks/ }));
+    const title = screen.getByLabelText('Title');
+    await user.clear(title);
+    await user.type(title, 'Networks II');
+    await user.selectOptions(screen.getByLabelText('Kind'), 'coursework');
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2030-02-03' } });
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(api.deadlines.update).toHaveBeenCalledWith(7, {
+        title: 'Networks II',
+        kind: 'coursework',
+        subjectId: 2,
+        due: '2030-02-03T09:00',
+        note: '',
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Add' })).toHaveFocus());
+  });
+
+  it('marks a done deadline not done', async () => {
+    const api = setup([deadline({ id: 7, title: 'Networks', done: true })]);
+    const user = await open();
+    await user.click(screen.getByRole('button', { name: /Networks/ }));
+    await user.click(screen.getByRole('button', { name: 'Mark not done' }));
+    await waitFor(() => expect(api.deadlines.update).toHaveBeenCalledWith(7, { done: false }));
+  });
+
+  it('moves focus to "Keep it" when asking, and back to the row after Cancel', async () => {
+    setup([deadline({ id: 7, title: 'Networks' })]);
+    const user = await open();
+    await user.click(screen.getByRole('button', { name: /Networks/ }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.getByRole('button', { name: 'Keep it' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Keep it' }));
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: /Networks/ })).toHaveFocus();
+  });
+
+  it('says what failed: delete and mark done have their own copy', async () => {
+    const api = setup([deadline({ id: 7, title: 'Networks' })]);
+    vi.mocked(api.deadlines.update).mockRejectedValueOnce(new Error('no'));
+    vi.mocked(api.deadlines.remove).mockRejectedValueOnce(new Error('no'));
+    const user = await open();
+    await user.click(screen.getByRole('button', { name: /Networks/ }));
+    await user.click(screen.getByRole('button', { name: 'Mark done' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't update that. Try again.");
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Yes, delete' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't delete that. Try again."),
+    );
+  });
 });
 
 describe('Deadlines in the shell', () => {

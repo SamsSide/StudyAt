@@ -2,9 +2,9 @@
 // ("23d 4h", "31h 12m", "42m 08s", "Due"), a Past toggle for the last ten, and a form to add or
 // edit one. Countdowns read the wall clock once a second while mounted. The shell's WidgetFrame
 // supplies the glass (or none, in bare mode) and the "Hide background" toggle in the header.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatCountdown } from '../../core/deadlines';
-import { parseDue } from '../../core/wallclock';
+import { calendarDate, parseDue } from '../../core/wallclock';
 import type { Deadline, DeadlineInput, DeadlinesView } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { DeadlineForm } from './DeadlineForm';
@@ -25,11 +25,34 @@ export function DeadlinesWidget() {
   const [answered, setAnswered] = useState<{ past: boolean; failed: boolean } | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [now, setNow] = useState(() => Date.now());
+  // Bumped when the window regains focus so a long stay in the tray never shows stale rows.
+  const [focusTick, setFocusTick] = useState(0);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // Where focus returns when the form closes: the edited row's id, or 'add'.
+  const returnTo = useRef<number | 'add' | null>(null);
+  // The calendar date of `now`: a new day re-lists, so a row that fell due leaves Upcoming.
+  const today = calendarDate(now);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    const onFocus = (): void => setFocusTick((n) => n + 1);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
+  useEffect(() => {
+    if (editing !== null || returnTo.current === null) return;
+    const target = returnTo.current;
+    returnTo.current = null;
+    const row =
+      target === 'add' ? null : listRef.current?.querySelector<HTMLButtonElement>(`[data-id="${target}"]`);
+    (row ?? addRef.current)?.focus();
+  }, [editing, rows]);
 
   useEffect(() => {
     let live = true;
@@ -48,7 +71,7 @@ export function DeadlinesWidget() {
     return () => {
       live = false;
     };
-  }, [past]);
+  }, [past, today, focusTick]);
 
   const apply = (view: DeadlinesView): void => {
     setRows(past ? view.past : view.upcoming);
@@ -81,7 +104,11 @@ export function DeadlinesWidget() {
       ) : (
         <>
           <div className={styles.bar}>
-            <button type="button" className={styles.primary} onClick={() => setEditing({ kind: 'add' })}>
+            <button type="button" className={styles.primary} ref={addRef}
+              onClick={() => {
+                returnTo.current = 'add';
+                setEditing({ kind: 'add' });
+              }}>
               + Add
             </button>
             <button type="button" aria-pressed={past} onClick={() => setPast((p) => !p)}>
@@ -99,7 +126,7 @@ export function DeadlinesWidget() {
                   : 'No deadlines coming up. Enjoy the calm.'}
             </p>
           ) : (
-            <ul className={styles.list}>
+            <ul className={styles.list} ref={listRef}>
               {shown.map((d) => {
                 const subject = subjects.find((s) => s.id === d.subjectId);
                 const countdown = formatCountdown(parseDue(d.due), now);
@@ -108,7 +135,19 @@ export function DeadlinesWidget() {
                     <button
                       type="button"
                       className={styles.row}
-                      onClick={() => setEditing({ kind: 'edit', id: d.id })}
+                      data-id={d.id}
+                      aria-label={[
+                        d.title,
+                        d.kind === 'exam' ? 'Exam' : 'Coursework',
+                        subject?.name,
+                        d.done ? 'done' : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                      onClick={() => {
+                        returnTo.current = d.id;
+                        setEditing({ kind: 'edit', id: d.id });
+                      }}
                     >
                       <b className={styles.badge} data-kind={d.kind}>
                         {d.kind === 'exam' ? 'Exam' : 'CW'}
@@ -122,7 +161,7 @@ export function DeadlinesWidget() {
                         />
                       )}
                       <span className={styles.title}>{d.title}</span>
-                      <span className={styles.countdown} data-due={!d.done && countdown === 'Due'}>
+                      <span className={styles.countdown} aria-hidden="true" data-due={!d.done && countdown === 'Due'}>
                         {d.done ? 'Done' : countdown}
                       </span>
                     </button>
