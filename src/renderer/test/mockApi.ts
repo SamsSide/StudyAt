@@ -268,13 +268,6 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       remove: vi.fn(() => Promise.resolve({ lists: [], removed: [] })),
       clearDone: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
     },
-    legacyTasks: {
-      list: resolves([]),
-      create: resolves([]),
-      update: resolves([]),
-      reorder: resolves([]),
-      clearDone: resolves([]),
-    },
     spaces: {
       list: resolves([]),
       addFiles: resolves([]),
@@ -383,7 +376,6 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     tasks: { ...base.tasks, ...overrides.tasks },
     subtasks: { ...base.subtasks, ...overrides.subtasks },
     lists: { ...base.lists, ...overrides.lists },
-    legacyTasks: { ...base.legacyTasks, ...overrides.legacyTasks },
     spaces: { ...base.spaces, ...overrides.spaces },
     images: { ...base.images, ...overrides.images },
     sounds: { ...base.sounds, ...overrides.sounds },

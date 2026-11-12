@@ -112,7 +112,6 @@ describe('mockApi', () => {
     expect(await api.timer.startTask(1)).toEqual(idleTimerState());
     expect(await api.timer.setIntention(null)).toEqual(idleTimerState());
     expect(await api.timer.setOutcome('p', 'done')).toEqual(idleTimerState());
-    expect(await api.legacyTasks.list()).toEqual([]);
   });
 
   it('honours overrides and installs on window', () => {

@@ -79,16 +79,6 @@ export interface Note {
   bare: boolean;
 }
 
-export interface Task {
-  id: number;
-  text: string;
-  colour: TaskColour;
-  done: boolean;
-  sort: number;
-  createdAt: number;
-  doneAt: number | null;
-}
-
 export type RepeatRule =
   { kind: 'daily' } | { kind: 'weekdays' } | { kind: 'weekly' } | { kind: 'every'; days: number };
 export type TaskKind = 'task' | 'revision';

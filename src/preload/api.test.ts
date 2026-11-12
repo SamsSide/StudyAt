@@ -87,7 +87,7 @@ describe('preload api', () => {
     ]);
   });
 
-  it('exposes the planner, task, subtask, list and legacy groups on their channels', async () => {
+  it('exposes the planner, task, subtask and list groups on their channels', async () => {
     const { ipc } = fakeIpc();
     const api = buildApi(ipc);
     await api.planner.week('2026-11-09');
@@ -95,7 +95,6 @@ describe('preload api', () => {
     await api.tasks.move(3, { day: '2026-11-10', index: 0 });
     await api.subtasks.reorder(3, [2, 1]);
     await api.lists.clearDone(4);
-    await api.legacyTasks.list();
     await api.timer.startTask(5);
     await api.timer.setIntention(null);
     await api.timer.setOutcome('p1', 'partly');
@@ -105,7 +104,6 @@ describe('preload api', () => {
       ['tasks:move', 3, { day: '2026-11-10', index: 0 }],
       ['subtasks:reorder', 3, [2, 1]],
       ['lists:clearDone', 4],
-      ['legacyTasks:list'],
       ['timer:startTask', 5],
       ['timer:setIntention', null],
       ['timer:setOutcome', 'p1', 'partly'],

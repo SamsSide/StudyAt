@@ -1,5 +1,5 @@
 // Planner tasks (v1.2 spec §3.6, §5): dated or in a list, with tags and subtasks. The old
-// sticky-note repo (`tasks.ts`) keeps reading `tasks_v1_archive`. Limits are checked by IPC and the
+// sticky notes sit untouched in the archive table (migration v4). Limits are checked by IPC and the
 // services, not here; the schema's own CHECKs are the backstop.
 import type { RepeatRule, Subtask, TaskColour, TaskKind } from '../../../shared/types';
 import type { Db } from '../db';

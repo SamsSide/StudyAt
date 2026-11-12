@@ -190,23 +190,6 @@ describe('registerIpc', () => {
     );
   });
 
-  it('legacyTasks keeps the old channels on the archive (501-char text rejected)', async () => {
-    const { invoke } = setup();
-    await expect(
-      invoke(CHANNELS.legacyTasks.create, { text: 'x'.repeat(501), colour: 'yellow' }),
-    ).rejects.toThrow(IpcValidationError);
-    await expect(invoke(CHANNELS.legacyTasks.create, { text: 'ok', colour: 'orange' })).rejects.toThrow(
-      IpcValidationError,
-    );
-    const list = (await invoke(CHANNELS.legacyTasks.create, {
-      text: 'x'.repeat(500),
-      colour: 'yellow',
-    })) as unknown[];
-    expect(list).toHaveLength(1);
-    // The planner's tasks are a different table.
-    expect(((await invoke(CHANNELS.planner.lists)) as { tasks: unknown[] }).tasks).toEqual([]);
-  });
-
   it('rejects bad enums and day keys', async () => {
     const { invoke } = setup();
     await expect(invoke(CHANNELS.timer.setMode, 'nap')).rejects.toThrow(IpcValidationError);

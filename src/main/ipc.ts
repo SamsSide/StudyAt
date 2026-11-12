@@ -52,7 +52,6 @@ import { NOTE_MAX_CHARS, NOTE_SCALE_MAX, NOTE_SCALE_MIN, notesRepo } from './db/
 import { plannerTasksRepo } from './db/repos/plannerTasks';
 import { type MainSettingsPatch, settingsRepo } from './db/repos/settings';
 import { subjectsRepo } from './db/repos/subjects';
-import { tasksRepo } from './db/repos/tasks';
 import type { MediaKind, MediaResolver } from './protocol';
 import { dataService } from './services/data';
 import { deadlinesService } from './services/deadlines';
@@ -259,15 +258,6 @@ function subjectPatch(v: unknown): { name?: string; colour?: string; sort?: numb
   if (p.name !== undefined) out.name = assertStr(p.name, 'name', { nonEmpty: true }).trim();
   if (p.colour !== undefined) out.colour = assertColour(p.colour);
   if (p.sort !== undefined) out.sort = assertInt(p.sort, 'sort');
-  return out;
-}
-
-function taskPatch(v: unknown): { text?: string; colour?: TaskColour; done?: boolean } {
-  const p = assertRecord(v, 'patch');
-  const out: { text?: string; colour?: TaskColour; done?: boolean } = {};
-  if (p.text !== undefined) out.text = assertStr(p.text, 'text', { nonEmpty: true });
-  if (p.colour !== undefined) out.colour = assertEnum(p.colour, TASK_COLOURS, 'colour');
-  if (p.done !== undefined) out.done = assertBool(p.done, 'done');
   return out;
 }
 
@@ -526,7 +516,6 @@ export function registerIpc(deps: IpcDeps) {
   const { db, timer, dialogs, now } = deps;
   const settings = settingsRepo(db);
   const subjects = subjectsRepo(db);
-  const legacyTasks = tasksRepo(db);
   const plannerTasks = plannerTasksRepo(db);
   const mixes = mixesRepo(db);
   const notes = notesRepo(db);
@@ -710,34 +699,6 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.lists.reorder, (ids) => taskWrites.reorderLists(idList(ids)));
   handle(C.lists.remove, (id) => taskWrites.removeList(assertInt(id)));
   handle(C.lists.clearDone, (id) => taskWrites.clearDone(assertInt(id)));
-
-  // ── Legacy sticky-note tasks on `tasks_v1_archive`, until Task 33 (text max 500) ──
-  handle(C.legacyTasks.list, () => legacyTasks.list());
-  handle(C.legacyTasks.create, (input) => {
-    const i = assertRecord(input, 'task');
-    legacyTasks.create(
-      {
-        text: assertStr(i.text, 'text', { nonEmpty: true }),
-        colour: assertEnum(i.colour, TASK_COLOURS, 'colour'),
-      },
-      now(),
-    );
-    return legacyTasks.list();
-  });
-  handle(C.legacyTasks.update, (id, patch) => {
-    if (!legacyTasks.update(assertInt(id), taskPatch(patch), now())) {
-      throw new IpcValidationError('No such task');
-    }
-    return legacyTasks.list();
-  });
-  handle(C.legacyTasks.reorder, (ids) => {
-    legacyTasks.reorder(idList(ids));
-    return legacyTasks.list();
-  });
-  handle(C.legacyTasks.clearDone, () => {
-    legacyTasks.clearDone();
-    return legacyTasks.list();
-  });
 
   // ── Spaces (spec §3.8) ────────────────────────────────────────────────────
   handle(C.spaces.list, () => spaces.list());

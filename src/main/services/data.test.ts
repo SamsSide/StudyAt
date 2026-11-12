@@ -8,7 +8,6 @@ import { plannerTasksRepo } from '../db/repos/plannerTasks';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { taskListsRepo } from '../db/repos/taskLists';
-import { tasksRepo } from '../db/repos/tasks';
 import { subjectsRepo } from '../db/repos/subjects';
 import { nodeFs, type DbFs } from '../db/db-fs';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
@@ -81,7 +80,10 @@ describe('dataService', () => {
   });
 
   it('JSON export has taskLists, tasks, deadlines and tasksV1', async () => {
-    tasksRepo(db).create({ text: 'Old sticky task', colour: 'pink' }, NOW);
+    db.raw.run(
+      "INSERT INTO tasks_v1_archive (text, colour, done, sort, created_at) VALUES ('Old sticky task', 'pink', 0, 0, ?)",
+      [NOW],
+    );
     const list = taskListsRepo(db).create({ name: 'Revision', subjectId: null }, NOW);
     plannerTasksRepo(db).create({ title: 'Past papers', day: null, listId: list.id, tags: ['maths'] }, NOW);
     deadlinesRepo(db).create(

@@ -19,8 +19,8 @@ import { settingsRepo } from '../db/repos/settings';
 import { soundsRepo } from '../db/repos/sounds';
 import { spacesRepo } from '../db/repos/spaces';
 import { subjectsRepo } from '../db/repos/subjects';
+import { all, bool, int, intOrNull, text } from '../db/sql';
 import { taskListsRepo } from '../db/repos/taskLists';
-import { tasksRepo } from '../db/repos/tasks';
 import { publicSettings } from './settings';
 import { IpcValidationError } from './validate';
 
@@ -53,6 +53,22 @@ export function csvLine(fields: string[]): string {
 
 export const CSV_HEADER = 'date,start,end,minutes,subject';
 
+/** The old sticky-note rows migration v4 archived (v1.2 spec §5); read-only, nothing writes them. */
+function archivedStickyTasks(db: Db) {
+  return all(
+    db.raw,
+    'SELECT id, text, colour, done, sort, created_at, done_at FROM tasks_v1_archive ORDER BY sort, id',
+  ).map((r) => ({
+    id: int(r.id),
+    text: text(r.text),
+    colour: text(r.colour),
+    done: bool(r.done),
+    sort: int(r.sort),
+    createdAt: int(r.created_at),
+    doneAt: intOrNull(r.done_at),
+  }));
+}
+
 export function dataService(deps: DataServiceDeps) {
   const fs = deps.fs ?? nodeFs;
   const { db } = deps;
@@ -71,7 +87,7 @@ export function dataService(deps: DataServiceDeps) {
         taskLists: taskListsRepo(db).list(),
         tasks: plannerTasksRepo(db).all(),
         deadlines: deadlinesRepo(db).all(),
-        tasksV1: tasksRepo(db).list(),
+        tasksV1: archivedStickyTasks(db),
         spaces: spacesRepo(db)
           .list()
           .map(({ missing: _missing, ...s }) => s),

@@ -42,7 +42,6 @@ import type {
   Subject,
   SubjectRange,
   SubjectTotal,
-  Task,
   TaskChange,
   TaskColour,
   TaskInput,
@@ -70,12 +69,6 @@ export interface SubjectPatch {
   name?: string;
   colour?: string;
   sort?: number;
-}
-
-export interface TaskPatch {
-  text?: string;
-  colour?: TaskColour;
-  done?: boolean;
 }
 
 /**
@@ -184,14 +177,6 @@ export interface StudyAtApi {
     reorder(ids: number[]): Promise<TaskList[]>;
     remove(id: number): Promise<ListsChange>;
     clearDone(id: number): Promise<TaskChange>;
-  };
-  /** The old sticky-note tasks on `tasks_v1_archive`, until Task 33 removes the widget. */
-  legacyTasks: {
-    list(): Promise<Task[]>;
-    create(input: { text: string; colour: TaskColour }): Promise<Task[]>;
-    update(id: number, patch: TaskPatch): Promise<Task[]>;
-    reorder(ids: number[]): Promise<Task[]>;
-    clearDone(): Promise<Task[]>;
   };
   spaces: {
     list(): Promise<Space[]>;
@@ -378,13 +363,6 @@ export const CHANNELS = {
     reorder: 'lists:reorder',
     remove: 'lists:remove',
     clearDone: 'lists:clearDone',
-  },
-  legacyTasks: {
-    list: 'legacyTasks:list',
-    create: 'legacyTasks:create',
-    update: 'legacyTasks:update',
-    reorder: 'legacyTasks:reorder',
-    clearDone: 'legacyTasks:clearDone',
   },
   spaces: {
     list: 'spaces:list',
