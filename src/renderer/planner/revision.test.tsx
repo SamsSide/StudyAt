@@ -10,7 +10,8 @@ import { PlannerWidget } from './PlannerWidget';
 import { resetPlannerStore, usePlannerStore } from './plannerStore';
 
 const NOON = new Date(2026, 10, 11, 12, 0).getTime();
-const today = () => plannerToday(DEFAULT_SETTINGS.rolloverHour);
+// The fixed clock's study day: the tasks below are built at import, before the fake clock is set.
+const today = () => plannerToday(DEFAULT_SETTINGS.rolloverHour, NOON);
 
 const task = (over: Partial<PlannerTask>): PlannerTask => minimalPlannerTask({ day: today(), ...over });
 
