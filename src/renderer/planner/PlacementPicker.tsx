@@ -10,6 +10,12 @@ import { usePlannerStore } from './plannerStore';
 import styles from './detail.module.css';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const YEAR_MIN = 2000;
+const YEAR_MAX = 2100;
+
+/** A whole, sensible date: typing a year passes through 0002-11-11 on the way. */
+const validDay = (v: string): boolean =>
+  DAY_RE.test(v) && Number(v.slice(0, 4)) >= YEAR_MIN && Number(v.slice(0, 4)) <= YEAR_MAX;
 
 type Dest = { day: string } | { listId: number };
 
@@ -32,6 +38,9 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
   const move = usePlannerStore((s) => s.move);
   const loadLists = usePlannerStore((s) => s.loadLists);
   const [open, setOpen] = useState(false);
+  // The date field's draft: stepping or typing never moves the task, only Enter, Move or leaving the field.
+  const [dayDraft, setDayDraft] = useState<string | null>(null);
+  const moving = useRef(false);
   const chip = useRef<HTMLButtonElement>(null);
   const panelId = useId();
 
@@ -39,10 +48,23 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
     task.day !== null ? formatDayLabel(task.day) : (lists.find((l) => l.id === task.listId)?.name ?? 'List');
 
   const go = async (dest: Dest): Promise<void> => {
-    const to: TaskMove = { ...dest, index: await endIndex(task.id, dest) };
-    setOpen(false);
-    chip.current?.focus();
-    await move(task.id, to);
+    if (moving.current) return;
+    moving.current = true;
+    try {
+      const to: TaskMove = { ...dest, index: await endIndex(task.id, dest) };
+      setOpen(false);
+      setDayDraft(null);
+      chip.current?.focus();
+      await move(task.id, to);
+    } finally {
+      moving.current = false;
+    }
+  };
+
+  const dayValue = dayDraft ?? task.day ?? '';
+  const dayReady = validDay(dayValue) && dayValue !== task.day;
+  const commitDay = (): void => {
+    if (dayReady) void go({ day: dayValue });
   };
 
   const today = plannerToday(rolloverHour);
@@ -91,12 +113,22 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
             <input
               type="date"
               className={styles.input}
-              value={task.day ?? ''}
-              onChange={(e) => {
-                if (DAY_RE.test(e.target.value)) void go({ day: e.target.value });
+              min={`${YEAR_MIN}-01-01`}
+              max={`${YEAR_MAX}-12-31`}
+              value={dayValue}
+              aria-invalid={dayDraft !== null && dayDraft !== '' && !validDay(dayDraft) ? true : undefined}
+              onChange={(e) => setDayDraft(e.target.value)}
+              onBlur={commitDay}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                commitDay();
               }}
             />
           </label>
+          <button type="button" className={styles.smallButton} disabled={!dayReady} onClick={commitDay}>
+            Move
+          </button>
           {lists.length > 0 && (
             <ul className={styles.listChoices} aria-label="Lists">
               {lists.map((l) => (

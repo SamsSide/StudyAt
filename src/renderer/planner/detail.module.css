@@ -303,3 +303,12 @@
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
+
+/* A refused rename's notice sits under its subtask row. */
+.subtask {
+  flex-wrap: wrap;
+}
+
+.subtask > .hint {
+  flex-basis: 100%;
+}

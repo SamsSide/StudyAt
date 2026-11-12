@@ -1,7 +1,7 @@
 // The task detail popover (v1.2 spec §3.7): every field of one task, saved as it is edited. It is
 // keyed on the store's detailTaskId, so a reminder click can open a task that is not on screen.
 // The menu (Start focus, Schedule revision, Duplicate, Delete) is Task 20's, beside the close button.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ESTIMATE_MAX,
@@ -14,14 +14,13 @@ import {
   TASK_NOTE_MAX,
   TASK_TITLE_MAX,
 } from '../../shared/planner';
-import type { PlannerTask, RepeatRule } from '../../shared/types';
+import type { PlannerTask, RepeatRule, TaskUpdate } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { formatGoal } from '../shell/format';
 import { TASK_COLOURS } from '../tasks/taskColours';
-import { plannerToday } from './format';
 import { PlacementPicker } from './PlacementPicker';
 import { usePlannerStore } from './plannerStore';
-import { SubtaskList } from './SubtaskList';
+import { SAVE_FAILED, SubtaskList } from './SubtaskList';
 import { TagInput } from './TagInput';
 import styles from './detail.module.css';
 
@@ -52,46 +51,36 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Fetches the task if it is not in the store (a reminder click): today's day, then the lists. */
-async function fetchTask(id: number): Promise<void> {
-  const { apply } = usePlannerStore.getState();
-  const rollover = useStudyStore.getState().settings?.rolloverHour ?? 4;
-  const api = window.studyat.planner;
-  const tries = [() => api.day(plannerToday(rollover)), () => api.lists()];
-  for (const run of tries) {
-    try {
-      apply({ tasks: (await run()).tasks, removed: [] });
-    } catch {
-      // Try the next place.
-    }
-    if (usePlannerStore.getState().tasks[id]) return;
-  }
-}
+const FOCUSABLE =
+  'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 export function TaskDetail() {
   const id = usePlannerStore((s) => s.detailTaskId);
   const task = usePlannerStore((s) => (s.detailTaskId === null ? undefined : s.tasks[s.detailTaskId]));
   const closeDetail = usePlannerStore((s) => s.closeDetail);
-  const [lookedFor, setLookedFor] = useState<number | null>(null);
 
-  // Not in the store: look for it once; if main has no such task, say so and close.
+  // Not in the store (a reminder click): ask main for it. Re-runs whenever the id changes or the
+  // popover closes, so opening a missing task twice says so twice. Main has no such task: say so, close.
   useEffect(() => {
-    if (id === null || task || lookedFor === id) return;
+    if (id === null || task) return;
     let live = true;
-    void fetchTask(id).then(() => {
+    const gone = (): void => {
       if (!live) return;
-      setLookedFor(id);
-      if (!usePlannerStore.getState().tasks[id]) {
-        usePlannerStore.setState({ notice: TASK_GONE });
-        usePlannerStore.getState().closeDetail();
-      }
-    });
+      usePlannerStore.setState({ notice: TASK_GONE });
+      usePlannerStore.getState().closeDetail();
+    };
+    window.studyat.planner.task(id).then((found) => {
+      if (!live) return;
+      if (found) usePlannerStore.getState().apply({ tasks: [found], removed: [] });
+      else gone();
+    }, gone);
     return () => {
       live = false;
     };
-  }, [id, task, lookedFor]);
+  }, [id, task]);
 
-  // Esc closes the popover; a child that used Esc already (a picker) has called preventDefault.
+  // Esc closes the popover from anywhere outside it too; inside, the dialog's own key handler does
+  // (it stops keys reaching the shell). A child that used Esc already (a picker) has called preventDefault.
   useEffect(() => {
     if (id === null) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -129,22 +118,53 @@ function Popover({ task }: { task: PlannerTask }) {
   const [customBad, setCustomBad] = useState(false);
   const [everyText, setEveryText] = useState<string | null>(null);
   const [everyBad, setEveryBad] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+
+  // Fields with typing not yet saved. Esc, Close and unmount deliver no blur, so they are saved on the
+  // way out (below).
+  const dirty = useRef(new Set<string>());
+  const touch = (key: string): void => {
+    dirty.current.add(key);
+    setSaveFailed(false);
+  };
+
+  /** Saves a patch; when main refuses it (the field is still as it was) say so rather than revert quietly. */
+  const save = (patch: TaskUpdate): void => {
+    setSaveFailed(false);
+    const read = (): Record<string, unknown> | undefined => {
+      const t: PlannerTask | undefined = usePlannerStore.getState().tasks[task.id];
+      return t ? { ...t } : undefined;
+    };
+    const before = read();
+    void update(task.id, patch).then(() => {
+      const now = read();
+      if (!before || !now) return;
+      const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+      const patched = patch as Record<string, unknown>;
+      if (Object.keys(patched).some((k) => !same(now[k], patched[k]) && same(now[k], before[k]))) {
+        setSaveFailed(true);
+      }
+    });
+  };
 
   const commitTitle = (): void => {
+    dirty.current.delete('title');
     const next = title.trim();
-    clearTitle();
-    if (next === '' || next === task.title) return;
-    void update(task.id, { title: next });
+    // The draft stays until the store echoes the new title, so the field never flashes the old one.
+    if (next === '' || next === task.title) clearTitle();
+    else save({ title: next });
   };
   const commitNote = (): void => {
-    clearNote();
-    if (note !== task.note) void update(task.id, { note });
+    dirty.current.delete('note');
+    if (note === task.note) clearNote();
+    else save({ note });
   };
   const commitReminder = (): void => {
-    clearReminder();
-    if (reminder === (task.reminder ?? '')) return;
-    if (reminder === '') void update(task.id, { reminder: null });
-    else if (REMINDER_RE.test(reminder)) void update(task.id, { reminder });
+    dirty.current.delete('reminder');
+    if (reminder === (task.reminder ?? '')) clearReminder();
+    else if (reminder === '') save({ reminder: null });
+    else if (REMINDER_RE.test(reminder)) save({ reminder });
+    else clearReminder();
   };
 
   const estimate = task.estimateMin;
@@ -153,6 +173,7 @@ function Popover({ task }: { task: PlannerTask }) {
   const estimateValue = showCustom ? CUSTOM : estimate === null ? NONE : String(estimate);
 
   const onEstimate = (value: string): void => {
+    dirty.current.delete('custom');
     setCustomBad(false);
     if (value === CUSTOM) {
       setCustomOpen(true);
@@ -160,27 +181,30 @@ function Popover({ task }: { task: PlannerTask }) {
       return;
     }
     setCustomOpen(false);
-    void update(task.id, { estimateMin: value === NONE ? null : Number(value) });
+    save({ estimateMin: value === NONE ? null : Number(value) });
   };
   const commitCustom = (): void => {
+    dirty.current.delete('custom');
     const n = Number(customText);
     if (!Number.isInteger(n) || n < ESTIMATE_MIN || n > ESTIMATE_MAX) {
       setCustomBad(customText !== '');
       return;
     }
     setCustomBad(false);
-    if (n !== estimate) void update(task.id, { estimateMin: n });
+    if (n !== estimate) save({ estimateMin: n });
   };
 
   const repeat = task.repeat;
   const onRepeat = (value: string): void => {
+    dirty.current.delete('every');
     setEveryBad(false);
     setEveryText(null);
-    if (value === NONE) void update(task.id, { repeat: null });
-    else if (value === 'every') void update(task.id, { repeat: { kind: 'every', days: REPEAT_EVERY_MIN } });
-    else void update(task.id, { repeat: { kind: value as 'daily' | 'weekdays' | 'weekly' } });
+    if (value === NONE) save({ repeat: null });
+    else if (value === 'every') save({ repeat: { kind: 'every', days: REPEAT_EVERY_MIN } });
+    else save({ repeat: { kind: value as 'daily' | 'weekdays' | 'weekly' } });
   };
   const commitEvery = (): void => {
+    dirty.current.delete('every');
     if (everyText === null) return;
     const n = Number(everyText);
     if (!Number.isInteger(n) || n < REPEAT_EVERY_MIN || n > REPEAT_EVERY_MAX) {
@@ -190,14 +214,66 @@ function Popover({ task }: { task: PlannerTask }) {
     setEveryBad(false);
     setEveryText(null);
     if (!(repeat?.kind === 'every' && repeat.days === n)) {
-      void update(task.id, { repeat: { kind: 'every', days: n } });
+      save({ repeat: { kind: 'every', days: n } });
     }
+  };
+
+  // Whatever is still pending when the dialog goes (Esc, Close, another task) is saved, not dropped.
+  const commits: Record<string, () => void> = {
+    title: commitTitle,
+    note: commitNote,
+    reminder: commitReminder,
+    custom: commitCustom,
+    every: commitEvery,
+  };
+  const latest = useRef(commits);
+  useEffect(() => {
+    latest.current = commits;
+  });
+  useEffect(
+    () => () => {
+      for (const key of [...dirty.current]) latest.current[key]?.();
+    },
+    [],
+  );
+
+  // A dialog traps Tab and keeps its keys to itself: nothing behind it, shell shortcuts included,
+  // sees a key pressed inside it. Esc closes (and the unmount saves). A picker's own Esc has
+  // already stopped here.
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (e.key === 'Escape' && !e.defaultPrevented) {
+      e.preventDefault();
+      closeDetail();
+    } else if (e.key === 'Tab' && root.current) {
+      const items = [...root.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      const first = items[0];
+      const last = items[items.length - 1];
+      const at = document.activeElement;
+      if (first && last) {
+        if (e.shiftKey && (at === first || at === root.current)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (at === last || at === root.current)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+    e.stopPropagation();
   };
 
   const subjectOptions = subjects.filter((s) => !s.archived || s.id === task.subjectId);
 
   return (
-    <div ref={root} role="dialog" aria-label={`Task: ${task.title}`} tabIndex={-1} className={styles.popover}>
+    <div
+      ref={root}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Task: ${task.title}`}
+      tabIndex={-1}
+      className={styles.popover}
+      onKeyDown={onKeyDown}
+    >
       <div className={styles.top}>
         <PlacementPicker task={task} />
         {/* Task 20 adds the task menu here. */}
@@ -212,13 +288,16 @@ function Popover({ task }: { task: PlannerTask }) {
           className={styles.check}
           checked={task.done}
           aria-label={task.done ? 'Mark as not done' : 'Mark as done'}
-          onChange={() => void update(task.id, { done: !task.done })}
+          onChange={() => save({ done: !task.done })}
         />
         <input
           className={styles.titleInput}
           aria-label="Title"
           value={title}
-          onChange={(e) => setTitle(cap(e.target.value, TASK_TITLE_MAX))}
+          onChange={(e) => {
+            touch('title');
+            setTitle(cap(e.target.value, TASK_TITLE_MAX));
+          }}
           onBlur={commitTitle}
           onKeyDown={(e) => {
             if (e.key === 'Enter') e.currentTarget.blur();
@@ -232,7 +311,10 @@ function Popover({ task }: { task: PlannerTask }) {
         placeholder="Add a note"
         rows={3}
         value={note}
-        onChange={(e) => setNote(cap(e.target.value, TASK_NOTE_MAX))}
+        onChange={(e) => {
+          touch('note');
+          setNote(cap(e.target.value, TASK_NOTE_MAX));
+        }}
         onBlur={commitNote}
       />
 
@@ -246,9 +328,7 @@ function Popover({ task }: { task: PlannerTask }) {
           <select
             className={styles.input}
             value={task.subjectId ?? ''}
-            onChange={(e) =>
-              void update(task.id, { subjectId: e.target.value === '' ? null : Number(e.target.value) })
-            }
+            onChange={(e) => save({ subjectId: e.target.value === '' ? null : Number(e.target.value) })}
           >
             <option value="">No subject</option>
             {subjectOptions.map((s) => (
@@ -284,6 +364,7 @@ function Popover({ task }: { task: PlannerTask }) {
             value={customOpen ? customText : String(estimate ?? '')}
             aria-invalid={customBad || undefined}
             onChange={(e) => {
+              touch('custom');
               setCustomOpen(true);
               setCustomText(e.target.value);
               setCustomBad(false);
@@ -302,7 +383,7 @@ function Popover({ task }: { task: PlannerTask }) {
       )}
 
       <Field label="Tags">
-        <TagInput tags={task.tags} label="Add a tag" onChange={(tags) => void update(task.id, { tags })} />
+        <TagInput tags={task.tags} label="Add a tag" onChange={(tags) => save({ tags })} />
       </Field>
 
       <Field label="Colour">
@@ -312,7 +393,7 @@ function Popover({ task }: { task: PlannerTask }) {
             className={styles.swatch}
             aria-label="No colour"
             aria-pressed={task.colour === null}
-            onClick={() => void update(task.id, { colour: null })}
+            onClick={() => save({ colour: null })}
           />
           {TASK_COLOURS.map((c) => (
             <button
@@ -322,7 +403,7 @@ function Popover({ task }: { task: PlannerTask }) {
               data-colour={c.id}
               aria-label={c.label}
               aria-pressed={task.colour === c.id}
-              onClick={() => void update(task.id, { colour: c.id })}
+              onClick={() => save({ colour: c.id })}
             />
           ))}
         </div>
@@ -350,7 +431,10 @@ function Popover({ task }: { task: PlannerTask }) {
               type="time"
               className={styles.input}
               value={reminder}
-              onChange={(e) => setReminder(e.target.value)}
+              onChange={(e) => {
+                touch('reminder');
+                setReminder(e.target.value);
+              }}
               onBlur={commitReminder}
             />
           </label>
@@ -368,6 +452,7 @@ function Popover({ task }: { task: PlannerTask }) {
             value={everyText ?? String(repeat.days)}
             aria-invalid={everyBad || undefined}
             onChange={(e) => {
+              touch('every');
               setEveryText(e.target.value);
               setEveryBad(false);
             }}
@@ -382,6 +467,12 @@ function Popover({ task }: { task: PlannerTask }) {
             </p>
           )}
         </label>
+      )}
+
+      {saveFailed && (
+        <p role="alert" className={styles.hint}>
+          {SAVE_FAILED}
+        </p>
       )}
 
       <p className={styles.focused}>Focused: {formatGoal(task.actualMs)}</p>

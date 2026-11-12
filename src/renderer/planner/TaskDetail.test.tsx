@@ -6,6 +6,7 @@ import type { PlannerTask } from '../../shared/types';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { installMockApi, minimalPlannerTask, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
 import { resetPlannerStore, usePlannerStore } from './plannerStore';
+import { useShortcuts } from '../shell/useShortcuts';
 import { TaskDetail } from './TaskDetail';
 
 const MIN = 60_000;
@@ -182,11 +183,36 @@ describe('TaskDetail', () => {
     expect(api.tasks.update).toHaveBeenCalledWith(1, { tags: ['b'] });
   });
 
-  it('disables the tag field at 8 tags with the limit as its title', () => {
+  it('aria-disables the tag field at 8 tags, described by the limit, and keeps focus there', async () => {
+    const user = userEvent.setup();
     setup({ tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] });
     const field = screen.getByLabelText('Add a tag');
-    expect(field).toBeDisabled();
-    expect(field).toHaveAttribute('title', 'Up to 8 tags');
+    expect(field).toHaveAttribute('aria-disabled', 'true');
+    expect(field).toHaveAccessibleDescription('Up to 8 tags');
+    await user.type(field, 'extra{Enter}');
+    expect(screen.queryByText('#extra')).not.toBeInTheDocument();
+  });
+
+  it('does not drop focus to the page when the 8th tag is added', async () => {
+    const user = userEvent.setup();
+    const { api } = setup({ tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] });
+    vi.mocked(api.tasks.update).mockImplementation((_id, patch) => {
+      const t = { ...(usePlannerStore.getState().tasks[1] as PlannerTask), ...patch } as PlannerTask;
+      return Promise.resolve({ tasks: [t], removed: [] });
+    });
+    const field = screen.getByLabelText('Add a tag');
+    await user.type(field, 'h{Enter}');
+    await waitFor(() => expect(field).toHaveAttribute('aria-disabled', 'true'));
+    expect(field).toHaveFocus();
+  });
+
+  it('words the tag hint with "characters"', async () => {
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByLabelText('Add a tag'), '!!!{Enter}');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Tags use letters, numbers and hyphens, up to 24 characters.',
+    );
   });
 
   it('saves a colour, and none', async () => {
@@ -263,7 +289,32 @@ describe('TaskDetail', () => {
     const { api } = setup();
     await user.click(screen.getByRole('button', { name: /^Placement/ }));
     fireEvent.change(screen.getByLabelText('Day'), { target: { value: '2026-11-12' } });
+    expect(api.tasks.move).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Move' }));
     await waitFor(() => expect(api.tasks.move).toHaveBeenCalledWith(1, { day: '2026-11-12', index: 0 }));
+  });
+
+  it('does not move on intermediate date changes, nor to a year like 0002', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    await user.click(screen.getByRole('button', { name: /^Placement/ }));
+    const day = screen.getByLabelText('Day');
+    fireEvent.change(day, { target: { value: '2026-11-12' } });
+    fireEvent.change(day, { target: { value: '2026-11-13' } });
+    fireEvent.change(day, { target: { value: '0002-11-13' } });
+    expect(screen.getByRole('button', { name: 'Move' })).toBeDisabled();
+    fireEvent.keyDown(day, { key: 'Enter' });
+    fireEvent.blur(day);
+    expect(api.tasks.move).not.toHaveBeenCalled();
+  });
+
+  it('moves on Enter in the date field, and on leaving it with a changed value', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    await user.click(screen.getByRole('button', { name: /^Placement/ }));
+    fireEvent.change(screen.getByLabelText('Day'), { target: { value: '2026-11-14' } });
+    fireEvent.keyDown(screen.getByLabelText('Day'), { key: 'Enter' });
+    await waitFor(() => expect(api.tasks.move).toHaveBeenCalledWith(1, { day: '2026-11-14', index: 0 }));
   });
 
   it('puts the move after the tasks already on that day', async () => {
@@ -272,6 +323,7 @@ describe('TaskDetail', () => {
     const { api } = setup({}, [other]);
     await user.click(screen.getByRole('button', { name: /^Placement/ }));
     fireEvent.change(screen.getByLabelText('Day'), { target: { value: '2026-11-12' } });
+    await user.click(screen.getByRole('button', { name: 'Move' }));
     await waitFor(() => expect(api.tasks.move).toHaveBeenCalledWith(1, { day: '2026-11-12', index: 1 }));
   });
 
@@ -327,11 +379,11 @@ describe('TaskDetail', () => {
     expect(api.subtasks.update).toHaveBeenCalledWith(5, { text: 'Renamed' });
   });
 
-  it('disables the subtask field at 30 with the limit as its title', () => {
+  it('aria-disables the subtask field at 30, described by the limit', () => {
     setup({ subtasks: Array.from({ length: 30 }, (_, i) => sub(i + 5, `s${i}`)) });
     const field = screen.getByLabelText('Add a subtask');
-    expect(field).toBeDisabled();
-    expect(field).toHaveAttribute('title', 'Up to 30 subtasks');
+    expect(field).toHaveAttribute('aria-disabled', 'true');
+    expect(field).toHaveAccessibleDescription('Up to 30 subtasks');
   });
 
   it('caps the title at 500 characters by code points', async () => {
@@ -358,15 +410,14 @@ describe('TaskDetail', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('finds a task that is not in the store, from the lists', async () => {
-    const hidden = minimalPlannerTask({ id: 77, title: 'In a list', day: null, listId: 10 });
-    const { api } = setup({}, [hidden]);
-    act(() => {
-      usePlannerStore.setState((s) => ({ tasks: { 1: s.tasks[1] as PlannerTask } }));
-      usePlannerStore.getState().openDetail(77);
-    });
-    expect(await screen.findByRole('dialog', { name: 'Task: In a list' })).toBeInTheDocument();
-    expect(api.planner.lists).toHaveBeenCalled();
+  it('opens a task that is not in the store through planner.task', async () => {
+    const hidden = minimalPlannerTask({ id: 77, title: 'On another day', day: '2026-12-01' });
+    const { api } = setup();
+    vi.mocked(api.planner.task).mockResolvedValue(hidden);
+    act(() => usePlannerStore.getState().openDetail(77));
+    expect(await screen.findByRole('dialog', { name: 'Task: On another day' })).toBeInTheDocument();
+    expect(api.planner.task).toHaveBeenCalledWith(77);
+    expect(usePlannerStore.getState().tasks[77]).toEqual(hidden);
   });
 
   it('closes with a gentle note when the task no longer exists', async () => {
@@ -374,5 +425,88 @@ describe('TaskDetail', () => {
     act(() => usePlannerStore.getState().openDetail(404));
     await waitFor(() => expect(usePlannerStore.getState().detailTaskId).toBeNull());
     expect(usePlannerStore.getState().notice).toBe('That task no longer exists.');
+  });
+
+  it('closes both times when a missing task is opened twice', async () => {
+    const { api } = setup();
+    for (let i = 1; i <= 2; i++) {
+      act(() => usePlannerStore.getState().openDetail(404));
+      await waitFor(() => expect(usePlannerStore.getState().detailTaskId).toBeNull());
+      expect(api.planner.task).toHaveBeenCalledTimes(i);
+    }
+  });
+
+  it('keeps Tab inside the dialog, and aria-modal says so', async () => {
+    const user = userEvent.setup();
+    setup();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    const items = [
+      ...dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select, textarea',
+      ),
+    ];
+    items[items.length - 1]?.focus();
+    await user.tab();
+    expect(items[0]).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(items[items.length - 1]).toHaveFocus();
+  });
+
+  it('keeps shell shortcuts from firing while the dialog has focus', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    function Keys() {
+      useShortcuts();
+      return null;
+    }
+    render(<Keys />);
+    screen.getByRole('button', { name: 'Close' }).focus();
+    await user.keyboard('rn1');
+    expect(api.timer.reset).not.toHaveBeenCalled();
+    expect(api.timer.skip).not.toHaveBeenCalled();
+    expect(api.timer.setMode).not.toHaveBeenCalled();
+  });
+
+  it('saves a note being typed when Escape closes the dialog', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    await user.type(screen.getByLabelText('Note'), 'Half a thought');
+    await user.keyboard('{Escape}');
+    expect(usePlannerStore.getState().detailTaskId).toBeNull();
+    expect(api.tasks.update).toHaveBeenCalledTimes(1);
+    expect(api.tasks.update).toHaveBeenCalledWith(1, { note: 'Half a thought' });
+  });
+
+  it('saves a title being typed when Close is clicked, once', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    const title = screen.getByLabelText('Title');
+    await user.clear(title);
+    await user.type(title, 'Renamed');
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(api.tasks.update).toHaveBeenCalledTimes(1);
+    expect(api.tasks.update).toHaveBeenCalledWith(1, { title: 'Renamed' });
+  });
+
+  it('saves a subtask rename when the dialog closes', async () => {
+    const user = userEvent.setup();
+    const { api } = setup({ subtasks: [sub(5, 'Old')] });
+    const field = screen.getByLabelText('Subtask Old');
+    await user.clear(field);
+    await user.type(field, 'New');
+    await user.keyboard('{Escape}');
+    expect(api.subtasks.update).toHaveBeenCalledWith(5, { text: 'New' });
+  });
+
+  it('keeps the typed text and says so when a save is refused', async () => {
+    const user = userEvent.setup();
+    const { api } = setup();
+    vi.mocked(api.tasks.update).mockRejectedValue(new Error('no'));
+    const note = screen.getByLabelText('Note');
+    await user.type(note, 'Kept');
+    await user.tab();
+    expect(await screen.findByText("Couldn't save that. Try again.")).toBeInTheDocument();
+    expect(note).toHaveValue('Kept');
   });
 });

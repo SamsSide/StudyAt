@@ -70,7 +70,13 @@ describe('a filter and drag and drop', () => {
     const api = mockApi({
       planner: {
         day: vi.fn((d: string) =>
-          Promise.resolve({ from: d, to: d, tasks: tasks.filter((t) => t.day === d), deadlines: [], studiedMs: {} }),
+          Promise.resolve({
+            from: d,
+            to: d,
+            tasks: tasks.filter((t) => t.day === d),
+            deadlines: [],
+            studiedMs: {},
+          }),
         ),
         week: vi.fn(weekOf),
       },
@@ -103,7 +109,13 @@ describe('the drag-end announcement', () => {
       mockApi({
         planner: {
           day: vi.fn((d: string) =>
-            Promise.resolve({ from: d, to: d, tasks: tasks.filter((t) => t.day === d), deadlines: [], studiedMs: {} }),
+            Promise.resolve({
+              from: d,
+              to: d,
+              tasks: tasks.filter((t) => t.day === d),
+              deadlines: [],
+              studiedMs: {},
+            }),
           ),
           week: vi.fn(weekOf),
         },

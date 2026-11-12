@@ -1,6 +1,6 @@
 // Tag chips with remove buttons and an input (v1.2 spec §3.6): Enter adds through the shared
-// normaliser; at MAX_TAGS the input is disabled with the limit copy as its tooltip.
-import { useState, type KeyboardEvent } from 'react';
+// normaliser; at MAX_TAGS the input is aria-disabled (so it keeps focus) and a hint says why.
+import { useId, useState, type KeyboardEvent } from 'react';
 import { LIMIT_COPY, MAX_TAGS, normaliseTag } from '../../shared/planner';
 import styles from './detail.module.css';
 
@@ -14,6 +14,8 @@ export function TagInput({ tags, onChange, label }: Props) {
   const [text, setText] = useState('');
   const [invalid, setInvalid] = useState(false);
   const full = tags.length >= MAX_TAGS;
+  const hintId = useId();
+  const invalidId = useId();
 
   const add = (): void => {
     if (text.trim() === '') return;
@@ -30,7 +32,7 @@ export function TagInput({ tags, onChange, label }: Props) {
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      add();
+      if (!full) add();
     }
   };
 
@@ -55,19 +57,28 @@ export function TagInput({ tags, onChange, label }: Props) {
         className={styles.input}
         aria-label={label}
         aria-invalid={invalid || undefined}
+        aria-disabled={full || undefined}
+        aria-describedby={
+          [full ? hintId : null, invalid ? invalidId : null].filter(Boolean).join(' ') || undefined
+        }
         placeholder="#tag"
         value={text}
-        disabled={full}
-        title={full ? LIMIT_COPY.tags : undefined}
+        readOnly={full}
         onChange={(e) => {
+          if (full) return;
           setText(e.target.value);
           setInvalid(false);
         }}
         onKeyDown={onKeyDown}
       />
+      {full && (
+        <p id={hintId} className={styles.hint}>
+          {LIMIT_COPY.tags}
+        </p>
+      )}
       {invalid && (
-        <p role="alert" className={styles.hint}>
-          Tags use letters, numbers and hyphens, up to 24.
+        <p id={invalidId} role="alert" className={styles.hint}>
+          Tags use letters, numbers and hyphens, up to 24 characters.
         </p>
       )}
     </div>
