@@ -11,9 +11,10 @@ import { LIMIT_COPY, LIST_NAME_MAX, MAX_LISTS } from '../../../shared/planner';
 import type { TaskList } from '../../../shared/types';
 import { useStudyStore } from '../../shell/store';
 import { DropZone, listZone } from '../dnd';
-import { deadlineDayKey, plannerToday } from '../format';
+import { deadlineDayKey } from '../format';
 import { capChars, ListMenu } from '../ListMenu';
 import { tasksInList, usePlannerStore } from '../plannerStore';
+import { useToday } from '../useToday';
 import { RuledLines } from './RuledLines';
 import styles from './board.module.css';
 
@@ -26,14 +27,17 @@ const LIST_ROWS = 6;
 /** The name a list made by "+ New list" starts with; it opens ready to rename. */
 const NEW_LIST_NAME = 'New list';
 
+const nowStamp = (): string => wallStamp(Date.now());
+
 /** "Exam in 23 days" for the list's subject, or null. The exam's day is main's (rollover applied). */
 function useExamText(subjectId: number | null): string | null {
   const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? 4);
-  const exam = usePlannerStore((s) =>
-    upcomingExam(Object.values(s.deadlines), subjectId, wallStamp(Date.now())),
-  );
+  // "Today" ticks over at the rollover, which re-runs the lookup and the day count.
+  const today = useToday(rolloverHour);
+  const deadlines = usePlannerStore((s) => s.deadlines);
+  const exam = upcomingExam(Object.values(deadlines), subjectId, nowStamp());
   if (!exam) return null;
-  return examLine(deadlineDayKey(exam.due, rolloverHour), plannerToday(rolloverHour));
+  return examLine(deadlineDayKey(exam.due, rolloverHour), today);
 }
 
 /** The name, edited in place: Enter or leaving saves, Esc puts it back, a blank name is refused. */
@@ -89,7 +93,7 @@ function ListName({ list, autoFocus }: { list: TaskList; autoFocus: boolean }) {
   );
 }
 
-function ListCard({ list, fresh }: { list: TaskList; fresh: boolean }) {
+function ListCard({ list, fresh, onDeleted }: { list: TaskList; fresh: boolean; onDeleted: () => void }) {
   const tasks = usePlannerStore(useShallow((s) => tasksInList(s, list.id)));
   const subject = useStudyStore((s) => s.subjects.find((x) => x.id === list.subjectId));
   const examText = useExamText(list.subjectId);
@@ -99,7 +103,7 @@ function ListCard({ list, fresh }: { list: TaskList; fresh: boolean }) {
       <section aria-label={list.name} className={styles.listSection}>
         <header className={styles.listHead}>
           <ListName list={list} autoFocus={fresh} />
-          <ListMenu list={list} />
+          <ListMenu list={list} onDeleted={onDeleted} />
         </header>
         {(subject || examText) && (
           <div className={styles.listMeta}>
@@ -124,12 +128,14 @@ function ListCard({ list, fresh }: { list: TaskList; fresh: boolean }) {
   );
 }
 
-export function BoardLists() {
+/** `perRow`: three under the week and the month, one in the Day view's right-hand column. */
+export function BoardLists({ perRow = LISTS_PER_ROW }: { perRow?: number }) {
   const lists = usePlannerStore((s) => s.lists);
   const loadLists = usePlannerStore((s) => s.loadLists);
   const createList = usePlannerStore((s) => s.createList);
   const [freshId, setFreshId] = useState<number | null>(null);
   const hintId = useId();
+  const addButton = useRef<HTMLButtonElement>(null);
   const full = lists.length >= MAX_LISTS;
 
   useEffect(() => {
@@ -148,14 +154,15 @@ export function BoardLists() {
     <section className={styles.lists} aria-label="Lists">
       <div
         className={styles.listGrid}
-        style={{ gridTemplateColumns: `repeat(${LISTS_PER_ROW}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${perRow}, minmax(0, 1fr))` }}
       >
         {lists.map((l) => (
-          <ListCard key={l.id} list={l} fresh={l.id === freshId} />
+          <ListCard key={l.id} list={l} fresh={l.id === freshId} onDeleted={() => addButton.current?.focus()} />
         ))}
       </div>
       <div className={styles.newList}>
         <button
+          ref={addButton}
           type="button"
           className={styles.textButton}
           aria-disabled={full ? 'true' : undefined}

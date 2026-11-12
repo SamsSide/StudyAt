@@ -46,7 +46,7 @@ export function PlannerWidget() {
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+        <div className={styles.pickerRow}>
           <FilterButton />
           {/* The full-window board (spec §3.7). */}
           <button

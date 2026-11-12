@@ -1,6 +1,6 @@
 // The widget's Lists view (v1.2 spec §3.6, §3.7): a list picker, that list's tasks, and a quick-add
 // row, and the list menu. A list linked to a subject with an upcoming exam says how far off it is.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { examLine, upcomingExam } from '../../core/planner/schedule';
 import { wallStamp } from '../../core/wallclock';
@@ -28,6 +28,7 @@ export function ListsView() {
   const deadlines = usePlannerStore((s) => s.deadlines);
   const setListId = usePlannerStore((s) => s.setListId);
   const loadLists = usePlannerStore((s) => s.loadLists);
+  const picker = useRef<HTMLSelectElement>(null);
   const list = lists.find((l) => l.id === chosen) ?? lists[0] ?? null;
   const tasks = usePlannerStore(useShallow((s) => (list ? tasksInList(s, list.id) : [])));
 
@@ -47,10 +48,10 @@ export function ListsView() {
 
   return (
     <section className={styles.view} aria-label="Lists">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+      <div className={styles.pickerRow}>
         <select
-          className={styles.select}
-          style={{ flex: 1, minWidth: 0 }}
+          ref={picker}
+          className={`${styles.select} ${styles.pickerGrow}`}
           aria-label="List"
           value={list.id}
           onChange={(e) => setListId(Number(e.target.value))}
@@ -61,7 +62,7 @@ export function ListsView() {
             </option>
           ))}
         </select>
-        <ListMenu list={list} />
+        <ListMenu list={list} onDeleted={() => picker.current?.focus()} />
       </div>
       {examText && <p className={styles.exam}>{examText}</p>}
       {tasks.length === 0 ? (

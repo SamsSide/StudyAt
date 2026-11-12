@@ -1,7 +1,7 @@
 // A list's menu (v1.2 spec §3.6, §3.7), in the board's list cards and the widget's Lists view:
 // Rename, Link subject (each subject, or None), Clear done, and Delete with an in-place confirm that
 // says how many tasks go with it. It wears the task menu's look so the two read as one family.
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { LIST_NAME_MAX } from '../../shared/planner';
 import type { TaskList } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
@@ -17,10 +17,13 @@ export const capChars = (text: string, max: number): string => [...text].slice(0
 export const deleteListAsk = (name: string, n: number): string =>
   `Delete ${name} and its ${n} ${n === 1 ? 'task' : 'tasks'}?`;
 
-export function ListMenu({ list }: { list: TaskList }) {
+/** `onDeleted` runs once the list is gone, so the host can put focus somewhere real: the menu's own
+ *  button went with the list. */
+export function ListMenu({ list, onDeleted }: { list: TaskList; onDeleted?: () => void }) {
   const [pane, setPane] = useState<Pane | null>(null);
   const [name, setName] = useState(list.name);
   const button = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const subjects = useStudyStore((s) => s.subjects);
   // Every task in the list, done or not and whatever the filter: all of them go with it.
@@ -30,6 +33,18 @@ export function ListMenu({ list }: { list: TaskList }) {
     setPane(null);
     button.current?.focus();
   };
+  // A press outside, like the task menu: it closes without stealing focus back.
+  const open = pane !== null;
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent): void => {
+      if (e.target instanceof Node && root.current?.contains(e.target)) return;
+      setPane(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
   const run = (action: () => Promise<void>): void => {
     close();
     void action();
@@ -47,7 +62,14 @@ export function ListMenu({ list }: { list: TaskList }) {
 
   return (
     <div
+      ref={root}
       className={styles.anchor}
+      onBlur={(e) => {
+        // Focus moving out of the menu and its button closes it.
+        if (open && e.relatedTarget instanceof Node && !e.currentTarget.contains(e.relatedTarget)) {
+          setPane(null);
+        }
+      }}
       onKeyDown={(e) => {
         if (e.key !== 'Escape' || pane === null) return;
         // The menu's own Esc: it closes the menu, not the board around it.
@@ -137,7 +159,10 @@ export function ListMenu({ list }: { list: TaskList }) {
                   className={styles.small}
                   onClick={() => {
                     setPane(null);
-                    void usePlannerStore.getState().removeList(list.id);
+                    void usePlannerStore
+                      .getState()
+                      .removeList(list.id)
+                      .then(() => onDeleted?.());
                   }}
                 >
                   Delete

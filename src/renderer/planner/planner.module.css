@@ -406,3 +406,15 @@
   position: relative;
   z-index: 1;
 }
+
+/* The list picker and its menu, side by side. */
+.pickerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pickerGrow {
+  flex: 1;
+  min-width: 0;
+}
