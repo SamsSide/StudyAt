@@ -1,6 +1,7 @@
-// A board column's ruled lines (v1.2 spec §3.7, a Tweek page): one task per line, the quick-add on
-// the first empty line, then blank lines to `rows`. Shared by the day columns and the list columns.
-// Scrolls inside itself, so a long day never stretches the board.
+// A board column's ruled lines (v1.2 spec §3.7, a Tweek page): one task per line (a long title wraps
+// onto the next rule), the quick-add on the first empty line, then blank lines to `rows`. Shared by
+// the day columns and the list columns. The column grows with its tasks and the board scrolls as one
+// page; a column never scrolls inside itself.
 import { Fragment } from 'react';
 import type { PlannerTask } from '../../../shared/types';
 import { SortableTask } from '../dnd';
@@ -30,14 +31,14 @@ export function RuledLines({ zone, tasks, addLabel, place, rows }: Props) {
           {tasks.map((t, i) => (
             <Fragment key={t.id}>
               {hint === t.id && <InsertLine />}
-              <SortableTask task={t} />
+              <SortableTask task={t} variant="compact" />
               {hint === 'end' && i === lastOpen && <InsertLine />}
             </Fragment>
           ))}
         </ul>
       )}
       <div className={styles.rule} data-rule="add">
-        <QuickAdd label={addLabel} place={place} />
+        <QuickAdd label={addLabel} place={place} placeholder="Add…" />
       </div>
       {Array.from({ length: blanks }, (_, i) => (
         <div key={i} className={styles.rule} aria-hidden="true" />

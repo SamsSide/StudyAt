@@ -201,13 +201,13 @@ export function BoardDay({ day }: { day: string }) {
               </ul>
             )}
             <div className={styles.dayAdd}>
-              <QuickAdd label={`Add to ${label}`} place={{ day }} />
+              <QuickAdd label={`Add to ${label}`} place={{ day }} placeholder="Add…" />
             </div>
           </div>
         </section>
       </DropZone>
       <div className={styles.dayLists} data-day-lists="">
-        <BoardLists perRow={1} />
+        <BoardLists layout="stack" />
       </div>
     </div>
   );

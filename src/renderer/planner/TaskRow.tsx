@@ -1,6 +1,9 @@
 // One task row (v1.2 spec §3.7): a checkbox, the title, then chips; ▶ and the grip appear on hover
-// or focus. Clicking the row opens its detail.
-import type { CSSProperties, MouseEvent, ReactNode, Ref } from 'react';
+// or focus. Clicking the row opens its detail. The board's columns use the compact variant, a Tweek
+// line: a small check, the subject dot, the title wrapping across the full width onto the next rule,
+// and the estimate chip only; tags, subtasks, repeat, the bell and the rolled chip stay in the
+// widget, the board's Day and the detail.
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
 import type { PlannerTask } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { estimateChip, rolledLabel, subtaskCount } from './format';
@@ -14,9 +17,11 @@ interface RowProps {
   rowRef?: Ref<HTMLLIElement>;
   style?: CSSProperties;
   dragging?: boolean;
+  /** 'compact': the board's ruled-line row. The widget keeps the full row. */
+  variant?: 'full' | 'compact';
 }
 
-export function TaskRow({ task, grip, rowRef, style, dragging }: RowProps) {
+export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' }: RowProps) {
   const subject = useStudyStore((s) => s.subjects.find((x) => x.id === task.effectiveSubjectId));
   const update = usePlannerStore((s) => s.update);
   const openDetail = usePlannerStore((s) => s.openDetail);
@@ -28,6 +33,68 @@ export function TaskRow({ task, grip, rowRef, style, dragging }: RowProps) {
     if ((e.target as HTMLElement).closest('button, input')) return;
     openDetail(task.id);
   };
+
+  const tools = (
+    <span className={styles.hover}>
+      <button
+        type="button"
+        className={styles.play}
+        aria-label={`Start focus on "${task.title}"`}
+        onClick={() => void startTask(task.id)}
+      >
+        ▶
+      </button>
+      {grip}
+    </span>
+  );
+
+  if (variant === 'compact') {
+    // The title is an inline span acting as a button, so a long title wraps like text across the
+    // whole column and the chip follows its last word; a real <button> would box it in.
+    const onTitleKey = (e: KeyboardEvent<HTMLSpanElement>): void => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      openDetail(task.id);
+    };
+    return (
+      <li
+        className={`${styles.row} ${styles.compact}`}
+        ref={rowRef}
+        style={style}
+        data-variant="compact"
+        data-dragging={dragging ? 'true' : undefined}
+        data-task-id={task.id}
+        data-done={task.done}
+        data-colour={task.colour ?? undefined}
+        onClick={onRowClick}
+      >
+        <input
+          type="checkbox"
+          className={styles.check}
+          checked={task.done}
+          aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`}
+          onChange={() => void update(task.id, { done: !task.done })}
+        />
+        {subject && (
+          <span
+            className={styles.dot}
+            data-subject-dot=""
+            title={subject.name}
+            style={{ background: subject.colour }}
+          />
+        )}
+        <span role="button" tabIndex={0} className={styles.title} onKeyDown={onTitleKey}>
+          {task.title}
+        </span>
+        {estimate && (
+          <span className={styles.chip} data-over={estimate.over ? 'true' : undefined}>
+            {estimate.text}
+          </span>
+        )}
+        {tools}
+      </li>
+    );
+  }
 
   return (
     <li
@@ -87,17 +154,7 @@ export function TaskRow({ task, grip, rowRef, style, dragging }: RowProps) {
         )}
         {task.rolledFrom && <span className={styles.chip}>{rolledLabel(task.rolledFrom)}</span>}
       </span>
-      <span className={styles.hover}>
-        <button
-          type="button"
-          className={styles.play}
-          aria-label={`Start focus on "${task.title}"`}
-          onClick={() => void startTask(task.id)}
-        >
-          ▶
-        </button>
-        {grip}
-      </span>
+      {tools}
     </li>
   );
 }

@@ -1,8 +1,9 @@
-/* The Tasks board (v1.2 spec §3.7): a calm sheet of ruled paper on the dark glass. The head stays
-   put; the body scrolls; each day column scrolls inside itself, so a huge day never pushes the
-   board past the window (§7). Rows reuse the widget's TaskRow; on the board its chips wrap below the
-   title instead of squeezing it, which keeps titles whole at 1280x800 and 150% scaling. Motion is
-   the shared --duration tokens, zeroed under prefers-reduced-motion by tokens.css. */
+/* The Tasks board (v1.2 spec §3.7): a calm sheet of ruled paper on the dark glass, laid out like
+   Tweek. The head stays put; under it the board scrolls as one page: the week's columns grow with
+   their tasks (never scrolling inside themselves), and the lists follow in one row beneath, as wide
+   as a day, scrolling sideways when there are more than fit. Rows are TaskRow's compact variant: one
+   line of text on each rule (planner.module.css). Motion is the shared --duration tokens, zeroed
+   under prefers-reduced-motion by tokens.css. */
 .board {
   display: flex;
   flex: 1;
@@ -126,13 +127,18 @@
   padding-bottom: var(--space-2);
 }
 
-/* Week: Mon-Fri, then Sat over Sun. A fixed height so the columns, not the board, take the overflow. */
+/* The gap between board columns, shared by the week and the list row so a list is a day's width. */
+.board {
+  --column-gap: var(--space-4);
+}
+
+/* Week: Mon-Fri, then Sat over Sun. The columns grow with their tasks; the board scrolls. */
 .week {
   display: grid;
   flex: none;
   grid-template-columns: repeat(6, minmax(120px, 1fr));
-  gap: var(--space-2) var(--space-4);
-  height: clamp(300px, calc(100vh - 220px), 640px);
+  align-items: start;
+  gap: var(--space-2) var(--column-gap);
 }
 
 .column {
@@ -144,11 +150,7 @@
 }
 
 .column > .day {
-  flex: 1;
-}
-
-.weekend > .day {
-  flex: 1 1 0;
+  flex: none;
 }
 
 .day,
@@ -211,11 +213,9 @@
   margin-top: 2px;
 }
 
-/* The rules: tasks, the quick-add on the first empty line, then blank lines. Scrolls in itself. */
+/* The rules: tasks, the quick-add on the first empty line, then blank lines. Grows with its tasks. */
 .ruled {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  flex: none;
 }
 
 .tasks {
@@ -228,14 +228,6 @@
 
 .tasks {
   position: relative;
-}
-
-/* One task per ruled line, the title on the line. */
-.tasks > li {
-  flex-wrap: wrap;
-  min-height: 32px;
-  border-bottom: 1px solid var(--separator);
-  border-radius: 0;
 }
 
 /* The row being dragged stays behind as the gap it will drop into (its line follows the pointer in
@@ -268,11 +260,13 @@
   box-shadow: 0 0 6px var(--accent);
 }
 
-/* The line under the pointer: a lifted strip of the board's glass. */
+/* The line under the pointer: a lifted strip of the board's glass, a little see-through so the
+   column heads and deadline chips it passes over still read. */
 .dragLine {
   box-sizing: border-box;
   min-height: 32px;
   padding: 6px var(--space-3);
+  opacity: 0.86;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border);
   background: var(--glass-sheen), var(--panel-strong);
@@ -282,20 +276,8 @@
   color: var(--text);
   font-family: var(--font);
   font-size: var(--text-md);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   cursor: grabbing;
-}
-
-/* The row's chips (its first span) drop to their own line under the title. */
-.tasks > li > span:first-of-type {
-  order: 3;
-  flex-basis: 100%;
-  justify-content: flex-start;
-  padding-left: 24px;
-}
-
-.tasks > li > span:first-of-type:empty {
-  display: none;
 }
 
 .rule {
@@ -316,30 +298,49 @@
   background: var(--glass-fill-thin);
 }
 
-/* Lists: three to a row under the week. */
+/* Lists: one row straight under the week (or month), each list a day column's width, in sort order;
+   more than fit scroll sideways, and "+ New list" ends the row. In the Day view they stack. */
 .lists {
   display: flex;
   flex: none;
   flex-direction: column;
+  min-width: 0;
+}
+
+.listRow {
+  display: flex;
   gap: var(--space-3);
 }
 
-.listGrid {
-  /* Three columns, set inline from LISTS_PER_ROW. */
-  display: grid;
-  gap: var(--space-3);
+.listRow[data-layout='row'] {
+  align-items: flex-start;
+  gap: var(--column-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: var(--space-2);
 }
 
-.list {
-  max-height: 320px;
+.listRow[data-layout='row'] > .list {
+  /* The week's six columns: (width - five gaps) / 6, and never under a day's 120px minimum. */
+  flex: 0 0 max(120px, calc((100% - 5 * var(--column-gap)) / 6));
+  min-width: 0;
+}
+
+.listRow[data-layout='stack'] {
+  flex-direction: column;
 }
 
 .listHead {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding-bottom: var(--space-1);
+  min-height: 32px;
+  padding: 0 var(--space-1) var(--space-1);
   border-bottom: 2px solid var(--separator);
+}
+
+.listHead > .dot {
+  flex: none;
 }
 
 .listName {
@@ -390,8 +391,11 @@
 
 .newList {
   display: flex;
+  flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+  padding: var(--space-2);
 }
 
 .hint {

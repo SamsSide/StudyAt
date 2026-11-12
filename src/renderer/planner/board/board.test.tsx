@@ -292,14 +292,14 @@ describe('TasksBoard lists', () => {
     minimalPlannerTask({ id: 6, title: 'Monads', day: null, listId: 10, done: true }),
   ];
 
-  it('lays the lists three to a row, each with its subject chip, tasks and quick-add', async () => {
+  it('lays the lists in one row, each with its subject, tasks and quick-add', async () => {
     await renderBoard({
       lists: [list(), list({ id: 11, name: 'Someday', subjectId: null })],
       tasks: twoTasks,
     });
     const card = await screen.findByRole('region', { name: 'COMP2221 Programming Paradigms' });
-    const grid = card.closest('[style]') as HTMLElement;
-    expect(grid.style.gridTemplateColumns).toMatch(/^repeat\(3, /);
+    expect(card.closest('[data-list-row]')).toHaveAttribute('data-layout', 'row');
+    // Named apart from its subject (id 2), so the subject chip shows.
     expect(within(card).getByText(seedSubjects()[1]!.name)).toBeInTheDocument();
     expect(within(card).getByText('Lambda notes')).toBeInTheDocument();
     expect(
@@ -420,5 +420,118 @@ describe('TasksBoard drag feel', () => {
     const lines = insertLines(mon);
     expect(lines).toHaveLength(1);
     expect(lines[0]?.previousElementSibling).toHaveAttribute('data-task-id', '2');
+  });
+});
+
+describe('TasksBoard, the Tweek look', () => {
+  const busy = minimalPlannerTask({
+    id: 7,
+    title: 'Revise lecture 7: informed search and A*',
+    day: MON,
+    subjectId: 2,
+    effectiveSubjectId: 2,
+    estimateMin: 45,
+    actualMs: 50 * MIN,
+    tags: ['ai', 'revision'],
+    subtasks: [{ id: 1, taskId: 7, text: 'Read', done: true, sort: 0 }],
+    repeat: { kind: 'weekly' },
+    reminder: '18:30',
+    rolledFrom: '2026-11-08',
+  });
+
+  it('a week row is compact: the subject dot, the title and the estimate chip only, amber when over', async () => {
+    await renderBoard({
+      tasks: [busy, minimalPlannerTask({ id: 8, title: 'No estimate', day: MON, sort: 1 })],
+    });
+    const mon = screen.getByRole('region', { name: 'Mon 9 Nov' });
+    const row = (await within(mon).findByText(busy.title)).closest('li') as HTMLElement;
+    expect(row).toHaveAttribute('data-variant', 'compact');
+    expect(within(row).getByRole('button', { name: busy.title })).toBeInTheDocument();
+    expect(row.querySelector('[data-subject-dot]')).not.toBeNull();
+    expect(within(row).getByText('50m / 45m')).toHaveAttribute('data-over', 'true');
+    for (const gone of ['#ai', '#revision', '1/1', '↻', 'from Sun 8 Nov']) {
+      expect(within(row).queryByText(gone)).not.toBeInTheDocument();
+    }
+    expect(within(row).queryByLabelText('Reminder 18:30')).not.toBeInTheDocument();
+    // No estimate, no chip.
+    const plain = within(mon).getByText('No estimate').closest('li') as HTMLElement;
+    expect(within(plain).queryByText(/ \/ /)).not.toBeInTheDocument();
+    // Still a checkbox, ▶ and a grip.
+    expect(within(row).getByRole('checkbox', { name: `Mark "${busy.title}" as done` })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: `Move "${busy.title}"` })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: `Start focus on "${busy.title}"` })).toBeInTheDocument();
+  });
+
+  it('Enter or Space on a compact title opens its detail', async () => {
+    await renderBoard({ tasks: [busy] });
+    const title = await screen.findByRole('button', { name: busy.title });
+    expect(title).toHaveAttribute('tabindex', '0');
+    fireEvent.keyDown(title, { key: 'Enter' });
+    expect(usePlannerStore.getState().detailTaskId).toBe(7);
+    act(() => usePlannerStore.setState({ detailTaskId: null }));
+    fireEvent.keyDown(title, { key: ' ' });
+    expect(usePlannerStore.getState().detailTaskId).toBe(7);
+  });
+
+  it('the widget keeps its full rows: tags, subtasks, repeat, reminder', async () => {
+    const api = apiFor({ tasks: [{ ...busy, day: '2026-11-11' }] });
+    useStudyStore.setState({ settings: publicSettings(true), subjects: seedSubjects() });
+    installMockApi(api);
+    render(<PlannerWidget />);
+    const row = (await screen.findByText(busy.title)).closest('li') as HTMLElement;
+    expect(row).not.toHaveAttribute('data-variant', 'compact');
+    expect(within(row).getByText('#ai')).toBeInTheDocument();
+    expect(within(row).getByText('1/1')).toBeInTheDocument();
+    expect(within(row).getByLabelText('Repeats')).toBeInTheDocument();
+    expect(within(row).getByLabelText('Reminder 18:30')).toBeInTheDocument();
+  });
+
+  it('a column quick-add says just "Add…" and keeps its "Add to <day or list>" name', async () => {
+    await renderBoard({ lists: [list()] });
+    const mon = screen.getByRole('region', { name: 'Mon 9 Nov' });
+    expect(within(mon).getByRole('textbox', { name: 'Add to Mon 9 Nov' })).toHaveAttribute(
+      'placeholder',
+      'Add…',
+    );
+    const card = await screen.findByRole('region', { name: 'COMP2221 Programming Paradigms' });
+    expect(
+      within(card).getByRole('textbox', { name: 'Add to COMP2221 Programming Paradigms' }),
+    ).toHaveAttribute('placeholder', 'Add…');
+  });
+
+  it('the lists sit in one row under the week, in sort order, with "+ New list" at its end', async () => {
+    await renderBoard({
+      lists: [
+        list({ id: 1, name: 'Inbox', subjectId: null, sort: 0 }),
+        list({ sort: 1 }),
+        list({ id: 11, name: 'Someday', subjectId: null, sort: 2 }),
+      ],
+    });
+    const lists = await screen.findByRole('region', { name: 'Lists' });
+    await within(lists).findByRole('region', { name: 'Someday' });
+    const row = lists.querySelector('[data-list-row]') as HTMLElement;
+    expect(row).not.toBeNull();
+    expect(row).toHaveAttribute('data-layout', 'row');
+    const names = within(row)
+      .getAllByRole('textbox', { name: 'List name' })
+      .map((i) => (i as HTMLInputElement).value);
+    expect(names).toEqual(['Inbox', 'COMP2221 Programming Paradigms', 'Someday']);
+    const add = within(row).getByRole('button', { name: '+ New list' });
+    expect(row.lastElementChild).toContainElement(add);
+    // The week comes first; the lists follow it.
+    const week = screen.getByRole('group', { name: 'Week' });
+    expect(week.compareDocumentPosition(lists) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('a list named after its subject shows a dot, not the subject chip again; a different name keeps the chip', async () => {
+    const subjects = seedSubjects();
+    await renderBoard({
+      lists: [list({ name: subjects[1]!.name }), list({ id: 11, name: 'Reading', subjectId: 3 })],
+    });
+    const same = await screen.findByRole('region', { name: subjects[1]!.name });
+    expect(same.querySelector('[data-subject-dot]')).not.toBeNull();
+    expect(within(same).queryByText(subjects[1]!.name)).not.toBeInTheDocument();
+    const other = screen.getByRole('region', { name: 'Reading' });
+    expect(within(other).getByText(subjects[2]!.name)).toBeInTheDocument();
   });
 });

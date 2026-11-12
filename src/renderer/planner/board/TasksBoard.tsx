@@ -2,8 +2,8 @@
 // is "November 2026 W46" ("November 2026" on the Month), the view switch Day · Week · Month, ‹ Today ›
 // (a day, a week or a month at a time), the filter and "+ New task"; below, the view and the lists (in
 // a right-hand column on the Day), in one drag-and-drop space so a task moves between any day and any
-// list. The body
-// scrolls inside the sheet and every column inside itself, so nothing overflows the window (§7).
+// list. Under the head the board scrolls as one page (Tweek): the week's columns grow with their
+// tasks, and the lists follow in one row beneath, so nothing overflows the window (§7).
 import { useEffect, useRef, useState } from 'react';
 import { addDays, weekStartOf } from '../../../core/time';
 import { useStudyStore } from '../../shell/store';
@@ -134,6 +134,7 @@ export function TasksBoard() {
         <div ref={newTask} className={styles.newTask}>
           <QuickAdd
             label="New task for today"
+            placeholder="New task for today"
             place={() => ({ day: plannerToday(rolloverHour) })}
             onCreated={(t) => {
               setAdding(false);

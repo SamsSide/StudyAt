@@ -17,9 +17,10 @@ import { useToday } from '../useToday';
 import { RuledLines } from './RuledLines';
 import styles from './board.module.css';
 
-/** Ruled rows a weekday shows even when empty; Sat and Sun share a column, so half each. */
+/** Ruled rows a weekday shows even when empty. Sat and Sun share a column and each has its own head,
+ *  so four each keeps the weekend column level with a weekday. */
 const WEEKDAY_ROWS = 10;
-const WEEKEND_ROWS = 5;
+const WEEKEND_ROWS = 4;
 
 /** "1h 30m planned": the estimates of every task on the day, open and done, whatever the filter. */
 export function plannedMs(tasks: readonly PlannerTask[]): number {

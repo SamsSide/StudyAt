@@ -14,9 +14,11 @@ interface Props {
   /** A function is resolved at submit time (the Day view's "today" can roll over while open). */
   place: Place | (() => Place);
   onCreated?(t: PlannerTask): void;
+  /** The board's columns say just "Add…"; the syntax hint is the widget's default. */
+  placeholder?: string;
 }
 
-export function QuickAdd({ label, place, onCreated }: Props) {
+export function QuickAdd({ label, place, onCreated, placeholder }: Props) {
   const [text, setText] = useState('');
   const pending = useRef(false);
   const subjects = useStudyStore((s) => s.subjects);
@@ -47,7 +49,7 @@ export function QuickAdd({ label, place, onCreated }: Props) {
       <input
         className={styles.addInput}
         aria-label={label}
-        placeholder={`${label} · #tag ~45m @subject`}
+        placeholder={placeholder ?? `${label} · #tag ~45m @subject`}
         value={text}
         onChange={(e) => setText(e.target.value)}
       />

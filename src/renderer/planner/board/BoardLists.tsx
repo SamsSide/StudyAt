@@ -1,8 +1,10 @@
-// The board's lists (v1.2 spec §3.6, §3.7), three to a row under the week as ruled columns like the
-// days (Tweek's "Someday" columns: Inbox, subject lists, any others, in their sort order). Each has
-// its name (edited in place), its subject chip, "Exam in N days" when that subject has an exam
-// coming, the list menu, and its tasks on ruled lines with the quick-add on the first empty one.
-// "+ New list" adds one, up to MAX_LISTS.
+// The board's lists (v1.2 spec §3.6, §3.7): Tweek's "Someday" columns, one row of them straight under
+// the week (or the month), each as wide as a day column, in their sort order with Inbox first. The
+// row scrolls sideways when there are more than fit, and "+ New list" sits at its end (adding one, up
+// to MAX_LISTS). In the Day view they stack in the right-hand column instead. Each list has its name
+// (edited in place), its subject (a dot when the list is named after it, else a chip), "Exam in N
+// days" when that subject has an exam coming, the list menu, and its tasks on ruled lines with the
+// quick-add on the first empty one.
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { examLine, upcomingExam } from '../../../core/planner/schedule';
@@ -18,8 +20,8 @@ import { useToday } from '../useToday';
 import { RuledLines } from './RuledLines';
 import styles from './board.module.css';
 
-/** Lists per row under the week (spec §3.7). */
-export const LISTS_PER_ROW = 3;
+/** 'row': one sideways-scrolling row under the week or month; 'stack': the Day's right-hand column. */
+export type ListsLayout = 'row' | 'stack';
 
 /** Ruled lines a list column shows even when empty (a Tweek "Someday" column). */
 const LIST_ROWS = 6;
@@ -28,6 +30,10 @@ const LIST_ROWS = 6;
 const NEW_LIST_NAME = 'New list';
 
 const nowStamp = (): string => wallStamp(Date.now());
+
+/** Main sends the lists in their sort order (Inbox first); kept here too so a local change can't
+ *  shuffle the row. */
+const bySort = (a: TaskList, b: TaskList): number => a.sort - b.sort || a.id - b.id;
 
 /** "Exam in 23 days" for the list's subject, or null. The exam's day is main's (rollover applied). */
 function useExamText(subjectId: number | null): string | null {
@@ -97,17 +103,29 @@ function ListCard({ list, fresh, onDeleted }: { list: TaskList; fresh: boolean; 
   const tasks = usePlannerStore(useShallow((s) => tasksInList(s, list.id)));
   const subject = useStudyStore((s) => s.subjects.find((x) => x.id === list.subjectId));
   const examText = useExamText(list.subjectId);
+  // A subject list is usually named after its subject: then a dot says which, not the name again.
+  const named = subject !== undefined && subject.name.trim() === list.name.trim();
+  const chip = subject !== undefined && !named;
 
   return (
     <DropZone id={listZone(list.id)} className={styles.list} items={tasks.map((t) => t.id)}>
       <section aria-label={list.name} className={styles.listSection}>
         <header className={styles.listHead}>
+          {named && (
+            <span
+              className={styles.dot}
+              data-subject-dot=""
+              title={subject.name}
+              style={{ background: subject.colour }}
+              aria-hidden="true"
+            />
+          )}
           <ListName list={list} autoFocus={fresh} />
           <ListMenu list={list} onDeleted={onDeleted} />
         </header>
-        {(subject || examText) && (
+        {(chip || examText) && (
           <div className={styles.listMeta}>
-            {subject && (
+            {chip && (
               <span className={styles.subjectChip}>
                 <span className={styles.dot} style={{ background: subject.colour }} aria-hidden="true" />
                 {subject.name}
@@ -128,8 +146,7 @@ function ListCard({ list, fresh, onDeleted }: { list: TaskList; fresh: boolean; 
   );
 }
 
-/** `perRow`: three under the week and the month, one in the Day view's right-hand column. */
-export function BoardLists({ perRow = LISTS_PER_ROW }: { perRow?: number }) {
+export function BoardLists({ layout = 'row' }: { layout?: ListsLayout }) {
   const lists = usePlannerStore((s) => s.lists);
   const loadLists = usePlannerStore((s) => s.loadLists);
   const createList = usePlannerStore((s) => s.createList);
@@ -152,8 +169,8 @@ export function BoardLists({ perRow = LISTS_PER_ROW }: { perRow?: number }) {
 
   return (
     <section className={styles.lists} aria-label="Lists">
-      <div className={styles.listGrid} style={{ gridTemplateColumns: `repeat(${perRow}, minmax(0, 1fr))` }}>
-        {lists.map((l) => (
+      <div className={styles.listRow} data-list-row="" data-layout={layout}>
+        {[...lists].sort(bySort).map((l) => (
           <ListCard
             key={l.id}
             list={l}
@@ -161,24 +178,24 @@ export function BoardLists({ perRow = LISTS_PER_ROW }: { perRow?: number }) {
             onDeleted={() => addButton.current?.focus()}
           />
         ))}
-      </div>
-      <div className={styles.newList}>
-        <button
-          ref={addButton}
-          type="button"
-          className={styles.textButton}
-          aria-disabled={full ? 'true' : undefined}
-          aria-describedby={full ? hintId : undefined}
-          title={full ? LIMIT_COPY.lists : undefined}
-          onClick={() => void add()}
-        >
-          + New list
-        </button>
-        {full && (
-          <span id={hintId} className={styles.hint}>
-            {LIMIT_COPY.lists}
-          </span>
-        )}
+        <div className={styles.newList}>
+          <button
+            ref={addButton}
+            type="button"
+            className={styles.textButton}
+            aria-disabled={full ? 'true' : undefined}
+            aria-describedby={full ? hintId : undefined}
+            title={full ? LIMIT_COPY.lists : undefined}
+            onClick={() => void add()}
+          >
+            + New list
+          </button>
+          {full && (
+            <span id={hintId} className={styles.hint}>
+              {LIMIT_COPY.lists}
+            </span>
+          )}
+        </div>
       </div>
     </section>
   );

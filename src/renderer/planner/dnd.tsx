@@ -224,8 +224,9 @@ export function DropZone({
   );
 }
 
-/** A sortable row with a grip button `Move "<title>"` (Space to lift, arrows to move, Space to drop). */
-export function SortableTask({ task }: { task: PlannerTask }) {
+/** A sortable row with a grip button `Move "<title>"` (Space to lift, arrows to move, Space to drop).
+ *  `variant` passes through to TaskRow: the board's columns use 'compact'. */
+export function SortableTask({ task, variant }: { task: PlannerTask; variant?: 'full' | 'compact' }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: taskDrag(task.id) });
   return (
@@ -237,6 +238,7 @@ export function SortableTask({ task }: { task: PlannerTask }) {
         transition,
       }}
       dragging={isDragging}
+      variant={variant}
       grip={
         <button
           type="button"

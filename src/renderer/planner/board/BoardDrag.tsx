@@ -2,8 +2,10 @@
 // drag overlay portalled to the body, so no column's scroll clips it as it crosses the board; and a
 // thin insertion line shows where it will land in another column (inside its own column the sortable
 // rows already part to show the gap). Both read PlannerDnd's context; `resolveDrop` decides the drop,
-// so the line shows only where a drop would move something.
-import { DragOverlay, useDndContext } from '@dnd-kit/core';
+// so the line shows only where a drop would move something. The overlay is sized to its own line
+// (not the grabbed row's box) and kept under the pointer at the point it was grabbed, a little
+// see-through so a column's head chips still read under it.
+import { DragOverlay, useDndContext, type Modifier } from '@dnd-kit/core';
 import { createPortal } from 'react-dom';
 import type { PlannerTask } from '../../../shared/types';
 import { dayZone, listZone, openOrder, resolveDrop, taskDrag } from '../dnd';
@@ -46,6 +48,28 @@ function prefersReducedMotion(): boolean {
   );
 }
 
+/** How far inside the overlay's edge the pointer is kept, so it never sits on the very border. */
+const GRAB_INSET = 4;
+
+const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), Math.max(lo, hi));
+
+/** dnd-kit puts the overlay's top-left where the grabbed row's was, plus the pointer's travel. When
+ *  the overlay is smaller than the row (a wrapped row, its chips left behind), the grab point can fall
+ *  outside it; this shifts the overlay so the pointer stays on it at the same spot, clamped inside.
+ *  A keyboard drag has no pointer and is left alone. */
+export const keepGrabPoint: Modifier = ({ activatorEvent, activeNodeRect, overlayNodeRect, transform }) => {
+  if (!activatorEvent || !activeNodeRect || !overlayNodeRect) return transform;
+  if (!('clientX' in activatorEvent) || !('clientY' in activatorEvent)) return transform;
+  const { clientX, clientY } = activatorEvent as MouseEvent;
+  const grabX = clientX - activeNodeRect.left;
+  const grabY = clientY - activeNodeRect.top;
+  const x = clamp(grabX, GRAB_INSET, overlayNodeRect.width - GRAB_INSET);
+  const y = clamp(grabY, GRAB_INSET, overlayNodeRect.height - GRAB_INSET);
+  return { ...transform, x: transform.x + grabX - x, y: transform.y + grabY - y };
+};
+
+const MODIFIERS = [keepGrabPoint];
+
 /** The dragged task's line, following the pointer above everything (the task detail included). */
 export function BoardDragOverlay() {
   const { active } = useDndContext();
@@ -54,7 +78,13 @@ export function BoardDragOverlay() {
   const reduced = prefersReducedMotion();
 
   return createPortal(
-    <DragOverlay zIndex={1000} dropAnimation={reduced ? null : undefined}>
+    <DragOverlay
+      zIndex={1000}
+      dropAnimation={reduced ? null : undefined}
+      modifiers={MODIFIERS}
+      // dnd-kit sizes the overlay to the grabbed row; let the line take its own height instead.
+      style={{ height: 'auto' }}
+    >
       {task ? (
         <div className={styles.dragLine} data-drag-overlay={taskDrag(task.id)}>
           {task.title}

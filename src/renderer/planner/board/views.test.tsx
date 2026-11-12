@@ -197,9 +197,7 @@ describe('BoardDay', () => {
     expect(column).not.toBeNull();
     const lists = within(column as HTMLElement).getByRole('region', { name: 'Lists' });
     expect(within(lists).getByRole('textbox', { name: 'List name' })).toHaveValue('Inbox');
-    expect(column?.querySelector('[style]')).toHaveStyle({
-      gridTemplateColumns: 'repeat(1, minmax(0, 1fr))',
-    });
+    expect(column?.querySelector('[data-list-row]')).toHaveAttribute('data-layout', 'stack');
     expect(day.compareDocumentPosition(column as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

@@ -454,3 +454,73 @@
   flex: 1;
   min-width: 0;
 }
+
+/* The board's compact row (TaskRow variant="compact", v1.2 spec §3.7): a Tweek line. The title flows
+   like text across the whole column, after a small check and the subject dot, and a long one wraps
+   onto the next rule: the line height is the rule height and the rules are drawn under every line.
+   Words break only when one alone is wider than the column. ▶ and the grip float at the line's end
+   on hover or focus, so they never take the title's width. */
+.compact {
+  --rule: 32px;
+  --rules: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--rule) - 1px),
+    var(--separator) calc(var(--rule) - 1px) var(--rule)
+  );
+  display: block;
+  position: relative;
+  min-height: var(--rule);
+  padding: 0 var(--space-1) 0 2px;
+  border-left-width: 2px;
+  border-radius: 0;
+  background: var(--rules);
+  line-height: var(--rule);
+}
+
+.compact:hover,
+.compact:focus-within {
+  background: var(--rules), var(--hover);
+}
+
+.compact .check {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  margin: 0 6px 0 0;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+.compact .dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.compact .title {
+  display: inline;
+  overflow-wrap: break-word;
+  word-break: normal;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.compact .chip {
+  margin-left: 6px;
+  padding: 0 5px;
+  line-height: 16px;
+  vertical-align: middle;
+  font-size: var(--text-xs);
+}
+
+.compact .hover {
+  position: absolute;
+  top: calc((var(--rule) - 24px) / 2);
+  right: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-strong);
+  line-height: 1;
+}
