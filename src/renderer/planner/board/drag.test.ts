@@ -136,6 +136,9 @@ describe.each(['compact', 'full'] as const)('a %s row dragged by its whole line'
 describe('a drag ended by the pointer (the guard is stamped on drop)', () => {
   const task = minimalPlannerTask({ id: 1, title: 'Read', day: '2026-11-11' });
   beforeEach(() => {
+    // Date only: the real wait below lets dnd-kit's 50ms click swallow pass while the guard sees no time pass.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 11, 12, 0).getTime());
     resetPlannerStore();
     resetDragGuard();
     usePlannerStore.setState({ tasks: { 1: task } });
@@ -146,6 +149,9 @@ describe('a drag ended by the pointer (the guard is stamped on drop)', () => {
         createElement('ul', null, createElement(SortableTask, { task, variant: 'full' })),
       ),
     );
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('a click after dnd-kit stops swallowing clicks, but inside the guard window, opens nothing', async () => {

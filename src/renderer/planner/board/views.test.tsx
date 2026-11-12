@@ -1,6 +1,6 @@
 import type * as DndKit from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addDays, weekStartOf } from '../../../core/time';
@@ -8,6 +8,7 @@ import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { Deadline, PlannerTask, PublicSettings, TaskList } from '../../../shared/types';
 import { resetStudyStore, useStudyStore } from '../../shell/store';
 import { installMockApi, minimalPlannerTask, mockApi, seedSubjects, type MockApi } from '../../test/mockApi';
+import { markDragEnded } from '../dnd';
 import { resetPlannerStore } from '../plannerStore';
 import { shiftMonth } from './BoardMonth';
 import { TasksBoard } from './TasksBoard';
@@ -176,6 +177,21 @@ describe('BoardDay', () => {
       { id: 1, taskId: 1, text: 'Read the handout', done: true, sort: 0 },
       { id: 2, taskId: 1, text: 'Exercises 1-5', done: false, sort: 1 },
     ],
+  });
+
+  it('a click on the empty sheet right after a drag does not focus the add line; a later one does', async () => {
+    await renderBoard({ tasks: [lab], lists: [list()] });
+    await userEvent.click(viewButton('Day'));
+    const day = screen.getByRole('region', { name: 'Wed 11 Nov' });
+    await within(day).findByText('Lab 3: lambda calculus');
+    const add = within(day).getByRole('textbox', { name: 'Add to Wed 11 Nov' });
+    const body = within(day).getByText('Lab 3: lambda calculus').closest('ul')!.parentElement!;
+    markDragEnded(Date.now());
+    fireEvent.click(body);
+    expect(add).not.toHaveFocus();
+    vi.setSystemTime(NOON + 250);
+    fireEvent.click(body);
+    expect(add).toHaveFocus();
   });
 
   it("shows the day's tasks with note, subtasks and estimate vs actual expanded, and the lists on the right", async () => {

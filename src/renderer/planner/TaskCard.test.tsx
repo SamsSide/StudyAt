@@ -254,7 +254,8 @@ describe('TaskCard', () => {
 
   it('says so on the card when a save comes back unchanged', async () => {
     const user = userEvent.setup();
-    setup();
+    const { api } = setup();
+    vi.mocked(api.tasks.update).mockResolvedValue({ tasks: [], removed: [] });
     const card = screen.getByRole('dialog', { name: 'Task: Read chapter 4' });
     const note = within(card).getByRole('textbox', { name: 'Note' });
     await user.type(note, 'Kept');

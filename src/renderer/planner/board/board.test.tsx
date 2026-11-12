@@ -10,6 +10,7 @@ import { Shell } from '../../shell/Shell';
 import { resetStudyStore, useStudyStore } from '../../shell/store';
 import { testRegistry } from '../../shell/testRegistry';
 import { installMockApi, minimalPlannerTask, mockApi, seedSubjects, type MockApi } from '../../test/mockApi';
+import { markDragEnded } from '../dnd';
 import { PlannerWidget } from '../PlannerWidget';
 import { resetPlannerStore, usePlannerStore } from '../plannerStore';
 import { TasksBoard } from './TasksBoard';
@@ -554,6 +555,18 @@ describe('TasksBoard, the Tweek look', () => {
     const fri = screen.getByRole('region', { name: 'Fri 13 Nov' });
     const blanks = fri.querySelectorAll('[data-rule="blank"]');
     fireEvent.click(blanks[blanks.length - 1]!);
+    expect(within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' })).toHaveFocus();
+  });
+
+  it('a blank-line click right after a drag does not focus the add line; a later one does', async () => {
+    await renderBoard();
+    const fri = screen.getByRole('region', { name: 'Fri 13 Nov' });
+    const blank = fri.querySelectorAll('[data-rule="blank"]')[0]!;
+    markDragEnded(Date.now());
+    fireEvent.click(blank);
+    expect(within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' })).not.toHaveFocus();
+    vi.setSystemTime(NOON + 250);
+    fireEvent.click(blank);
     expect(within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' })).toHaveFocus();
   });
 
