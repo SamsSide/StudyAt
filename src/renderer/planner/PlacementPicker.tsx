@@ -38,7 +38,8 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
   const move = usePlannerStore((s) => s.move);
   const loadLists = usePlannerStore((s) => s.loadLists);
   const [open, setOpen] = useState(false);
-  // The date field's draft: stepping or typing never moves the task, only Enter, Move or leaving the field.
+  // The date field's draft: stepping or typing never moves the task, only Enter in the field or the Move button.
+  // Leaving the field commits nothing, so Esc and the quick buttons are never overridden by it.
   const [dayDraft, setDayDraft] = useState<string | null>(null);
   const moving = useRef(false);
   const chip = useRef<HTMLButtonElement>(null);
@@ -76,6 +77,7 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
         if (e.key !== 'Escape' || !open) return;
         e.preventDefault();
         e.stopPropagation();
+        setDayDraft(null);
         setOpen(false);
         chip.current?.focus();
       }}
@@ -118,7 +120,6 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
               value={dayValue}
               aria-invalid={dayDraft !== null && dayDraft !== '' && !validDay(dayDraft) ? true : undefined}
               onChange={(e) => setDayDraft(e.target.value)}
-              onBlur={commitDay}
               onKeyDown={(e) => {
                 if (e.key !== 'Enter') return;
                 e.preventDefault();

@@ -308,7 +308,7 @@ describe('TaskDetail', () => {
     expect(api.tasks.move).not.toHaveBeenCalled();
   });
 
-  it('moves on Enter in the date field, and on leaving it with a changed value', async () => {
+  it('moves on Enter in the date field', async () => {
     const user = userEvent.setup();
     const { api } = setup();
     await user.click(screen.getByRole('button', { name: /^Placement/ }));
