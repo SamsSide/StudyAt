@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatClock as sharedFormatClock } from '../../shared/clock';
 import { addDays, dayKeyOf } from '../../core/time';
+import { INTENTION_MAX, TASK_GONE } from '../../shared/planner';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { TimerState } from '../../shared/types';
 import { MiniTimer } from '../mini/MiniTimer';
@@ -239,7 +240,15 @@ describe('Countdown', () => {
 });
 
 describe('TaskSelect', () => {
-  const todayKey = dayKeyOf(Date.now(), DEFAULT_SETTINGS.rolloverHour);
+  const NOW = new Date(2026, 10, 11, 12, 0).getTime();
+  // Only Date is faked, so userEvent and the promises keep running normally.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const todayKey = dayKeyOf(NOW, DEFAULT_SETTINGS.rolloverHour);
   const tomorrow = addDays(todayKey, 1);
   const seedPlanner = (): void => {
     vi.mocked(api.planner.week).mockResolvedValue({
@@ -295,14 +304,39 @@ describe('TaskSelect', () => {
     expect(api.timer.setTask).toHaveBeenCalledWith(5);
   });
 
-  it('a pick that main rejects says the task no longer exists', async () => {
+  it('opens on the held task, so Enter, Enter does not swap it for "No task"', async () => {
+    const user = userEvent.setup();
+    setup({ status: 'running', taskId: 4, taskText: 'Essay plan' });
+    seedPlanner();
+    render(<TimerWidget />);
+    screen.getByRole('combobox', { name: 'Task' }).focus();
+    await user.keyboard('{Enter}');
+    // Once the fetch reorders the list the held task is still the highlighted one.
+    await screen.findByRole('option', { name: 'Read ch. 3' });
+    expect(screen.getByRole('option', { name: 'Essay plan' }).className).toMatch(/activeOption/);
+    await user.keyboard('{Enter}');
+    expect(api.timer.setTask).not.toHaveBeenCalled();
+  });
+
+  it('a pick that main rejects as gone says the task no longer exists', async () => {
     const user = userEvent.setup();
     seedPlanner();
-    vi.mocked(api.timer.setTask).mockRejectedValue(new Error('gone'));
+    vi.mocked(api.timer.setTask).mockRejectedValue(new Error(TASK_GONE));
     render(<TimerWidget />);
     await user.click(screen.getByRole('combobox', { name: 'Task' }));
     await user.click(await screen.findByRole('option', { name: 'Essay plan' }));
     expect(await screen.findByText('That task no longer exists.')).toBeInTheDocument();
+  });
+
+  it('any other rejection says the task could not be set', async () => {
+    const user = userEvent.setup();
+    seedPlanner();
+    vi.mocked(api.timer.setTask).mockRejectedValue(new Error('boom'));
+    render(<TimerWidget />);
+    await user.click(screen.getByRole('combobox', { name: 'Task' }));
+    await user.click(await screen.findByRole('option', { name: 'Essay plan' }));
+    expect(await screen.findByText("Couldn't set that task.")).toBeInTheDocument();
+    expect(screen.queryByText('That task no longer exists.')).toBeNull();
   });
 
   it('is available in Countdown but not in a break', () => {
@@ -330,10 +364,44 @@ describe('TaskSelect', () => {
 describe('IntentionField and OutcomeAsk', () => {
   const field = (): HTMLInputElement => screen.getByPlaceholderText('By the end I will…');
 
-  it('has the placeholder and a 140 character limit, and Enter saves the text', async () => {
+  it('caps the text at 140 code points, so an emoji counts as one', async () => {
     const user = userEvent.setup();
     render(<TimerWidget />);
-    expect(field()).toHaveAttribute('maxLength', '140');
+    expect(INTENTION_MAX).toBe(140);
+    await user.click(field());
+    await user.paste('😀'.repeat(INTENTION_MAX));
+    expect([...field().value]).toHaveLength(INTENTION_MAX);
+    await user.paste('😀');
+    expect(field().value).toBe('😀'.repeat(INTENTION_MAX));
+  });
+
+  it('drops the draft when the field hides, so it shows the text from main on return', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    await user.type(field(), 'Draft text{Enter}');
+    act(() => {
+      useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, mode: 'short' } });
+    });
+    expect(screen.queryByPlaceholderText('By the end I will…')).toBeNull();
+    act(() => {
+      useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, mode: 'focus' } });
+    });
+    expect(field()).toHaveValue('');
+  });
+
+  it('shows a newer intention from main over a draft', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    await user.type(field(), 'Half typed');
+    act(() => {
+      useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, intention: 'From main' } });
+    });
+    expect(field()).toHaveValue('From main');
+  });
+
+  it('has the placeholder, and Enter saves the text', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
     await user.type(field(), 'Finish Q1–3{Enter}');
     expect(api.timer.setIntention).toHaveBeenCalledTimes(1);
     expect(api.timer.setIntention).toHaveBeenCalledWith('Finish Q1–3');
@@ -376,7 +444,7 @@ describe('IntentionField and OutcomeAsk', () => {
     expect(group).toHaveTextContent('Finish Q1–3');
     await user.click(within(group).getByRole('button', { name: 'Partly' }));
     expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'partly');
-    await user.click(within(group).getByRole('button', { name: 'Skip' }));
+    await user.click(within(group).getByRole('button', { name: 'Skip the question' }));
     expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', null);
     await user.click(within(group).getByRole('button', { name: 'Done' }));
     await user.click(within(group).getByRole('button', { name: 'Not' }));

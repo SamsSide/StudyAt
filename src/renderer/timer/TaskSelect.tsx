@@ -4,10 +4,10 @@
 // The task the timer holds is shown by its remembered text even once it is done or deleted: the
 // timer keeps it until the segment ends (v1.1 spec §3.3).
 import { type FocusEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import { dayKeyOf } from '../../core/time';
 import { TASK_GONE } from '../../shared/planner';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PlannerTask } from '../../shared/types';
+import { plannerToday } from '../planner/format';
 import { useStudyStore } from '../shell/store';
 import styles from './timer.module.css';
 
@@ -29,7 +29,7 @@ export function TaskSelect() {
   const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? DEFAULT_SETTINGS.rolloverHour);
   const [found, setFound] = useState<Found>(EMPTY);
   const [filter, setFilter] = useState('');
-  const [gone, setGone] = useState(false);
+  const [failed, setFailed] = useState<'gone' | 'other' | null>(null);
 
   const needle = filter.trim().toLowerCase();
   const matches = (text: string): boolean => needle === '' || text.toLowerCase().includes(needle);
@@ -58,6 +58,8 @@ export function TaskSelect() {
   const box = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  // Set once the user moves the highlight or types; until then it follows the held task.
+  const moved = useRef(false);
   const id = useId();
   const labelId = `${id}-label`;
   const listId = `${id}-list`;
@@ -67,14 +69,29 @@ export function TaskSelect() {
     if (open) search.current?.focus();
   }, [open]);
 
+  // Open on the held task, so Enter, Enter never swaps it for "No task"; the planner fetch can
+  // reorder the list, so keep following it until the user takes over.
+  const heldIndex = Math.max(
+    0,
+    choices.findIndex((c) => c.id === taskId),
+  );
+  useEffect(() => {
+    if (open && !moved.current) setActive(heldIndex);
+  }, [open, heldIndex]);
+  const highlight = (i: number): void => {
+    moved.current = true;
+    setActive(i);
+  };
+
   const show = (): void => {
     const rect = box.current?.getBoundingClientRect();
     setUpwards(rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight);
     setFilter('');
-    setGone(false);
-    setActive(0);
+    setFailed(null);
+    moved.current = false;
+    setActive(heldIndex);
     setOpen(true);
-    const today = dayKeyOf(Date.now(), rolloverHour);
+    const today = plannerToday(rolloverHour);
     Promise.all([window.studyat.planner.week(today), window.studyat.planner.lists()])
       .then(([week, lists]) =>
         setFound({
@@ -93,8 +110,10 @@ export function TaskSelect() {
     const choice = choices[i];
     close(true);
     if (!choice || choice.id === taskId) return;
-    setGone(false);
-    window.studyat.timer.setTask(choice.id).catch(() => setGone(true));
+    setFailed(null);
+    window.studyat.timer.setTask(choice.id).catch((err: unknown) => {
+      setFailed(err instanceof Error && err.message.includes(TASK_GONE) ? 'gone' : 'other');
+    });
   };
   const clamp = (i: number): number => Math.min(choices.length - 1, Math.max(0, i));
 
@@ -104,8 +123,8 @@ export function TaskSelect() {
     if (!open) {
       if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Enter' || key === ' ') show();
       else return;
-    } else if (key === 'ArrowDown') setActive(clamp(active + 1));
-    else if (key === 'ArrowUp') setActive(clamp(active - 1));
+    } else if (key === 'ArrowDown') highlight(clamp(active + 1));
+    else if (key === 'ArrowUp') highlight(clamp(active - 1));
     else if (key === 'Enter') pick(active);
     else if (key === 'Escape') close(true);
     else if (key === 'Tab') {
@@ -160,9 +179,9 @@ export function TaskSelect() {
           />
         </svg>
       </div>
-      {gone && (
+      {failed !== null && (
         <p className={styles.taskGone} role="alert">
-          {TASK_GONE}
+          {failed === 'gone' ? TASK_GONE : "Couldn't set that task."}
         </p>
       )}
       {open && (
@@ -179,7 +198,7 @@ export function TaskSelect() {
             value={filter}
             onChange={(e) => {
               setFilter(e.target.value);
-              setActive(0); // typing narrows the list, so the highlight goes back to its top
+              highlight(0); // typing narrows the list, so the highlight goes back to its top
             }}
             onKeyDown={onKey}
           />
@@ -197,7 +216,7 @@ export function TaskSelect() {
                   title={c.text}
                   // Keep focus in the filter box, so choosing doesn't blur and close it first.
                   onMouseDown={(e) => e.preventDefault()}
-                  onMouseEnter={() => setActive(i)}
+                  onMouseEnter={() => highlight(i)}
                   onClick={() => pick(i)}
                 >
                   <span className={styles.optionText}>{c.text}</span>

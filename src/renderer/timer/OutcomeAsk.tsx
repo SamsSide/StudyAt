@@ -28,7 +28,11 @@ export function OutcomeAsk() {
             {a.label}
           </button>
         ))}
-        <button type="button" className={styles.linkButton} onClick={() => answer(null)}>
+        <button
+          type="button"
+          className={styles.linkButton}
+          aria-label="Skip the question"
+          onClick={() => answer(null)}>
           Skip
         </button>
       </div>
