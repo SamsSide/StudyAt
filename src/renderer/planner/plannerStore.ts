@@ -100,6 +100,9 @@ const initialData = () => ({
   notice: null as string | null,
 });
 
+/** The notice when main refuses a move and the optimistic one is rolled back. */
+const MOVE_FAILED = "Couldn't move that task.";
+
 const bySort = (a: PlannerTask, b: PlannerTask): number => a.sort - b.sort || a.id - b.id;
 
 /** Done tasks keep their place below the open ones (spec §3.6). */
@@ -225,10 +228,11 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
       const before = get().tasks;
       const task = before[id];
       if (!task) return;
-      // Optimistic: drop it into the destination at `index`, renumbering that place's sort.
+      // Optimistic: drop it among the destination's open tasks at `index` (as main's `place` counts),
+      // renumbering their sort; done tasks keep theirs.
       const here = (t: PlannerTask): boolean => ('day' in to ? t.day === to.day : t.listId === to.listId);
       const peers = Object.values(before)
-        .filter((t) => t.id !== id && here(t))
+        .filter((t) => t.id !== id && !t.done && here(t))
         .sort(bySort);
       const moved: PlannerTask =
         'day' in to ? { ...task, day: to.day, listId: null } : { ...task, day: null, listId: to.listId };
@@ -242,7 +246,7 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
         applyChange(await api().tasks.move(id, to));
       } catch (e) {
         logIpcError('tasks.move', e);
-        set({ tasks: before });
+        set({ tasks: before, notice: MOVE_FAILED });
       }
     },
 

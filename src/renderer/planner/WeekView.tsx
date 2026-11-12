@@ -1,6 +1,6 @@
 // The widget's Week view (v1.2 spec §3.7): Monday to Sunday of the week holding the chosen day,
 // each a collapsible section with its open count, rows you can drag between days, and a quick-add.
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays, weekStartOf } from '../../core/time';
 import { useStudyStore } from '../shell/store';
@@ -17,7 +17,7 @@ function DaySection({ day, today }: { day: string; today: string }) {
   const tasks = usePlannerStore(useShallow((s: PlannerState) => tasksOnDay(s, day)));
   const openCount = tasks.filter((t) => !t.done).length;
   const label = formatDayLabel(day);
-  const bodyId = `week-${day}`;
+  const bodyId = useId();
 
   return (
     <DropZone id={dayZone(day)} className={styles.weekDay} items={tasks.map((t) => t.id)}>
@@ -64,7 +64,11 @@ export function WeekView() {
     void loadRange('week', start);
   }, [start, loadRange]);
 
-  const go = (to: string): void => setDay(to === today ? null : to);
+  // Landing on the week that holds today clears the day, so the Day tab opens on today.
+  const go = (to: string): void => {
+    const week = weekStartOf(to);
+    setDay(week === weekStartOf(today) ? null : week);
+  };
 
   return (
     <section className={styles.view} aria-label="Week">

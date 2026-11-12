@@ -11,6 +11,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type Announcements,
   type CollisionDetection,
   type DragEndEvent,
 } from '@dnd-kit/core';
@@ -21,7 +22,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import type { ReactNode } from 'react';
-import type { PlannerTask, TaskMove } from '../../shared/types';
+import type { PlannerTask, TaskList, TaskMove } from '../../shared/types';
+import { formatDayLabel } from '../stats/format';
 import { usePlannerStore } from './plannerStore';
 import { TaskRow } from './TaskRow';
 import styles from './planner.module.css';
@@ -71,12 +73,15 @@ export function resolveDrop(
     if (!target || z === null) return null;
     zone = z;
     const ids = order(zone);
+    // A done task dropped on its own zone has no open place to take: nothing moves.
+    if (task.done && zoneOf(task) === zone) return null;
     const at = ids.indexOf(overId);
     // A done task sits below the open ones: dropping on it means "after the last open one".
     index = at === -1 ? ids.length - (ids.includes(id) ? 1 : 0) : at;
     if (ids.includes(id) && ids.indexOf(id) === index) return null;
   } else {
     zone = over;
+    if (task.done && zoneOf(task) === zone) return null;
     const ids = order(zone);
     const here = ids.indexOf(id);
     if (here !== -1 && here === ids.length - 1) return null;
@@ -87,12 +92,59 @@ export function resolveDrop(
 }
 
 /** A zone's open task ids, by sort, from the whole store (a filter never changes where a task goes). */
-function openOrder(zone: string): number[] {
+export function openOrder(zone: string): number[] {
   return Object.values(usePlannerStore.getState().tasks)
     .filter((t) => !t.done && zoneOf(t) === zone)
     .sort((a, b) => a.sort - b.sort || a.id - b.id)
     .map((t) => t.id);
 }
+
+const zoneLabel = (zone: string, lists: TaskList[]): string | null => {
+  if (zone.startsWith('day:')) return formatDayLabel(zone.slice(4));
+  if (zone.startsWith('list:')) {
+    const list = lists.find((l) => l.id === Number(zone.slice(5)));
+    return list ? list.name : null;
+  }
+  return null;
+};
+
+/** Screen-reader announcements that read the task title and the day or list name, never the raw
+ *  ids (`task:1`, `day:2026-11-12`). `read` gives the current store so a drag sees fresh data. */
+export function buildAnnouncements(
+  read: () => { tasks: Record<number, PlannerTask>; lists: TaskList[] },
+  order: (zone: string) => number[],
+): Announcements {
+  const titleOf = (id: string | number): string => {
+    const n = taskIdOf(String(id));
+    return (n !== null ? read().tasks[n]?.title : undefined) ?? 'task';
+  };
+  const placeOf = (id: string | number): string | null => {
+    const over = String(id);
+    const { tasks, lists } = read();
+    const n = taskIdOf(over);
+    if (n === null) return zoneLabel(over, lists);
+    const t = tasks[n];
+    const z = t ? zoneOf(t) : null;
+    return z === null ? null : zoneLabel(z, lists);
+  };
+  return {
+    onDragStart: ({ active }) => `Picked up "${titleOf(active.id)}".`,
+    onDragOver: ({ over }) => {
+      const where = over ? placeOf(over.id) : null;
+      return where ? `Over ${where}.` : undefined;
+    },
+    onDragEnd: ({ active, over }) => {
+      const title = titleOf(active.id);
+      const { tasks } = read();
+      const drop = resolveDrop(String(active.id), over ? String(over.id) : null, tasks, order);
+      const where = drop && over ? placeOf(over.id) : null;
+      return where ? `Moved "${title}" to ${where}.` : `Put "${title}" back.`;
+    },
+    onDragCancel: ({ active }) => `Put "${titleOf(active.id)}" back.`,
+  };
+}
+
+const announcements = buildAnnouncements(() => usePlannerStore.getState(), openOrder);
 
 /** A task row under the pointer wins over the zone around it; the keyboard has no pointer, so the
  *  nearest centre decides. */
@@ -121,7 +173,12 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={collisions} onDragEnd={onDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisions}
+      accessibility={{ announcements }}
+      onDragEnd={onDragEnd}
+    >
       {children}
     </DndContext>
   );

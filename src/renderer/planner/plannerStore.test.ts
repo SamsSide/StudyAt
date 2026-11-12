@@ -191,5 +191,22 @@ describe('plannerStore', () => {
     expect(store().tasks[1]?.day).toBeNull();
     await pending;
     expect(store().tasks[1]?.day).toBe('1970-01-05');
+    expect(store().notice).toBe("Couldn't move that task.");
+  });
+
+  it('move counts open peers only, leaving done tasks where they are', async () => {
+    installMockApi(mockApi({ tasks: { move: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })) } }));
+    store().apply({
+      tasks: [
+        task({ id: 1 }),
+        task({ id: 2, day: null, listId: 5, sort: 0, done: true }),
+        task({ id: 3, day: null, listId: 5, sort: 1 }),
+      ],
+      removed: [],
+    });
+    await store().move(1, { listId: 5, index: 0 });
+    expect(store().tasks[1]?.sort).toBe(0);
+    expect(store().tasks[3]?.sort).toBe(1);
+    expect(store().tasks[2]?.sort).toBe(0);
   });
 });

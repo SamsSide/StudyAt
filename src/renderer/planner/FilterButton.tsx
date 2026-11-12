@@ -1,6 +1,6 @@
 // The Tasks filter (v1.2 spec §3.7): a "Filter" button that opens a small popover with a subject
-// and a tag. It reads as pressed while any filter is set. Esc closes it and returns focus.
-import { useId, useRef, useState, type KeyboardEvent } from 'react';
+// and a tag. It reads as pressed while any filter is set. Esc closes it and returns focus; a click outside closes it too.
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useStudyStore } from '../shell/store';
 import { usePlannerStore } from './plannerStore';
 import styles from './planner.module.css';
@@ -19,6 +19,18 @@ export function FilterButton() {
   });
   const active = filter.subjectId !== null || filter.tag !== null;
 
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent): void => {
+      if (e.target instanceof Node && root.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.key !== 'Escape' || !open) return;
     e.stopPropagation();
@@ -27,7 +39,7 @@ export function FilterButton() {
   };
 
   return (
-    <div className={styles.filter} onKeyDown={onKeyDown}>
+    <div ref={root} className={styles.filter} onKeyDown={onKeyDown}>
       <button
         ref={button}
         type="button"
