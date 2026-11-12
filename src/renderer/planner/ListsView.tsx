@@ -1,5 +1,5 @@
 // The widget's Lists view (v1.2 spec §3.6, §3.7): a list picker, that list's tasks, and a quick-add
-// row. A list linked to a subject with an upcoming exam says how far off it is.
+// row, and the list menu. A list linked to a subject with an upcoming exam says how far off it is.
 import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { examLine, upcomingExam } from '../../core/planner/schedule';
@@ -7,6 +7,7 @@ import { wallStamp } from '../../core/wallclock';
 import type { Deadline } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { deadlineDayKey, plannerToday } from './format';
+import { ListMenu } from './ListMenu';
 import { tasksInList, usePlannerStore } from './plannerStore';
 import { QuickAdd } from './QuickAdd';
 import { TaskRow } from './TaskRow';
@@ -46,18 +47,22 @@ export function ListsView() {
 
   return (
     <section className={styles.view} aria-label="Lists">
-      <select
-        className={styles.select}
-        aria-label="List"
-        value={list.id}
-        onChange={(e) => setListId(Number(e.target.value))}
-      >
-        {lists.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.name}
-          </option>
-        ))}
-      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+        <select
+          className={styles.select}
+          style={{ flex: 1, minWidth: 0 }}
+          aria-label="List"
+          value={list.id}
+          onChange={(e) => setListId(Number(e.target.value))}
+        >
+          {lists.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+        <ListMenu list={list} />
+      </div>
       {examText && <p className={styles.exam}>{examText}</p>}
       {tasks.length === 0 ? (
         <p className={styles.empty}>Nothing in this list yet.</p>

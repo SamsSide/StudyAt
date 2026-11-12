@@ -15,7 +15,7 @@ import type {
 } from '../../shared/types';
 
 export type PanelId = 'spaces' | 'sounds';
-export type OverlayId = 'stats' | 'settings' | 'help';
+export type OverlayId = 'stats' | 'settings' | 'help' | 'tasks';
 
 export interface StudyState {
   timer: TimerState;

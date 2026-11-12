@@ -1,0 +1,400 @@
+/* The Tasks board (v1.2 spec §3.7): a calm sheet of ruled paper on the dark glass. The head stays
+   put; the body scrolls; each day column scrolls inside itself, so a huge day never pushes the
+   board past the window (§7). Rows reuse the widget's TaskRow; on the board its chips wrap below the
+   title instead of squeezing it, which keeps titles whole at 1280x800 and 150% scaling. Motion is
+   the shared --duration tokens, zeroed under prefers-reduced-motion by tokens.css. */
+.board {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.views,
+.nav,
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.views {
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+}
+
+.tools {
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.viewButton,
+.navButton,
+.textButton {
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.navButton {
+  width: 28px;
+  padding: 0;
+  font-size: var(--text-md);
+}
+
+.textButton {
+  background: var(--glass-fill-thin);
+}
+
+.viewButton[aria-pressed='true'] {
+  background: var(--active);
+}
+
+.viewButton:hover,
+.navButton:hover,
+.textButton:hover:not([aria-disabled='true']) {
+  background: var(--hover);
+}
+
+.textButton[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.viewButton:focus-visible,
+.navButton:focus-visible,
+.textButton:focus-visible,
+.listName:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.newTask {
+  display: flex;
+  max-width: 480px;
+}
+
+.newTask > form {
+  flex: 1;
+}
+
+.notice {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.notice:empty {
+  display: none;
+}
+
+/* Everything under the head: the one place the board scrolls as a whole. */
+.scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: var(--space-2);
+}
+
+/* Week: Mon-Fri, then Sat over Sun. A fixed height so the columns, not the board, take the overflow. */
+.week {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  height: clamp(300px, calc(100vh - 220px), 640px);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.column > .day {
+  flex: 1;
+}
+
+.weekend > .day {
+  flex: 1 1 0;
+}
+
+.day,
+.list {
+  /* Tweek: no cards, just columns of ruled paper; a drop target warms up quietly. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration) var(--ease);
+}
+
+.day[data-over='true'],
+.list[data-over='true'] {
+  background: var(--glass-fill-thin);
+}
+
+.daySection,
+.listSection {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-2);
+}
+
+.dayHead {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--space-1) var(--space-2);
+  border-bottom: 2px solid var(--separator);
+}
+
+.daySection[data-today='true'] .dayHead {
+  border-bottom-color: var(--accent);
+}
+
+.dayName {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.daySection[data-today='true'] .dayName {
+  color: var(--accent-bright);
+}
+
+.dayStats {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.deadlines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: 2px;
+}
+
+/* The rules: tasks, the quick-add on the first empty line, then blank lines. Scrolls in itself. */
+.ruled {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tasks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tasks {
+  position: relative;
+}
+
+/* One task per ruled line, the title on the line. */
+.tasks > li {
+  flex-wrap: wrap;
+  min-height: 32px;
+  border-bottom: 1px solid var(--separator);
+  border-radius: 0;
+}
+
+/* The row being dragged stays behind as the gap it will drop into (its line follows the pointer in
+   the drag overlay): an empty slot edged in the accent. */
+.tasks > li[data-dragging='true'] {
+  opacity: 1;
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  border-radius: var(--radius-xs);
+}
+
+.tasks > li[data-dragging='true'] > * {
+  visibility: hidden;
+}
+
+/* Where a task from another column will land: a thin accent line that takes no room. */
+.insert {
+  position: relative;
+  height: 0;
+  list-style: none;
+}
+
+.insert::before {
+  content: '';
+  position: absolute;
+  inset: -1px 0 auto;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+/* The line under the pointer: a lifted strip of the board's glass. */
+.dragLine {
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  background: var(--glass-sheen), var(--panel-strong);
+  backdrop-filter: var(--glass-filter-strong);
+  -webkit-backdrop-filter: var(--glass-filter-strong);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+  cursor: grabbing;
+}
+
+/* The row's chips (its first span) drop to their own line under the title. */
+.tasks > li > span:first-of-type {
+  order: 3;
+  flex-basis: 100%;
+  justify-content: flex-start;
+  padding-left: 24px;
+}
+
+.tasks > li > span:first-of-type:empty {
+  display: none;
+}
+
+.rule {
+  min-height: 32px;
+  border-bottom: 1px solid var(--separator);
+}
+
+.rule[data-rule='add'] > form > input {
+  min-height: 31px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  padding: 0 var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.rule[data-rule='add'] > form > input:focus-visible {
+  background: var(--glass-fill-thin);
+}
+
+/* Lists: three to a row under the week. */
+.lists {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.listGrid {
+  /* Three columns, set inline from LISTS_PER_ROW. */
+  display: grid;
+  gap: var(--space-3);
+}
+
+.list {
+  max-height: 320px;
+}
+
+.listHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-bottom: var(--space-1);
+  border-bottom: 2px solid var(--separator);
+}
+
+.listName {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+
+.listName:hover {
+  background: var(--hover);
+}
+
+.listMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-1) 0;
+  font-size: var(--text-xs);
+}
+
+.subjectChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  color: var(--text-muted);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.exam {
+  color: var(--accent-bright);
+}
+
+.newList {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

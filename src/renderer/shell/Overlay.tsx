@@ -12,11 +12,14 @@ export function Overlay({
   title,
   onClose,
   narrow = false,
+  full = false,
   children,
 }: {
   title: string;
   onClose: () => void;
   narrow?: boolean;
+  /** The whole window less a 24 px inset (the Tasks board, v1.2 spec §3.7); the others keep their size. */
+  full?: boolean;
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -47,14 +50,14 @@ export function Overlay({
 
   return (
     <div
-      className={styles.scrim}
+      className={`${styles.scrim} ${full ? styles.scrimFull : ''}`}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         ref={dialog}
-        className={`${styles.dialog} ${styles.frosted} ${narrow ? styles.dialogNarrow : ''}`}
+        className={`${styles.dialog} ${styles.frosted} ${narrow ? styles.dialogNarrow : ''} ${full ? styles.dialogFull : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

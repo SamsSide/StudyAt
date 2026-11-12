@@ -1,5 +1,5 @@
 // What fills each slot of the shell (spec §4 + widgets addendum): the two side panels, the seven
-// widgets, the two full-window overlays and the space behind everything.
+// widgets, the three full-window overlays and the space behind everything.
 import { CalendarWidget } from './calendar/CalendarWidget';
 import { DeadlinesWidget } from './deadlines/DeadlinesWidget';
 import { NotesWidget } from './notes/NotesWidget';
@@ -12,6 +12,7 @@ import { spaceAudio, useSpaceAudio } from './spaces/spaceAudio';
 import { SpacesPanel } from './spaces/SpacesPanel';
 import { SpotifyWidget } from './spotify/SpotifyWidget';
 import { StatsOverlay } from './stats/StatsOverlay';
+import { TasksBoard } from './planner/board/TasksBoard';
 import { PlannerWidget } from './planner/PlannerWidget';
 import { TimerWidget } from './timer/TimerWidget';
 import { WeatherWidget } from './weather/WeatherWidget';
@@ -42,6 +43,6 @@ export const registry: Registry = {
     notes: NotesWidget,
     deadlines: DeadlinesWidget,
   },
-  overlays: { stats: StatsOverlay, settings: SettingsOverlay },
+  overlays: { stats: StatsOverlay, settings: SettingsOverlay, tasks: TasksBoard },
   background: Background,
 };

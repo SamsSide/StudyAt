@@ -15,7 +15,7 @@ import { Overlay } from './Overlay';
 import styles from './shell.module.css';
 import { ShortcutsHelp } from './ShortcutsHelp';
 import { SidePanel } from './SidePanel';
-import { initStudyStore, type PanelId, useStudyStore } from './store';
+import { initStudyStore, type OverlayId, type PanelId, useStudyStore } from './store';
 import { TopBar } from './TopBar';
 import { useAutoHide } from './useAutoHide';
 import { useShortcuts } from './useShortcuts';
@@ -25,7 +25,7 @@ import { WidgetFrame } from './WidgetFrame';
 export interface Registry {
   panels: Record<PanelId, ComponentType>;
   widgets: Record<WidgetId, ComponentType>;
-  overlays: Record<'stats' | 'settings', ComponentType>;
+  overlays: Record<Exclude<OverlayId, 'help'>, ComponentType>;
   background: ComponentType;
 }
 
@@ -50,7 +50,12 @@ const WIDGET_ORDER: readonly WidgetId[] = [
   'notes',
   'deadlines',
 ];
-const OVERLAY_TITLES = { stats: 'Stats', settings: 'Settings', help: 'Keyboard shortcuts' } as const;
+const OVERLAY_TITLES: Record<OverlayId, string> = {
+  stats: 'Stats',
+  settings: 'Settings',
+  help: 'Keyboard shortcuts',
+  tasks: 'Tasks',
+};
 
 const DEFAULT_AUTO_HIDE_SECONDS = 5;
 /** The top-left corner, in px, where the pointer brings up "Show interface" in focus view (spec §3.4). */
@@ -190,6 +195,7 @@ export function Shell({ registry }: { registry: Registry }) {
           title={OVERLAY_TITLES[overlay]}
           onClose={() => setOverlay(null)}
           narrow={overlay === 'help'}
+          full={overlay === 'tasks'}
         >
           {OverlayBody ? <OverlayBody /> : <ShortcutsHelp />}
         </Overlay>

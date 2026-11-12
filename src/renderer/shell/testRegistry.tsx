@@ -19,6 +19,10 @@ export const testRegistry = (): Registry => ({
     notes: stub('notes-widget'),
     deadlines: stub('deadlines-widget'),
   },
-  overlays: { stats: stub('stats-overlay'), settings: stub('settings-overlay') },
+  overlays: {
+    stats: stub('stats-overlay'),
+    settings: stub('settings-overlay'),
+    tasks: stub('tasks-overlay'),
+  },
   background: stub('background'),
 });

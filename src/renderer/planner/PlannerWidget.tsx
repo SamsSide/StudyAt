@@ -1,6 +1,7 @@
 // The Tasks widget body (v1.2 spec §3.7): tabs, a filter, a status line and the view. The shell's
 // WidgetFrame supplies the glass, the title and the drag header. Day and Week rows drag between days.
 import { useEffect, useId } from 'react';
+import { useStudyStore } from '../shell/store';
 import { DayView } from './DayView';
 import { PlannerDnd } from './dnd';
 import { FilterButton } from './FilterButton';
@@ -45,7 +46,19 @@ export function PlannerWidget() {
             </button>
           ))}
         </div>
-        <FilterButton />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+          <FilterButton />
+          {/* The full-window board (spec §3.7). */}
+          <button
+            type="button"
+            className={styles.textButton}
+            aria-label="Expand"
+            title="Open the Tasks board"
+            onClick={() => useStudyStore.getState().setOverlay('tasks')}
+          >
+            ⤢
+          </button>
+        </div>
       </div>
       <p role="status" aria-label="Task notice" className={styles.notice}>
         {notice}
