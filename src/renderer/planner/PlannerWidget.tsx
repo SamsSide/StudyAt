@@ -6,6 +6,7 @@ import { PlannerDnd } from './dnd';
 import { FilterButton } from './FilterButton';
 import { ListsView } from './ListsView';
 import { usePlannerStore, type PlannerTab } from './plannerStore';
+import { TaskDetail } from './TaskDetail';
 import { WeekView } from './WeekView';
 import styles from './planner.module.css';
 
@@ -50,6 +51,7 @@ export function PlannerWidget() {
           {tab === 'lists' ? <ListsView /> : tab === 'week' ? <WeekView /> : <DayView />}
         </PlannerDnd>
       </div>
+      <TaskDetail />
     </div>
   );
 }

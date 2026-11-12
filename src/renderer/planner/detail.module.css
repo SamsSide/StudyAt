@@ -1,0 +1,305 @@
+/* The task detail popover (v1.2 spec §3.7): a frosted panel centred over the window, above the
+   widgets and the board. Motion uses the shared --duration tokens, which tokens.css zeroes under
+   prefers-reduced-motion. */
+.popover {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: calc(var(--z-overlay) + 1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: var(--space-4);
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter-strong);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.popover:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-lg), var(--focus-ring);
+}
+
+.top,
+.titleRow,
+.inline,
+.subtask {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.top {
+  justify-content: space-between;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fieldLabel {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.input,
+.titleInput,
+.note,
+.subtaskText {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font: inherit;
+}
+
+.input {
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+}
+
+.titleInput {
+  flex: 1;
+  min-height: var(--control-h-lg);
+  padding: 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+.note {
+  padding: var(--space-2) var(--space-3);
+  resize: vertical;
+}
+
+.subtaskText {
+  flex: 1;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+}
+
+.input::placeholder,
+.note::placeholder {
+  color: var(--text-faint);
+}
+
+.input option {
+  color: #1b1e27;
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger-fill);
+}
+
+.input:focus-visible,
+.titleInput:focus-visible,
+.note:focus-visible,
+.subtaskText:focus-visible,
+.check:focus-visible,
+.chipButton:focus-visible,
+.iconButton:focus-visible,
+.smallButton:focus-visible,
+.swatch:focus-visible,
+.tagRemove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.chipButton,
+.smallButton,
+.iconButton,
+.tagRemove {
+  font: inherit;
+  color: var(--text);
+  border: 0;
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.chipButton,
+.smallButton {
+  min-height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  font-size: var(--text-sm);
+}
+
+.smallButton[aria-pressed='true'],
+.swatch[aria-pressed='true'] {
+  background: var(--active);
+}
+
+.chipButton:hover,
+.smallButton:hover,
+.iconButton:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.iconButton {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.placement {
+  position: relative;
+}
+
+.placementPanel {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 220px;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter-strong);
+  box-shadow: var(--shadow);
+}
+
+.listChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subtasks,
+.tags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.subtaskList,
+.tagList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subtaskList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.subtask[data-done='true'] .subtaskText {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.tagList:empty {
+  display: none;
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  font-size: var(--text-sm);
+}
+
+.tagRemove {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.swatch {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--separator);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  cursor: pointer;
+}
+
+.swatch[aria-pressed='true'] {
+  border-color: var(--text);
+}
+
+.swatch[data-colour='yellow'] {
+  background: var(--note-yellow);
+}
+.swatch[data-colour='pink'] {
+  background: var(--note-pink);
+}
+.swatch[data-colour='blue'] {
+  background: var(--note-blue);
+}
+.swatch[data-colour='green'] {
+  background: var(--note-green);
+}
+.swatch[data-colour='purple'] {
+  background: var(--note-purple);
+}
+.swatch[data-colour='grey'] {
+  background: var(--note-grey);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+.focused {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
