@@ -2,7 +2,7 @@
 // estimate vs actual laid open, under a head with "<planned> planned · <studied> studied" and the
 // day's deadlines; the lists stand in a right-hand column to drag from. One drop space with the
 // board, so a list task dropped on the day lands there (and the insertion line shows where).
-import { useEffect, type MouseEvent } from 'react';
+import { useEffect, useRef, type MouseEvent } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { useShallow } from 'zustand/react/shallow';
 import type { PlannerTask } from '../../../shared/types';
@@ -166,6 +166,11 @@ export function BoardDay({ day }: { day: string }) {
   const zone = dayZone(day);
   const hint = useInsertHint(zone, tasks);
   const lastOpen = tasks.reduce((at, t, i) => (t.done ? at : i), -1);
+  const addRef = useRef<HTMLInputElement>(null);
+  const focusAdd = (e: MouseEvent): void => {
+    if ((e.target as HTMLElement).closest('li, button, input, label, a, [role="button"]')) return;
+    addRef.current?.focus();
+  };
   const label = formatDayLabel(day);
 
   useEffect(() => {
@@ -193,7 +198,7 @@ export function BoardDay({ day }: { day: string }) {
               </div>
             )}
           </header>
-          <div className={styles.dayBody}>
+          <div className={styles.dayBody} onClick={focusAdd}>
             {tasks.length === 0 && hint === null ? (
               <p className={styles.dayEmpty}>Nothing planned for this day.</p>
             ) : (
@@ -210,7 +215,7 @@ export function BoardDay({ day }: { day: string }) {
               </ul>
             )}
             <div className={styles.dayAdd}>
-              <QuickAdd label={`Add to ${label}`} place={{ day }} placeholder="Add…" />
+              <QuickAdd label={`Add to ${label}`} place={{ day }} variant="line" inputRef={addRef} />
             </div>
           </div>
         </section>

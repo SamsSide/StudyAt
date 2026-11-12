@@ -216,6 +216,7 @@
 /* The rules: tasks, the quick-add on the first empty line, then blank lines. Grows with its tasks. */
 .ruled {
   flex: none;
+  cursor: text;
 }
 
 .tasks {
@@ -293,7 +294,8 @@
 }
 
 .rule[data-rule='add'] > form > input:focus-visible {
-  background: var(--glass-fill-thin);
+  background: var(--hover);
+  border-radius: 6px;
 }
 
 /* Lists: one row straight under the week (or month), each list a day column's width, in sort order;
@@ -441,6 +443,7 @@
 
 .dayBody {
   flex: 1;
+  cursor: text;
   min-height: 0;
   overflow-y: auto;
 }
@@ -625,7 +628,8 @@
 }
 
 .dayAdd > form > input:focus-visible {
-  background: var(--glass-fill-thin);
+  background: var(--hover);
+  border-radius: 6px;
 }
 
 /* The lists, one to a row, scrolling in their own column. */

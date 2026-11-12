@@ -331,6 +331,16 @@
   min-width: 0;
 }
 
+.addInput[data-variant='line']:not(:focus) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.addInput[data-variant='line']:focus {
+  background: var(--hover);
+  border-radius: 6px;
+}
+
 .addInput::placeholder {
   color: var(--text-faint);
 }

@@ -503,7 +503,10 @@ describe('TasksBoard, the Tweek look', () => {
     const title = within(row).getByRole('button', { name: busy.title });
     // A click, or focus handed back after one, is not :focus-visible in Chromium.
     const matches = Element.prototype.matches;
-    const spy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, sel: string) {
+    const spy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (
+      this: Element,
+      sel: string,
+    ) {
       return sel === ':focus-visible' ? false : matches.call(this, sel);
     });
     try {
@@ -539,17 +542,74 @@ describe('TasksBoard, the Tweek look', () => {
     expect(within(row).getByLabelText('Reminder 18:30')).toBeInTheDocument();
   });
 
-  it('a column quick-add says just "Add…" and keeps its "Add to <day or list>" name', async () => {
+  it('a column add line shows no text and keeps its "Add to <day or list>" name', async () => {
     await renderBoard({ lists: [list()] });
     const mon = screen.getByRole('region', { name: 'Mon 9 Nov' });
-    expect(within(mon).getByRole('textbox', { name: 'Add to Mon 9 Nov' })).toHaveAttribute(
-      'placeholder',
-      'Add…',
+    const add = within(mon).getByRole('textbox', { name: 'Add to Mon 9 Nov' });
+    expect(add.getAttribute('placeholder') ?? '').toBe('');
+  });
+
+  it("a click on any blank line of a day focuses that day's add line", async () => {
+    await renderBoard();
+    const fri = screen.getByRole('region', { name: 'Fri 13 Nov' });
+    const blanks = fri.querySelectorAll('[data-rule="blank"]');
+    fireEvent.click(blanks[blanks.length - 1]!);
+    expect(within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' })).toHaveFocus();
+  });
+
+  it('the same for a list column, the Inbox included', async () => {
+    await renderBoard({ lists: [list({ id: 1, name: 'Inbox', subjectId: null, sort: -1 }), list()] });
+    const inbox = await screen.findByRole('region', { name: 'Inbox' });
+    fireEvent.click(inbox.querySelectorAll('[data-rule="blank"]')[2]!);
+    expect(within(inbox).getByRole('textbox', { name: 'Add to Inbox' })).toHaveFocus();
+  });
+
+  it('a click on a task row, its checkbox or ▶ does not move focus to the add line', async () => {
+    await renderBoard({ tasks: [minimalPlannerTask({ id: 3, title: 'Read', day: '2026-11-13' })] });
+    const fri = screen.getByRole('region', { name: 'Fri 13 Nov' });
+    fireEvent.click(within(fri).getByRole('checkbox', { name: 'Mark "Read" as done' }));
+    expect(within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' })).not.toHaveFocus();
+  });
+
+  it('Enter adds the task and keeps typing on the next line', async () => {
+    const api = await renderBoard();
+    vi.mocked(api.tasks.create).mockImplementation((input) =>
+      Promise.resolve({
+        tasks: [minimalPlannerTask({ id: 50, title: input.title, day: input.day ?? null })],
+        removed: [],
+      }),
     );
-    const card = await screen.findByRole('region', { name: 'COMP2221 Programming Paradigms' });
-    expect(
-      within(card).getByRole('textbox', { name: 'Add to COMP2221 Programming Paradigms' }),
-    ).toHaveAttribute('placeholder', 'Add…');
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const fri = screen.getByRole('region', { name: 'Fri 13 Nov' });
+    fireEvent.click(fri.querySelectorAll('[data-rule="blank"]')[0]!);
+    await user.keyboard('Anki{Enter}');
+    await within(fri).findByText('Anki');
+    const add = within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' });
+    expect(add).toHaveFocus();
+    expect(add).toHaveValue('');
+  });
+
+  it('Esc in an add line clears it and does not close the board', async () => {
+    await renderBoard();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const add = screen.getByRole('textbox', { name: 'Add to Fri 13 Nov' });
+    const shellEsc = vi.fn();
+    document.addEventListener('keydown', shellEsc);
+    await user.click(add);
+    await user.keyboard('half{Escape}');
+    expect(add).toHaveValue('');
+    expect(add).not.toHaveFocus();
+    expect(shellEsc).not.toHaveBeenCalledWith(expect.objectContaining({ key: 'Escape' }));
+    document.removeEventListener('keydown', shellEsc);
+  });
+
+  it('on the board Day, a click on the empty sheet focuses its add line', async () => {
+    await renderBoard();
+    await userEvent
+      .setup({ advanceTimers: vi.advanceTimersByTime })
+      .click(screen.getByRole('button', { name: 'Day' }));
+    fireEvent.click(screen.getByText('Nothing planned for this day.'));
+    expect(screen.getByRole('textbox', { name: 'Add to Wed 11 Nov' })).toHaveFocus();
   });
 
   it('the lists sit in one row under the week, in sort order, with "+ New list" at its end', async () => {
