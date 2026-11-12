@@ -437,18 +437,25 @@ describe('IntentionField and OutcomeAsk', () => {
     expect(field()).toHaveValue('From main');
   });
 
-  it('refuses an insert past the cap instead of dropping the end', () => {
+  it('cuts only the inserted part past the cap: a paste keeps its start, a middle insert at the cap does nothing', () => {
     render(<TimerWidget />);
+    fireEvent.change(field(), { target: { value: 'b'.repeat(200) } });
+    expect(field()).toHaveValue('b'.repeat(INTENTION_MAX));
     const full = 'a'.repeat(INTENTION_MAX - 1) + 'z';
     fireEvent.change(field(), { target: { value: full } });
     expect(field()).toHaveValue(full);
-    // One more character in the middle would push the final 'z' off the end: the change is refused.
+    // One more character in the middle would push the final 'z' off the end: no room, no change.
     fireEvent.change(field(), { target: { value: 'a'.repeat(10) + 'X' + full.slice(10) } });
     expect(field()).toHaveValue(full);
+    // With room for two, a five-character insert in the middle keeps two and the end stays.
+    const short = 'a'.repeat(INTENTION_MAX - 2);
+    fireEvent.change(field(), { target: { value: short } });
+    fireEvent.change(field(), { target: { value: 'a'.repeat(10) + 'XXXXX' + short.slice(10) } });
+    expect(field()).toHaveValue('a'.repeat(10) + 'XX' + short.slice(10));
     // Emoji count as one each.
-    const emoji = '😀'.repeat(INTENTION_MAX);
+    const emoji = '😀'.repeat(INTENTION_MAX + 5);
     fireEvent.change(field(), { target: { value: emoji } });
-    expect(field()).toHaveValue(emoji);
+    expect(field()).toHaveValue('😀'.repeat(INTENTION_MAX));
   });
 
   it('has the placeholder, and Enter saves the text', async () => {
