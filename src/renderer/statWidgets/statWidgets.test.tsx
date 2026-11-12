@@ -203,6 +203,54 @@ describe('StatWidgets', () => {
     expect(await screen.findByText('0h 11m')).toBeInTheDocument();
   });
 
+  it('an idle timer adds nothing: a deleted session stays off the card', async () => {
+    // The timer's today figure is stale (main pushes no state on a delete); the card is not.
+    useStudyStore.setState({ timer: { ...timer(60 * MINUTE), status: 'idle' } });
+    renderWidgets([widget({ range: 'today' })], () =>
+      total({ range: 'today', totalMs: 30 * MINUTE, todayMs: 30 * MINUTE, deltaPct: null }),
+    );
+    expect(await screen.findByText('0h 30m')).toBeInTheDocument();
+    expect(screen.queryByText('1h 00m')).not.toBeInTheDocument();
+  });
+
+  it('a break or a pause adds nothing to the total', async () => {
+    useStudyStore.setState({ timer: { ...timer(60 * MINUTE), mode: 'short' } });
+    renderWidgets([widget({ id: 1, range: 'today' }), widget({ id: 2, range: 'week', y: 0.6 })], (_c, r) =>
+      total({ range: r, totalMs: (r === 'today' ? 30 : 90) * MINUTE, todayMs: 30 * MINUTE }),
+    );
+    expect(await screen.findByText('0h 30m')).toBeInTheDocument();
+    expect(screen.getByText('1h 30m')).toBeInTheDocument();
+    act(() => useStudyStore.setState({ timer: { ...timer(60 * MINUTE), status: 'paused' } }));
+    expect(screen.getByText('0h 30m')).toBeInTheDocument();
+    expect(screen.getByText('1h 30m')).toBeInTheDocument();
+  });
+
+  it('running focus adds only the time since the card’s fetch', async () => {
+    useStudyStore.setState({ timer: timer(10 * MINUTE + 59_000) });
+    // The first answer already counts the live figure (main's withLiveAccrual); later ones hang,
+    // so what shows after the minute is the fetched total plus the 2 s accrued since.
+    let calls = 0;
+    api = mockApi();
+    vi.mocked(api.statWidgets.list).mockResolvedValue([widget({ range: 'today' })]);
+    vi.mocked(api.stats.card).mockImplementation(() =>
+      calls++ === 0
+        ? Promise.resolve(
+            total({
+              range: 'today',
+              totalMs: 10 * MINUTE + 59_000,
+              todayMs: 10 * MINUTE + 59_000,
+              deltaPct: null,
+            }),
+          )
+        : new Promise<CardData>(() => {}),
+    );
+    installMockApi(api);
+    render(<StatWidgets />);
+    expect(await screen.findByText('0h 10m')).toBeInTheDocument();
+    act(() => useStudyStore.setState({ timer: timer(11 * MINUTE + 1_000) }));
+    expect(screen.getByText('0h 11m')).toBeInTheDocument();
+  });
+
   it('a whole focus minute refetches every card', async () => {
     useStudyStore.setState({ timer: timer(10 * MINUTE + 30_000) });
     renderWidgets([widget()], () => total());
@@ -218,6 +266,11 @@ describe('StatWidgets', () => {
     const list = await screen.findByRole('list', { name: 'By subject' });
     const rows = within(list).getAllByRole('listitem');
     expect(rows.map((r) => r.textContent)).toEqual(['Maths3h', 'Physics1h 30m', 'Other40m']);
+  });
+
+  it('By subject with no focus time says so, with no full stop', async () => {
+    renderWidgets([widget({ card: 'subjects' })], () => ({ ...subjects(), bars: [] }));
+    expect(await screen.findByText('No focus time in this range yet')).toBeInTheDocument();
   });
 
   it('Goal Today shows the ring and the streak', async () => {

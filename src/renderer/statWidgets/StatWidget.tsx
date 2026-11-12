@@ -7,9 +7,11 @@
 //
 // Every number comes from main (`stats.card`); a card refetches on mount, on a range or card
 // change, at each segment end, at each whole focus minute and on refreshStatCards() (a session
-// edited or deleted in Stats). Between those, a Total card adds the running focus segment's time
-// from the timer's today figure, so it ticks every second while focus runs; break and paused time
-// never move that figure (appplan §5).
+// edited or deleted in Stats). Between those, a Total card adds the focus time accrued since its
+// fetch (the timer's today figure now, less what it was when the answer landed), and only while a
+// focus segment runs, so it ticks every second then; breaks, pauses and an idle timer add nothing
+// (appplan §5). Main already counts the live segment into each answer, so nothing counts twice,
+// and a session deleted while the timer is still can't come back from a stale today figure.
 import {
   type FocusEvent,
   type KeyboardEvent,
@@ -20,6 +22,7 @@ import {
   useState,
 } from 'react';
 import type { CardData, StatCard, StatRange, StatWidget as StatWidgetData } from '../../shared/types';
+import { isFocusMode } from '../../shared/modes';
 import { logIpcError } from '../lib/ipcError';
 import shell from '../shell/shell.module.css';
 import { useStudyStore } from '../shell/store';
@@ -77,7 +80,9 @@ export function StatWidgets() {
   );
 }
 
-type Load = { status: 'loading' } | { status: 'ready'; data: CardData } | { status: 'error' };
+/** `focusMsAtFetch`: the timer's today focus figure when this answer landed. */
+type Load =
+  { status: 'loading' } | { status: 'ready'; data: CardData; focusMsAtFetch: number } | { status: 'error' };
 
 /** Main's answer for this card and range, asked again whenever `revision` or `retry` moves. */
 function useCardData(card: StatCard, range: StatRange, retry: number): Load {
@@ -87,7 +92,9 @@ function useCardData(card: StatCard, range: StatRange, retry: number): Load {
     let live = true;
     window.studyat.stats.card(card, range).then(
       (data) => {
-        if (live) setLoad({ status: 'ready', data });
+        if (!live) return;
+        const focusMsAtFetch = useStudyStore.getState().timer.todayFocusMs;
+        setLoad({ status: 'ready', data, focusMsAtFetch });
       },
       (e: unknown) => {
         logIpcError('Loading a stats card failed', e);
@@ -104,7 +111,10 @@ function useCardData(card: StatCard, range: StatRange, retry: number): Load {
 export function StatWidget({ widget }: { widget: StatWidgetData }) {
   const patch = useStatWidgetsStore((s) => s.patch);
   const remove = useStatWidgetsStore((s) => s.remove);
-  const todayFocusMs = useStudyStore((s) => s.timer.todayFocusMs);
+  // The timer's today figure while a focus segment runs; null when nothing is accruing.
+  const runningFocusMs = useStudyStore((s) =>
+    s.timer.status === 'running' && isFocusMode(s.timer.mode) ? s.timer.todayFocusMs : null,
+  );
   const [retry, setRetry] = useState(0);
   const load = useCardData(widget.card, widget.range, retry);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -144,6 +154,10 @@ export function StatWidget({ widget }: { widget: StatWidgetData }) {
 
   // Data for another card or range is the last answer still showing while the new one comes.
   const data = load.status === 'ready' ? load.data : null;
+  const liveMs =
+    load.status === 'ready' && runningFocusMs !== null
+      ? Math.max(0, runningFocusMs - load.focusMsAtFetch)
+      : 0;
   const fits = data !== null && data.card === widget.card && data.range === widget.range;
   const body = (
     <div className={`${styles.card} ${widget.bare ? styles.bareCard : ''}`} aria-busy={!fits}>
@@ -155,7 +169,7 @@ export function StatWidget({ widget }: { widget: StatWidgetData }) {
           </button>
         </div>
       ) : fits ? (
-        <CardBody data={data} todayFocusMs={todayFocusMs} />
+        <CardBody data={data} liveMs={liveMs} />
       ) : (
         <p className={styles.muted}>Loading…</p>
       )}
@@ -190,11 +204,10 @@ export function StatWidget({ widget }: { widget: StatWidgetData }) {
   );
 }
 
-function CardBody({ data, todayFocusMs }: { data: CardData; todayFocusMs: number }) {
+function CardBody({ data, liveMs }: { data: CardData; liveMs: number }) {
   switch (data.card) {
     case 'total':
-      // The timer's today figure past main's today: the running segment's time since the fetch.
-      return <TotalCard data={data} liveMs={Math.max(0, todayFocusMs - data.todayMs)} />;
+      return <TotalCard data={data} liveMs={liveMs} />;
     case 'subjects':
       return <SubjectsCard data={data} />;
     case 'goal':

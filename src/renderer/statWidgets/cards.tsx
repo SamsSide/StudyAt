@@ -28,8 +28,8 @@ function Streak({ days }: { days: number }) {
 }
 
 /**
- * The range's total, and its change on the previous period. `liveMs` is the running focus
- * segment's time main hasn't counted into `data` yet (the timer's today figure past the card's).
+ * The range's total, and its change on the previous period. `liveMs` is the focus time accrued
+ * since main answered, while a focus segment runs (0 otherwise), which `data` can't hold yet.
  */
 export function TotalCard({ data, liveMs }: { data: TotalCardData; liveMs: number }) {
   return (
@@ -46,7 +46,7 @@ export function TotalCard({ data, liveMs }: { data: TotalCardData; liveMs: numbe
 
 /** A bar per subject, largest first, "Other" last (main's order), in the subject's colour. */
 export function SubjectsCard({ data }: { data: SubjectsCardData }) {
-  if (data.bars.length === 0) return <p className={styles.empty}>No focus time in this range yet.</p>;
+  if (data.bars.length === 0) return <p className={styles.empty}>No focus time in this range yet</p>;
   const largest = Math.max(1, ...data.bars.map((b) => b.ms));
   return (
     <ul className={styles.bars} aria-label="By subject">
