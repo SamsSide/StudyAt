@@ -27,6 +27,15 @@ import { useStudyStore } from '../shell/store';
 import { usePlannerStore } from './plannerStore';
 import styles from './TaskMenu.module.css';
 
+/** The nearest ancestor that scrolls (the board body, the widget's body), or null. */
+function scrollParent(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement ?? null; p; p = p.parentElement) {
+    const { overflowX, overflowY } = getComputedStyle(p);
+    if (/(auto|scroll)/.test(`${overflowX} ${overflowY}`)) return p;
+  }
+  return null;
+}
+
 type Pane = 'menu' | 'rename' | 'subject' | 'delete';
 
 /** At most `max` code points (an emoji is one character, as main counts it). */
@@ -111,12 +120,18 @@ export function ListMenu({ list, onDeleted }: { list: TaskList; onDeleted?: () =
       const p = panel.current;
       if (!t || !p) return;
       const area = host?.getBoundingClientRect();
+      // Scrolled out of view means out of the nearest scroll container (the board body), so a
+      // trigger under the board's header closes its menu; the host only places the panel.
+      const clip = scrollParent(button.current)?.getBoundingClientRect() ?? area;
       const x = area?.left ?? 0;
       const y = area?.top ?? 0;
       const w = area?.width ?? window.innerWidth;
       const h = area?.height ?? window.innerHeight;
       const local = { left: t.left - x, right: t.right - x, top: t.top - y, bottom: t.bottom - y };
-      if (local.bottom < 0 || local.top > h || local.right < 0 || local.left > w) {
+      const out = clip
+        ? t.bottom < clip.top || t.top > clip.bottom || t.right < clip.left || t.left > clip.right
+        : local.bottom < 0 || local.top > h || local.right < 0 || local.left > w;
+      if (out) {
         if (p.contains(document.activeElement)) button.current?.focus({ preventScroll: true });
         setPane(null);
         return;
@@ -171,7 +186,7 @@ export function ListMenu({ list, onDeleted }: { list: TaskList; onDeleted?: () =
         type="button"
         className={styles.trigger}
         aria-label={`${list.name} menu`}
-        aria-haspopup="true"
+        data-popup
         aria-expanded={pane !== null}
         aria-controls={pane !== null ? panelId : undefined}
         onClick={() => {

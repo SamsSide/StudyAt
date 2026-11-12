@@ -242,3 +242,77 @@ describe('ListMenu trigger scrolled out of view', () => {
     expect(trigger).toHaveFocus();
   });
 });
+
+const rect = (left: number, top: number, w: number, h: number): DOMRect =>
+  ({
+    left,
+    top,
+    right: left + w,
+    bottom: top + h,
+    width: w,
+    height: h,
+    x: left,
+    y: top,
+    toJSON: () => ({}),
+  }) as DOMRect;
+
+describe('ListMenu inside the dialog host (host-relative placement)', () => {
+  const open = async () => {
+    render(
+      <Overlay title="Tasks" onClose={() => {}} full>
+        <ListMenu list={list()} />
+      </Overlay>,
+    );
+    const host = screen.getByRole('dialog', { name: 'Tasks' }).lastElementChild as HTMLElement;
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue(rect(100, 50, 800, 600));
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(rect(300, 150, 28, 28));
+    await userEvent.click(trigger);
+    return { host, trigger };
+  };
+
+  it('places the panel relative to the host, not the window', async () => {
+    await open();
+    const panel = screen.getByRole('group', { name: 'List actions' });
+    // Trigger at 300,150 in the window is 200,100 in the host; the panel opens below it with right
+    // edges aligned (jsdom panel is 0 x 0), so left = 228 - 0 and top = 128 + the gap.
+    const spot = menuSpot(
+      { left: 200, right: 228, top: 100, bottom: 128 },
+      { w: 0, h: 0 },
+      { w: 800, h: 600 },
+    );
+    expect(panel.style.left).toBe(`${spot.left}px`);
+    expect(panel.style.top).toBe(`${spot.top}px`);
+    expect(spot.left).toBeGreaterThanOrEqual(228 - 1);
+  });
+
+  it('closes when the trigger is out of the host, measured against it', async () => {
+    const { host } = await open();
+    expect(screen.getByRole('group', { name: 'List actions' })).toBeInTheDocument();
+    // Moved so the trigger sits wholly above the host's top (50), though still inside the window.
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue(rect(100, 400, 800, 600));
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
+  });
+
+  it("closes when the trigger scrolls under the board body's edge, though inside the host", async () => {
+    render(
+      <Overlay title="Tasks" onClose={() => {}} full>
+        <div data-testid="body" style={{ overflowY: 'auto' }}>
+          <ListMenu list={list()} />
+        </div>
+      </Overlay>,
+    );
+    const host = screen.getByRole('dialog', { name: 'Tasks' }).lastElementChild as HTMLElement;
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 800, 600));
+    const body = screen.getByTestId('body');
+    vi.spyOn(body, 'getBoundingClientRect').mockReturnValue(rect(0, 100, 800, 400));
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    const at = vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(rect(300, 150, 28, 28));
+    await userEvent.click(trigger);
+    expect(screen.getByRole('group', { name: 'List actions' })).toBeInTheDocument();
+    at.mockReturnValue(rect(300, 40, 28, 28)); // under the header: inside the host, above the body
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
+  });
+});

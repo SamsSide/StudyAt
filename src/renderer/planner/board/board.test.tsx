@@ -462,6 +462,19 @@ describe('TasksBoard, the Tweek look', () => {
     expect(within(row).getByRole('button', { name: `Start focus on "${busy.title}"` })).toBeInTheDocument();
   });
 
+  it('a compact row marks title focus so the hover tools hide under its ring', async () => {
+    await renderBoard({ tasks: [busy] });
+    const mon = screen.getByRole('region', { name: 'Mon 9 Nov' });
+    const row = (await within(mon).findByText(busy.title)).closest('li') as HTMLElement;
+    expect(row).not.toHaveAttribute('data-title-focus');
+    const title = within(row).getByRole('button', { name: busy.title });
+    const play = within(row).getByRole('button', { name: `Start focus on "${busy.title}"` });
+    act(() => title.focus());
+    expect(row).toHaveAttribute('data-title-focus', 'true');
+    act(() => play.focus());
+    expect(row).not.toHaveAttribute('data-title-focus');
+  });
+
   it('Enter or Space on a compact title opens its detail', async () => {
     await renderBoard({ tasks: [busy] });
     const title = await screen.findByRole('button', { name: busy.title });

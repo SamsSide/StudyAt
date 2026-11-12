@@ -22,7 +22,7 @@
 
 /* The list menu's panel, portalled out of the list (to the overlay's host on the board, else the
    body) and placed from its trigger (ListMenu.tsx), so a scrolling row of lists can't clip it.
-   Above the widgets, the board and the task detail. 100% is its containing block's height: the
+   Above the widgets and, in the board's dialog, the board (the host stacks it there). 100% is its containing block's height: the
    window, or the board's dialog. */
 .panel.fixed {
   position: fixed;

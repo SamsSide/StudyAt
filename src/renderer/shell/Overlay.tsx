@@ -45,7 +45,10 @@ export function Overlay({
 
   const trapTab = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key !== 'Tab' || !dialog.current) return;
-    const items = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    // Not the portal host's: an open pop-up there has its own Tab handling and isn't the dialog's end.
+    const items = [...dialog.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (el) => !portalHost?.contains(el),
+    );
     const first = items[0];
     const last = items[items.length - 1];
     if (!first || !last) return;

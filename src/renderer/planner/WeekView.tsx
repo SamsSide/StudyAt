@@ -64,8 +64,11 @@ export function WeekView() {
   // Today's section is scrolled to the top of the week's own scroller when a week holding it opens
   // (E8), and again once the week's tasks have loaded and been drawn (the frame after), since the
   // days above today grow when theirs arrive. Its scrollTop only: scrollIntoView would scroll every
-  // ancestor too, the board's page and the window among them.
+  // ancestor too, the board's page and the window among them. A spacer after Sunday tops the content
+  // after today up to the scroller's height, so a week whose later days are short can still scroll
+  // far enough to put today at the very top.
   const scroller = useRef<HTMLDivElement>(null);
+  const spacer = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let live = true;
     let frame = 0;
@@ -73,7 +76,13 @@ export function WeekView() {
       const box = scroller.current;
       const section = box?.querySelector<HTMLElement>('section[data-today]');
       if (!live || !box || !section) return;
-      box.scrollTop = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      const offset = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+      const pad = spacer.current;
+      if (pad) {
+        const after = box.scrollHeight - pad.offsetHeight - offset;
+        pad.style.height = `${Math.max(0, Math.ceil(box.clientHeight - after))}px`;
+      }
+      box.scrollTop = offset;
     };
     toToday();
     void loadRange('week', start).then(() => {
@@ -116,6 +125,7 @@ export function WeekView() {
         {days.map((d) => (
           <DaySection key={d} day={d} today={today} />
         ))}
+        <div ref={spacer} aria-hidden="true" className={styles.weekSpacer} />
       </div>
     </section>
   );

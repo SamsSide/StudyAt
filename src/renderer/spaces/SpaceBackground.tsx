@@ -201,7 +201,9 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
     };
   }, [space.id, space.source, markEmbedError, clearVideoError, report]);
 
-  // Ask for the target level (spec §3.3); Auto leaves the choice to YouTube.
+  // Ask for the target level (spec §3.3); Auto leaves the choice to YouTube. The player is re-created
+  // on a quality change (it is keyed on it), so `ready` goes false then true again, and this effect
+  // only needs to run on ready.
   useEffect(() => {
     const p = player.current;
     const target = qualityTarget(quality);

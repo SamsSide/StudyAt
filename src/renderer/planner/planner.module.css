@@ -379,6 +379,11 @@
   overflow: visible;
 }
 
+.weekSpacer {
+  flex: none;
+  height: 0;
+}
+
 .weekDay {
   border-radius: var(--radius-sm);
 }
@@ -458,9 +463,10 @@
 /* The board's compact row (TaskRow variant="compact", v1.2 spec §3.7): a Tweek line. The title flows
    like text across the whole column, after a small check and the subject dot, and a long one wraps
    onto the next rule: the line height is the rule height and the rules are drawn under every line.
-   Words break only when one alone is wider than the column. ▶ and the grip float at the first line's
-   end on hover or focus, over room the first line always keeps clear (.compact::before), so they
-   never cover the title or its focus ring and nothing reflows when they appear. */
+   Words break only when one alone is wider than the column. ▶ and the grip are overlaid at the row's
+   right end on hover, or while ▶ or the grip has focus, on a solid panel with a short fade on its left
+   so text under it isn't cut abruptly. They reserve no room, so the title never reflows, and they
+   hide while the title itself has focus (data-title-focus) so its ring is fully visible. */
 .compact {
   --rule: 32px;
   --rules: repeating-linear-gradient(
@@ -476,16 +482,6 @@
   border-radius: 0;
   background: var(--rules);
   line-height: var(--rule);
-}
-
-/* The ▶ + grip pill's room on the first line: a float as tall as one rule, so only that line is
-   shortened and the lines below run the column's full width. The pill is 2 + 24 + 2 + 24 px from
-   the row's edge; the float reaches past it by the row's end padding plus a 4 px gap. */
-.compact::before {
-  content: '';
-  float: right;
-  width: calc(52px - var(--space-1) + 4px);
-  height: var(--rule);
 }
 
 .compact:hover,
@@ -532,6 +528,34 @@
   top: calc((var(--rule) - 24px) / 2);
   right: 2px;
   border-radius: var(--radius-pill);
-  background: var(--panel-strong);
+  background: var(--panel-solid);
   line-height: 1;
+  pointer-events: none;
+}
+
+/* The short fade on the pill's left. */
+.compact .hover::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 100%;
+  width: 14px;
+  height: 100%;
+  background: linear-gradient(to right, transparent, var(--panel-solid));
+  pointer-events: none;
+}
+
+.compact:focus-within .hover {
+  opacity: 0;
+}
+
+.compact:hover .hover,
+.compact .hover:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.compact[data-title-focus='true'] .hover {
+  opacity: 0;
+  pointer-events: none;
 }

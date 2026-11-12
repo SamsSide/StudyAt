@@ -3,7 +3,14 @@
 // line: a small check, the subject dot, the title wrapping across the full width onto the next rule,
 // and the estimate chip only; tags, subtasks, repeat, the bell and the rolled chip stay in the
 // widget, the board's Day and the detail.
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
+import {
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import type { PlannerTask } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { estimateChip, rolledLabel, subtaskCount } from './format';
@@ -28,6 +35,8 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
   const startTask = usePlannerStore((s) => s.startTask);
   const estimate = task.estimateMin === null ? null : estimateChip(task.actualMs, task.estimateMin);
   const subtasks = subtaskCount(task);
+  // The compact row hides its ▶ + grip overlay while the title has focus, so the ring is whole.
+  const [titleFocus, setTitleFocus] = useState(false);
 
   const onRowClick = (e: MouseEvent<HTMLElement>): void => {
     if ((e.target as HTMLElement).closest('button, input')) return;
@@ -62,6 +71,7 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
         ref={rowRef}
         style={style}
         data-variant="compact"
+        data-title-focus={titleFocus ? 'true' : undefined}
         data-dragging={dragging ? 'true' : undefined}
         data-task-id={task.id}
         data-done={task.done}
@@ -83,7 +93,14 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
             style={{ background: subject.colour }}
           />
         )}
-        <span role="button" tabIndex={0} className={styles.title} onKeyDown={onTitleKey}>
+        <span
+          role="button"
+          tabIndex={0}
+          className={styles.title}
+          onKeyDown={onTitleKey}
+          onFocus={() => setTitleFocus(true)}
+          onBlur={() => setTitleFocus(false)}
+        >
           {task.title}
         </span>
         {estimate && (
