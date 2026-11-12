@@ -1,11 +1,12 @@
 // In-app shortcuts (spec §3.7, plus W for the Widgets popover from widgets addendum §1, and H for
 // focus view and 4 for Countdown from the v1.1 polish spec §3.2 and §3.4). Ignored
 // while typing in an input, textarea, select or contenteditable, and when a modifier is held. While
-// an overlay is open only Esc, ? and S act. In focus view W, K, G (and T on an auto-hide Tasks
+// an overlay is open only Esc, ? S and B act (v1.2 spec §4; V, the background pause, waits for the overlay to close). In focus view W, K, G (and T on an auto-hide Tasks
 // widget) leave it, so what they open is visible. Space is also left alone on buttons and other
 // controls, where it already means "press this".
 import { useEffect } from 'react';
 import type { Mode } from '../../shared/types';
+import { useSpacesStore } from '../spaces/spacesStore';
 import { useStudyStore } from './store';
 
 /** The help sheet's rows, in spec §3.7 order. */
@@ -16,6 +17,7 @@ export const SHORTCUTS: readonly { keys: string; action: string }[] = [
   { keys: '1 / 2 / 3', action: 'Pomodoro, short break, long break' },
   { keys: '4', action: 'Countdown' },
   { keys: 'S', action: 'Stats' },
+  { keys: 'B', action: 'Tasks board' },
   { keys: 'T', action: 'Show or hide tasks' },
   { keys: 'W', action: 'Widgets' },
   { keys: 'K', action: 'Sounds' },
@@ -23,6 +25,7 @@ export const SHORTCUTS: readonly { keys: string; action: string }[] = [
   { keys: 'M', action: 'Mini timer' },
   { keys: 'F', action: 'Full screen' },
   { keys: 'H', action: 'Hide or show the interface' },
+  { keys: 'V', action: 'Pause or play the background' },
   { keys: 'Esc', action: 'Close the top window or panel' },
   { keys: '?', action: 'This list' },
 ];
@@ -80,9 +83,9 @@ export function useShortcuts(): void {
       if (isTyping(target)) return;
 
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      // Behind a modal overlay only the overlay keys act: ? and S swap what is on top, and nothing
-      // reaches the timer or the panels unseen.
-      if (store.overlay && key !== '?' && key !== 's') return;
+      // Behind a modal overlay only the overlay keys act: ?, S and B swap what is on top, and
+      // nothing reaches the timer or the panels unseen.
+      if (store.overlay && key !== '?' && key !== 's' && key !== 'b') return;
       const mode = MODE_KEYS[key];
       if (mode) {
         void studyat.timer.setMode(mode);
@@ -95,6 +98,8 @@ export function useShortcuts(): void {
       } else if (key === 'r') void studyat.timer.reset();
       else if (key === 'n') void studyat.timer.skip();
       else if (key === 's') store.toggleOverlay('stats');
+      else if (key === 'b') store.toggleOverlay('tasks');
+      else if (key === 'v') useSpacesStore.getState().toggleBackground();
       else if (key === 't') {
         // An auto-hide Tasks widget is hidden in focus view, so T leaves focus view and opens it;
         // one that doesn't auto-hide is already visible and just toggles.

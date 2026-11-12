@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StatsOverview } from '../../shared/types';
+import { makeSpace, sampleSpaces } from '../spaces/fixtures';
+import { resetSpacesStore, useSpacesStore } from '../spaces/spacesStore';
 import { idleTimerState, installMockApi, mockApi } from '../test/mockApi';
 import { formatHm, goalTooltip } from './format';
 import { GoalRing } from './GoalRing';
@@ -21,7 +23,10 @@ const overview = (patch: Partial<StatsOverview> = {}): StatsOverview => ({
   ...patch,
 });
 
-beforeEach(() => resetStudyStore());
+beforeEach(() => {
+  resetStudyStore();
+  resetSpacesStore();
+});
 
 describe('format', () => {
   it('formats study time as Hh MMm, never rounding up', () => {
@@ -92,5 +97,50 @@ describe('GoalRing', () => {
     const ring = screen.getByRole('img', { name: '3h 0m of 3h today' });
     expect(ring).toHaveAttribute('title', '3h 0m of 3h today');
     expect(ring).toHaveAttribute('data-progress', '1');
+  });
+});
+
+describe('TopBar background button (v1.2 spec §3.4)', () => {
+  const useSpace = (id: number, spaces = sampleSpaces()) =>
+    useSpacesStore.setState({ spaces, activeId: id, loaded: true });
+  const bar = () => within(screen.getByRole('banner'));
+
+  it('with a YouTube space it pauses and plays the background', async () => {
+    const user = userEvent.setup();
+    installMockApi(mockApi());
+    useSpace(3);
+    render(<TopBar />);
+    await user.click(bar().getByRole('button', { name: 'Pause background' }));
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    await user.click(bar().getByRole('button', { name: 'Play background' }));
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    expect(bar().getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+  });
+
+  it('is hidden for an image space and when there is no space', () => {
+    installMockApi(mockApi());
+    useSpace(2);
+    render(<TopBar />);
+    expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
+    useSpacesStore.setState({ activeId: null });
+    expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
+  });
+
+  it('is hidden for a missing file, a blocked embed and an offline YouTube space', () => {
+    installMockApi(mockApi());
+    useSpace(1, [makeSpace({ id: 1, missing: true })]);
+    const { unmount } = render(<TopBar />);
+    expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
+    unmount();
+    useSpace(3);
+    useSpacesStore.setState({ embedErrors: { 3: 'embed' } });
+    const second = render(<TopBar />);
+    expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
+    second.unmount();
+    useSpacesStore.setState({ embedErrors: {} });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    render(<TopBar />);
+    expect(bar().queryByRole('button', { name: /background/ })).not.toBeInTheDocument();
+    vi.restoreAllMocks();
   });
 });

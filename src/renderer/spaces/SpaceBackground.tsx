@@ -36,7 +36,7 @@ function useDocumentHidden(): boolean {
   return hidden;
 }
 
-function useOnline(): boolean {
+export function useOnline(): boolean {
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
     const on = (e: Event) => {
@@ -58,7 +58,7 @@ const REDUCED = '(prefers-reduced-motion: reduce)';
 const readReduced = (): boolean =>
   typeof window.matchMedia === 'function' && window.matchMedia(REDUCED).matches;
 
-function useReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(readReduced);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -68,6 +68,16 @@ function useReducedMotion(): boolean {
     return () => mq.removeEventListener('change', on);
   }, []);
   return reduced;
+}
+
+/**
+ * Whether the background can actually move, so a play control is worth showing: not an image, a
+ * missing file, a YouTube video that can't embed or play, or one that is offline. The footer and the
+ * top bar share it.
+ */
+export function backgroundPlayable(space: Space, embedError: string | undefined, online: boolean): boolean {
+  if (space.kind === 'image' || space.missing) return false;
+  return space.kind === 'video' || (embedError === undefined && online);
 }
 
 function Thumb({ space }: { space: Space }) {
@@ -285,6 +295,7 @@ export function SpaceBackground() {
 
   const stillFirst = reduced && !userPlay && space.kind !== 'image';
   const paused = !windowVisible || documentHidden || stillFirst || backgroundPaused;
+  const playing = userPlay && !backgroundPaused;
   const { dim, blur } = space.opts;
   const videoError = embedErrors[space.id];
 
@@ -299,7 +310,7 @@ export function SpaceBackground() {
   let media: ReactNode;
   let notice: ReactNode = null;
   // Only a space that can actually move gets the reduced-motion play button.
-  let playable = space.kind !== 'image' && !space.missing;
+  const playable = backgroundPlayable(space, videoError, online);
   if (space.missing) {
     media = <Thumb space={space} />;
     notice = (
@@ -315,15 +326,12 @@ export function SpaceBackground() {
   } else if (videoError === 'embed') {
     media = <Thumb space={space} />;
     notice = <p>This video can't be embedded.</p>;
-    playable = false;
   } else if (!online) {
     media = <Thumb space={space} />;
     notice = <p data-testid="space-offline">Offline</p>;
-    playable = false;
   } else if (videoError === 'play') {
     media = <Thumb space={space} />;
     notice = <p>This video can't be played.</p>;
-    playable = false;
   } else if (stillFirst) {
     media = <Thumb space={space} />;
   } else {
@@ -346,8 +354,20 @@ export function SpaceBackground() {
       {notice && <div className={styles.notice}>{notice}</div>}
       {reduced && playable && (
         <div className={styles.footer}>
-          <button type="button" className={styles.btn} onClick={() => setPlayId(userPlay ? null : space.id)}>
-            {userPlay ? 'Pause background' : 'Play background'}
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => {
+              // The footer, the top bar's button and V share one state: starting here also clears a
+              // pause made elsewhere, and the label follows what is really happening.
+              if (playing) setPlayId(null);
+              else {
+                setPlayId(space.id);
+                useSpacesStore.getState().setBackgroundPaused(false);
+              }
+            }}
+          >
+            {playing ? 'Pause background' : 'Play background'}
           </button>
         </div>
       )}

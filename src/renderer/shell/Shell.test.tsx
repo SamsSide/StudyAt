@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings } from '../../shared/types';
 import { idleTimerState, installMockApi, mockApi, type MockApi } from '../test/mockApi';
+import { sampleSpaces } from '../spaces/fixtures';
+import { resetSpacesStore, useSpacesStore } from '../spaces/spacesStore';
 import { useImagesStore } from '../images/imagesStore';
 import { useStatWidgetsStore } from '../statWidgets/statWidgetsStore';
 import { Shell } from './Shell';
@@ -25,7 +27,10 @@ async function renderShell(api: MockApi = onboardedApi()) {
   return api;
 }
 
-beforeEach(() => resetStudyStore());
+beforeEach(() => {
+  resetStudyStore();
+  resetSpacesStore();
+});
 
 /** Unmounts the shell and empties the store, for a second render in the same test. */
 function cleanupShell(): void {
@@ -282,6 +287,53 @@ describe('Shell', () => {
     expect(await screen.findByTestId('tasks-widget')).toBeInTheDocument();
   });
 
+  it('V pauses and plays the background, but not while typing or behind an overlay', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    act(() => useSpacesStore.setState({ spaces: sampleSpaces(), activeId: 3, loaded: true }));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    const box = document.createElement('input');
+    document.body.appendChild(box);
+    box.focus();
+    await user.keyboard('v');
+    box.remove();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    act(() => useStudyStore.getState().setOverlay('settings'));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('V does nothing for an image space', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    act(() => useSpacesStore.setState({ spaces: sampleSpaces(), activeId: 2, loaded: true }));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('B opens the Tasks board, closes it again, swaps from Stats, and not while typing', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    const shell = () => document.querySelector('[data-overlay]');
+    await user.keyboard('b');
+    expect(shell()).toHaveAttribute('data-overlay', 'tasks');
+    await user.keyboard('b');
+    expect(shell()).toHaveAttribute('data-overlay', 'none');
+    act(() => useStudyStore.getState().setOverlay('stats'));
+    await user.keyboard('b');
+    expect(shell()).toHaveAttribute('data-overlay', 'tasks');
+    act(() => useStudyStore.getState().setOverlay(null));
+    const box = document.createElement('textarea');
+    document.body.appendChild(box);
+    box.focus();
+    await user.keyboard('b');
+    box.remove();
+    expect(shell()).toHaveAttribute('data-overlay', 'none');
+  });
+
   it('? shows shortcut help listing every key of spec §3.7', async () => {
     const user = userEvent.setup();
     await renderShell();
@@ -297,6 +349,7 @@ describe('Shell', () => {
       '1 / 2 / 3',
       '4',
       'S',
+      'B',
       'T',
       'W',
       'K',
@@ -304,10 +357,13 @@ describe('Shell', () => {
       'M',
       'F',
       'H',
+      'V',
       'Esc',
       '?',
     ]);
-    expect(SHORTCUTS).toHaveLength(15);
+    expect(SHORTCUTS).toHaveLength(17);
+    expect(SHORTCUTS.find((k) => k.keys === 'B')?.action).toBe('Tasks board');
+    expect(SHORTCUTS.find((k) => k.keys === 'V')?.action).toBe('Pause or play the background');
     expect(SHORTCUTS.find((k) => k.keys === 'H')?.action).toBe('Hide or show the interface');
     expect(SHORTCUTS.find((k) => k.keys === '4')?.action).toBe('Countdown');
     expect(SHORTCUTS.find((k) => k.keys === 'W')?.action).toBe('Widgets');

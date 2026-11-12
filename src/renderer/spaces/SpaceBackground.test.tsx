@@ -492,6 +492,22 @@ describe('SpaceBackground', () => {
       expect(screen.getByRole('button', { name: 'Play background' })).toBeInTheDocument();
     });
 
+    it('the footer follows a pause made elsewhere, and playing clears it', async () => {
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q.includes('reduce'),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      await mount([makeSpace({ id: 1, thumb: 'data:image/jpeg;base64,AAA' })]);
+      act(() => screen.getByRole('button', { name: 'Play background' }).click());
+      expect(await screen.findByTestId('space-video')).toBeInTheDocument();
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(screen.getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+      act(() => screen.getByRole('button', { name: 'Play background' }).click());
+      expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+      expect(screen.getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+    });
+
     const reducedMotion = () =>
       vi.stubGlobal('matchMedia', (q: string) => ({
         matches: q.includes('reduce'),
