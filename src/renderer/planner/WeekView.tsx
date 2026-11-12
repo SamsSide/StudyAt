@@ -61,20 +61,29 @@ export function WeekView() {
   const start = weekStartOf(chosen);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
-  useEffect(() => {
-    void loadRange('week', start);
-  }, [start, loadRange]);
-
   // Today's section is scrolled to the top of the week's own scroller when a week holding it opens
-  // (E8). Its scrollTop only: scrollIntoView would scroll every ancestor too, the board's page and
-  // the window among them.
+  // (E8), and again once the week's tasks have loaded and been drawn (the frame after), since the
+  // days above today grow when theirs arrive. Its scrollTop only: scrollIntoView would scroll every
+  // ancestor too, the board's page and the window among them.
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const box = scroller.current;
-    const section = box?.querySelector<HTMLElement>('section[data-today]');
-    if (!box || !section) return;
-    box.scrollTop = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
-  }, [start, today]);
+    let live = true;
+    let frame = 0;
+    const toToday = (): void => {
+      const box = scroller.current;
+      const section = box?.querySelector<HTMLElement>('section[data-today]');
+      if (!live || !box || !section) return;
+      box.scrollTop = section.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    };
+    toToday();
+    void loadRange('week', start).then(() => {
+      if (live) frame = requestAnimationFrame(toToday);
+    });
+    return () => {
+      live = false;
+      cancelAnimationFrame(frame);
+    };
+  }, [start, today, loadRange]);
 
   // Landing on the week that holds today clears the day, so the Day tab opens on today.
   const go = (to: string): void => {

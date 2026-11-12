@@ -142,6 +142,7 @@ export function NoteSticky({ note }: { note: Note }) {
       className={`${shell.iconButton} ${shell.small} ${note.bare ? shell.bareHandle : ''}`}
       aria-label="Note colour"
       title="Note colour"
+      data-popup
       aria-expanded={picking}
       onClick={() => setPicking((p) => !p)}
     >

@@ -663,6 +663,19 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* Overlay.tsx's portal host: fills the dialog (its containing block, by the backdrop filter) and
+   lets presses through to the board except where a pop-up panel inside takes them. */
+.portalHost {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.portalHost > * {
+  pointer-events: auto;
+}
+
 .dialogNarrow {
   width: min(460px, 100%);
   height: auto;

@@ -322,9 +322,9 @@
   margin: 0;
   padding: 5px;
   list-style: none;
-  background: var(--glass-sheen), var(--panel-strong);
-  backdrop-filter: var(--glass-filter-strong);
-  -webkit-backdrop-filter: var(--glass-filter-strong);
+  /* Opaque, as the task menu is: the frame around it already holds a backdrop filter, so a glass
+     list inside it shows the cards behind the widget through it. */
+  background: var(--glass-sheen), var(--panel-solid);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-lg);

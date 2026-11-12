@@ -54,6 +54,7 @@ export function TaskMenu({ task }: { task: PlannerTask }) {
         type="button"
         className={styles.trigger}
         aria-label="Task menu"
+        data-popup
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => {

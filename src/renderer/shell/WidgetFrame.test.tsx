@@ -183,13 +183,65 @@ describe('WidgetFrame raised above other widgets (pop-ups under later widgets)',
   function Menu() {
     const [open, setOpen] = useState(false);
     return (
-      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         More
       </button>
     );
   }
 
-  it('is raised while a control inside has aria-expanded="true", and drops back when it closes', async () => {
+  it('is not raised by an expanded disclosure (a Week day header starts open)', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <button type="button" aria-expanded="true">
+          Monday
+        </button>
+      </WidgetFrame>,
+    );
+    await act(async () => {});
+    expect(frame()).not.toHaveAttribute('data-raised');
+  });
+
+  it('is raised by an expanded data-popup trigger (a frosted group panel)', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <button type="button" data-popup aria-expanded="true">
+          Filter
+        </button>
+      </WidgetFrame>,
+    );
+    await waitFor(() => expect(frame()).toHaveAttribute('data-raised'));
+  });
+
+  it('drops back when the focused control inside is removed (no blur fires)', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    function Vanishing() {
+      const [shown, setShown] = useState(true);
+      return shown ? (
+        <button type="button" onKeyDown={() => setShown(false)}>
+          Gone
+        </button>
+      ) : (
+        <p>empty</p>
+      );
+    }
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <Vanishing />
+      </WidgetFrame>,
+    );
+    const gone = screen.getByRole('button', { name: 'Gone' });
+    act(() => gone.focus());
+    expect(frame()).toHaveAttribute('data-raised');
+    fireEvent.keyDown(gone, { key: 'Delete' });
+    await waitFor(() => expect(frame()).not.toHaveAttribute('data-raised'));
+  });
+
+  it('is raised while a pop-up trigger inside has aria-expanded="true", and drops back when it closes', async () => {
     installMockApi(mockApi());
     useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
     render(

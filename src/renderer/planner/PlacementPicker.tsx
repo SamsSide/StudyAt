@@ -86,6 +86,7 @@ export function PlacementPicker({ task }: { task: PlannerTask }) {
         ref={chip}
         type="button"
         className={styles.chipButton}
+        data-popup
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-label={`Placement: ${label}`}

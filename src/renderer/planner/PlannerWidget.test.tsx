@@ -120,8 +120,13 @@ beforeEach(() => {
   resetStudyStore();
 });
 
+// jsdom has no scrollIntoView; a test that stubs it gets the original (absent) back after it.
+const scrollIntoView = Element.prototype.scrollIntoView;
+
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
+  Element.prototype.scrollIntoView = scrollIntoView;
 });
 
 describe('PlannerWidget', () => {
@@ -275,7 +280,35 @@ describe('PlannerWidget', () => {
     expect(set).toHaveBeenCalledWith(scroller, 240);
     // Never scrollIntoView, which would scroll the board page and the window around it too.
     expect(scroll).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
+  });
+
+  it("Week scrolls to today again once the week's tasks arrive and push it down", async () => {
+    const user = userEvent.setup();
+    // Today's section sits 240 px down the scroller, 300 px once Monday's task row is drawn.
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const pushed = document.body.textContent?.includes('Early') ? 60 : 0;
+      const top = this.matches('section[data-today]') ? 340 + pushed : 100;
+      return {
+        top,
+        bottom: top + 40,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 40,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      };
+    });
+    const set = vi.fn();
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, v: number) {
+      set(this, v);
+    });
+    setup({ tasks: [minimalPlannerTask({ id: 1, title: 'Early', day: '2026-11-09' })] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    await screen.findByText('Early');
+    await waitFor(() => expect(set).toHaveBeenLastCalledWith(expect.anything(), 300));
   });
 
   it('a Week quick add places the task on that day', async () => {

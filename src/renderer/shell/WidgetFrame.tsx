@@ -39,6 +39,13 @@ import { useStudyStore } from './store';
 
 const KEY_STEP = 0.02;
 const SCALE_STEP = 0.1;
+/**
+ * An open pop-up inside a frame: an expanded trigger that declares a pop-up, by `aria-haspopup`
+ * (menus, listboxes) or by `data-popup` (the frosted `role="group"` panels no `aria-haspopup`
+ * value describes). Plain disclosures, such as the Week day headers, don't match.
+ */
+const POPUP_OPEN =
+  '[aria-haspopup]:not([aria-haspopup="false"])[aria-expanded="true"], [data-popup][aria-expanded="true"]';
 
 const clamp = (n: number, min: number, max: number): number => Math.min(Math.max(n, min), Math.max(min, max));
 const round = (n: number): number => Math.round(n * 10_000) / 10_000;
@@ -206,15 +213,20 @@ export function WidgetFrame({
 
   // Every frame is its own stacking context (z-index plus the scale transform), so a pop-up inside
   // one paints under any widget later in the DOM. While the frame holds focus or an open pop-up
-  // (any `aria-expanded="true"` control), `data-raised` lifts it above the other widgets, still
-  // below the chrome and overlays.
+  // (an expanded pop-up trigger, see `POPUP_OPEN`; an open disclosure such as a Week day header
+  // doesn't count), `data-raised` lifts it above the other widgets, still below the
+  // chrome and overlays. A focused node that is removed fires no blur in Chromium, so each subtree
+  // change also re-checks where focus is.
   const [focusWithin, setFocusWithin] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const mounted = pos !== undefined;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const check = (): void => setExpanded(el.querySelector('[aria-expanded="true"]') !== null);
+    const check = (): void => {
+      setExpanded(el.querySelector(POPUP_OPEN) !== null);
+      if (!el.contains(document.activeElement)) setFocusWithin(false);
+    };
     check();
     const observer = new MutationObserver(check);
     observer.observe(el, {

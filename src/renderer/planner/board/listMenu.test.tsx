@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TaskList } from '../../../shared/types';
 import { resetStudyStore, useStudyStore } from '../../shell/store';
 import { installMockApi, mockApi, seedSubjects, type MockApi } from '../../test/mockApi';
+import { Overlay } from '../../shell/Overlay';
 import { ListMenu, menuSpot } from '../ListMenu';
 import { ListsView } from '../ListsView';
 import { resetPlannerStore, usePlannerStore } from '../plannerStore';
@@ -169,6 +170,74 @@ describe('ListMenu panel outside the list row', () => {
     const none = screen.getByRole('button', { name: 'None' });
     expect(none).toHaveFocus();
     fireEvent.keyDown(none, { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+});
+
+describe('ListMenu inside the board overlay (aria-modal)', () => {
+  const onBoard = () =>
+    render(
+      <Overlay title="Tasks" onClose={() => {}} full>
+        <ListMenu list={list()} />
+        <button type="button">After</button>
+      </Overlay>,
+    );
+
+  it('portals the panel inside the dialog, not to the body', async () => {
+    onBoard();
+    await userEvent.click(screen.getByRole('button', { name: 'Networks menu' }));
+    const panel = screen.getByRole('group', { name: 'List actions' });
+    expect(screen.getByRole('dialog', { name: 'Tasks' }).contains(panel)).toBe(true);
+    expect(panel.parentElement).not.toBe(document.body);
+  });
+
+  it('Tab from the last item returns to the trigger and closes the menu', async () => {
+    onBoard();
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    await userEvent.click(trigger);
+    screen.getByRole('button', { name: 'Delete' }).focus();
+    await userEvent.tab();
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
+  });
+
+  it('Shift+Tab from the first item returns to the trigger and closes the menu', async () => {
+    onBoard();
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    await userEvent.click(trigger);
+    expect(screen.getByRole('button', { name: 'Rename' })).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
+  });
+
+  it('Tab between items stays in the panel', async () => {
+    onBoard();
+    await userEvent.click(screen.getByRole('button', { name: 'Networks menu' }));
+    await userEvent.tab();
+    expect(screen.getByRole('button', { name: 'Link subject' })).toHaveFocus();
+  });
+});
+
+describe('ListMenu trigger scrolled out of view', () => {
+  it('closes the menu, with focus back on the trigger', async () => {
+    render(<ListMenu list={list()} />);
+    const trigger = screen.getByRole('button', { name: 'Networks menu' });
+    await userEvent.click(trigger);
+    expect(screen.getByRole('group', { name: 'List actions' })).toBeInTheDocument();
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      left: 500,
+      top: -80,
+      right: 528,
+      bottom: -52,
+      width: 28,
+      height: 28,
+      x: 500,
+      y: -80,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.scroll(window);
     expect(screen.queryByRole('group', { name: 'List actions' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
   });

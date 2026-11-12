@@ -335,7 +335,9 @@ export function SpaceBackground() {
   } else if (stillFirst) {
     media = <Thumb space={space} />;
   } else {
-    media = <YouTubeVideo space={space} paused={paused} />;
+    // Keyed by quality: a new level re-creates the player at its new size straight away (spec §3.3),
+    // and the old player's level report goes with it, rather than lingering until a restart.
+    media = <YouTubeVideo key={`${space.id}:${space.opts.quality}`} space={space} paused={paused} />;
   }
 
   return (

@@ -45,6 +45,7 @@ export function FilterButton() {
         type="button"
         className={styles.textButton}
         aria-pressed={active}
+        data-popup
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((o) => !o)}

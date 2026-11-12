@@ -299,6 +299,32 @@ describe('SpaceBackground', () => {
         expect(h.player.setPlaybackQuality).not.toHaveBeenCalled();
       });
 
+      it('a quality change re-creates the player, so the new sizing applies straight away', async () => {
+        const s = q('2160');
+        const h = yt(s);
+        const made = vi.fn();
+        const Real = window.YT?.Player as unknown as new (el: HTMLElement, o: YTPlayerOptions) => object;
+        class Counting {
+          constructor(el: HTMLElement, o: YTPlayerOptions) {
+            made();
+            return new Real(el, o);
+          }
+        }
+        window.YT = { Player: Counting as never };
+        await mount([s]);
+        await waitFor(() => expect(made).toHaveBeenCalledTimes(1));
+        act(() => h.opts()?.events.onReady?.());
+        act(() => h.opts()?.events.onPlaybackQualityChange?.({ data: 'hd2160' }));
+        expect(useYouTubeQuality.getState().level).toBe('hd2160');
+
+        act(() => useSpacesStore.setState({ spaces: [q('auto')] }));
+        await waitFor(() => expect(made).toHaveBeenCalledTimes(2));
+        expect(h.player.destroy).toHaveBeenCalledTimes(1);
+        // The old player's "Playing · 2160p" goes with it.
+        expect(useYouTubeQuality.getState().level).toBeNull();
+        expect(screen.getByTestId('space-youtube').style.width).toBe('');
+      });
+
       it('Auto sets no size and never asks for a level', async () => {
         const s = q('auto');
         const h = yt(s);
