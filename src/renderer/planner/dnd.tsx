@@ -203,18 +203,20 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
 /** A day or a list: a drop target that also orders its rows (`items` are the visible task ids). */
 export function DropZone({
   id,
+  role,
   className,
   items,
   children,
 }: {
   id: string;
+  role?: string;
   className?: string;
   items?: number[];
   children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
   return (
-    <div ref={setNodeRef} className={className} data-over={isOver ? 'true' : undefined}>
+    <div ref={setNodeRef} role={role} className={className} data-over={isOver ? 'true' : undefined}>
       <SortableContext items={(items ?? []).map(taskDrag)} strategy={verticalListSortingStrategy}>
         {children}
       </SortableContext>

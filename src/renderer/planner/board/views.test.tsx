@@ -203,6 +203,22 @@ describe('BoardDay', () => {
     expect(day.compareDocumentPosition(column as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('shows the rolled-forward marker and the reminder bell like a row does', async () => {
+    const rolled = minimalPlannerTask({
+      id: 2,
+      title: 'Carried over',
+      day: TODAY,
+      rolledFrom: '2026-11-10',
+      reminder: '09:30',
+    });
+    await renderBoard({ tasks: [rolled] });
+    await userEvent.click(viewButton('Day'));
+    const day = screen.getByRole('region', { name: 'Wed 11 Nov' });
+    await within(day).findByText('Carried over');
+    expect(within(day).getByText('from Tue 10 Nov')).toBeInTheDocument();
+    expect(within(day).getByLabelText('Reminder 09:30')).toBeInTheDocument();
+  });
+
   it('ticks a subtask through the store', async () => {
     const api = await renderBoard({ tasks: [lab] });
     await userEvent.click(viewButton('Day'));

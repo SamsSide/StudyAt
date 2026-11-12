@@ -61,6 +61,7 @@ function MonthTask({ task }: { task: PlannerTask }) {
       <button
         type="button"
         className={styles.cellTitle}
+        title={task.title}
         onPointerDown={onPointerDown}
         onClick={() => openDetail(task.id)}
       >
@@ -96,9 +97,8 @@ function MonthCell({
   };
 
   return (
-    <DropZone id={dayZone(day)} className={styles.cellZone} items={shown.map((t) => t.id)}>
+    <DropZone id={dayZone(day)} role="cell" className={styles.cellZone} items={shown.map((t) => t.id)}>
       <div
-        role="cell"
         className={styles.cell}
         data-month-cell={day}
         data-outside={day.slice(0, 7) !== month ? 'true' : undefined}

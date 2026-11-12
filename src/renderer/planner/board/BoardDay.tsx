@@ -11,7 +11,7 @@ import { useStudyStore } from '../../shell/store';
 import { formatDayLabel } from '../../stats/format';
 import { DeadlineChip } from '../DeadlineChip';
 import { DropZone, dayZone, taskDrag } from '../dnd';
-import { estimateChip } from '../format';
+import { estimateChip, rolledLabel } from '../format';
 import { tasksOnDay, usePlannerStore, type PlannerState } from '../plannerStore';
 import { QuickAdd } from '../QuickAdd';
 import { useToday } from '../useToday';
@@ -107,6 +107,22 @@ function DayCard({ task }: { task: PlannerTask }) {
             ↻
           </span>
         )}
+        {task.reminder && (
+          <span className={row.chip} aria-label={`Reminder ${task.reminder}`}>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 0 0 4 0" />
+            </svg>
+          </span>
+        )}
+        {task.rolledFrom && <span className={row.chip}>{rolledLabel(task.rolledFrom)}</span>}
       </div>
       {task.note.trim() !== '' && <p className={styles.cardNote}>{task.note}</p>}
       {task.subtasks.length > 0 && (
