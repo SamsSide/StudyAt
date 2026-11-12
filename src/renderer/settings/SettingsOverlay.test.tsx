@@ -918,6 +918,37 @@ describe('SettingsOverlay', () => {
       expect(api.settings.set).toHaveBeenLastCalledWith({ revisionTags: ['lab'] });
     });
 
+    it('revision tags: the group is named by its heading and the input by its visible label and hint', async () => {
+      setup();
+      await openSection('Tasks');
+      expect(screen.getByRole('list', { name: 'Revision tags' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Add a revision tag')).toHaveAccessibleDescription(
+        'Letters, numbers and hyphens',
+      );
+    });
+
+    it('revision tags: a failed save keeps the draft and shows the short message', async () => {
+      const api = mockApi({ settings: { set: vi.fn(() => Promise.reject(new Error('disk full'))) } });
+      setup(api);
+      await openSection('Tasks');
+      const input = screen.getByLabelText('Add a revision tag');
+      await userEvent.type(input, 'lab{Enter}');
+      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't save that. Please try again.");
+      expect(input).toHaveValue('lab');
+    });
+
+    it('revision days: a failed save puts the day back and shows the short message', async () => {
+      const api = mockApi({ settings: { set: vi.fn(() => Promise.reject(new Error('disk full'))) } });
+      setup(api);
+      await openSection('Tasks');
+      const last = screen.getByLabelText('Revision day 4');
+      await userEvent.clear(last);
+      await userEvent.type(last, '14');
+      await userEvent.tab();
+      expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't save that");
+      expect(last).toHaveValue(21);
+    });
+
     it('revision tags: an invalid tag is not saved', async () => {
       const api = setup();
       await openSection('Tasks');

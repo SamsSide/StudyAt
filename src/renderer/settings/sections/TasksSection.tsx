@@ -2,23 +2,38 @@
 // that decide which finished tasks schedule revision.
 import { useId, useState } from 'react';
 import { LIMIT_COPY, MAX_TAGS, normaliseTag, REVISION_DAYS_MAX } from '../../../shared/planner';
+import type { SettingsPatch } from '../../../shared/types';
+import { useStudyStore } from '../../shell/store';
 import { clamp, Toggle } from '../controls';
 import styles from '../settings.module.css';
 import type { SectionProps } from './types';
 
 const MAX_DAYS = 4;
+const SAVE_FAILED = "Couldn't save that. Please try again.";
+
+/** Rows that may wrap inside the content width instead of pushing the section sideways. */
+const wrapStyle = { flexWrap: 'wrap', flexShrink: 1, minWidth: 0 } as const;
 
 /** Sorted, de-duplicated copy: the saved arrays are shared defaults, never edited in place. */
 const tidyDays = (days: readonly number[]): number[] => [...new Set(days)].sort((a, b) => a - b);
+
+/** The latest saved lists, so a click never overwrites a change still settling from a blur. */
+const latest = (): { tags: readonly string[]; days: readonly number[] } => {
+  const s = useStudyStore.getState().settings;
+  return { tags: s?.revisionTags ?? [], days: s?.revisionDays ?? [] };
+};
 
 function DayField({
   index,
   value,
   onCommit,
+  onFailed,
 }: {
   index: number;
   value: number;
-  onCommit: (next: number) => void;
+  /** Saves the day; resolves false when it couldn't be saved (the field then reverts). */
+  onCommit: (next: number) => Promise<boolean>;
+  onFailed: (failed: boolean) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
   // Follow the saved value when it changes (days re-sort after a save).
@@ -28,7 +43,7 @@ function DayField({
     setDraft(String(value));
   }
 
-  const commit = (): void => {
+  const commit = async (): Promise<void> => {
     const parsed = Number(draft);
     if (draft.trim() === '' || !Number.isFinite(parsed)) {
       setDraft(String(value));
@@ -36,7 +51,12 @@ function DayField({
     }
     const next = clamp(Math.round(parsed), 1, REVISION_DAYS_MAX);
     setDraft(String(next));
-    if (next !== value) onCommit(next);
+    if (next === value) return;
+    onFailed(false);
+    if (!(await onCommit(next))) {
+      setDraft(String(value));
+      onFailed(true);
+    }
   };
 
   return (
@@ -49,9 +69,9 @@ function DayField({
       max={REVISION_DAYS_MAX}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
+      onBlur={() => void commit()}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') commit();
+        if (e.key === 'Enter') void commit();
       }}
     />
   );
@@ -59,30 +79,45 @@ function DayField({
 
 export function TasksSection({ settings, update }: SectionProps) {
   const tagId = useId();
+  const tagHintId = useId();
+  const tagsHeadingId = useId();
   const [tagDraft, setTagDraft] = useState('');
+  const [failed, setFailed] = useState(false);
   const tags = settings.revisionTags;
   const days = settings.revisionDays;
   const tagsFull = tags.length >= MAX_TAGS;
 
-  const addTag = (): void => {
+  /** Saves a patch and shows the fixed line when it couldn't be saved. */
+  const save = async (patch: SettingsPatch): Promise<boolean> => {
+    setFailed(false);
+    const ok = await update(patch);
+    if (!ok) setFailed(true);
+    return ok;
+  };
+
+  const addTag = async (): Promise<void> => {
     const tag = normaliseTag(tagDraft.trim());
     if (tag === null || tagsFull) return;
-    setTagDraft('');
-    if (!tags.includes(tag)) void update({ revisionTags: [...tags, tag] });
+    const current = latest().tags;
+    if (current.includes(tag)) {
+      setTagDraft('');
+      return;
+    }
+    // The draft is cleared only once the tag is saved.
+    if (await save({ revisionTags: [...current, tag] })) setTagDraft('');
   };
 
-  const setDay = (index: number, next: number): void => {
-    void update({ revisionDays: tidyDays(days.map((d, i) => (i === index ? next : d))) });
-  };
+  const setDay = (index: number, next: number): Promise<boolean> =>
+    update({ revisionDays: tidyDays(latest().days.map((d, i) => (i === index ? next : d))) });
 
   const addDay = (): void => {
-    const largest = Math.max(...days);
-    let next = largest + 1;
+    const current = latest().days;
+    let next = Math.max(...current) + 1;
     if (next > REVISION_DAYS_MAX) {
       next = 1;
-      while (days.includes(next)) next += 1;
+      while (current.includes(next)) next += 1;
     }
-    void update({ revisionDays: tidyDays([...days, next]) });
+    void save({ revisionDays: tidyDays([...current, next]) });
   };
 
   return (
@@ -99,12 +134,12 @@ export function TasksSection({ settings, update }: SectionProps) {
 
       <div className={styles.listItem}>
         <div className={styles.grow}>
-          <label className={styles.label} htmlFor={tagId}>
+          <span id={tagsHeadingId} className={styles.label}>
             Revision tags
-          </label>
+          </span>
           <div className={styles.hint}>Finishing a task with one of these tags schedules revision</div>
         </div>
-        <ul className={`${styles.list} ${styles.controls}`} aria-label="Revision tags">
+        <ul className={`${styles.list} ${styles.controls}`} style={wrapStyle} aria-labelledby={tagsHeadingId}>
           {tags.map((tag) => (
             <li key={tag} className={styles.controls}>
               <span>{tag}</span>
@@ -112,28 +147,42 @@ export function TasksSection({ settings, update }: SectionProps) {
                 type="button"
                 className={styles.button}
                 aria-label={`Remove ${tag}`}
-                onClick={() => void update({ revisionTags: tags.filter((t) => t !== tag) })}
+                onClick={() => void save({ revisionTags: latest().tags.filter((t) => t !== tag) })}
               >
                 ×
               </button>
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className={styles.listItem}>
+        <div className={styles.grow}>
+          <label className={styles.label} htmlFor={tagId}>
+            Add a revision tag
+          </label>
+          <div id={tagHintId} className={styles.hint}>
+            Letters, numbers and hyphens
+          </div>
+        </div>
         <input
           id={tagId}
           type="text"
-          aria-label="Add a revision tag"
+          aria-describedby={tagHintId}
           className={styles.input}
           placeholder="Add a tag"
           maxLength={25}
           value={tagDraft}
           disabled={tagsFull}
           title={tagsFull ? LIMIT_COPY.tags : undefined}
-          onChange={(e) => setTagDraft(e.target.value)}
+          onChange={(e) => {
+            setFailed(false);
+            setTagDraft(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              addTag();
+              void addTag();
             }
           }}
         />
@@ -144,16 +193,16 @@ export function TasksSection({ settings, update }: SectionProps) {
           <span className={styles.label}>Revision days</span>
           <div className={styles.hint}>Days after finishing that a revision task appears</div>
         </div>
-        <div className={styles.controls}>
+        <div className={styles.controls} style={wrapStyle}>
           {days.map((day, i) => (
             <span key={i} className={styles.controls}>
-              <DayField index={i} value={day} onCommit={(n) => setDay(i, n)} />
+              <DayField index={i} value={day} onCommit={(n) => setDay(i, n)} onFailed={setFailed} />
               {days.length > 1 && (
                 <button
                   type="button"
                   className={styles.button}
                   aria-label={`Remove revision day ${i + 1}`}
-                  onClick={() => void update({ revisionDays: days.filter((_, j) => j !== i) })}
+                  onClick={() => void save({ revisionDays: latest().days.filter((_, j) => j !== i) })}
                 >
                   ×
                 </button>
@@ -167,6 +216,12 @@ export function TasksSection({ settings, update }: SectionProps) {
           )}
         </div>
       </div>
+
+      {failed && (
+        <p role="alert" className={styles.error}>
+          {SAVE_FAILED}
+        </p>
+      )}
     </section>
   );
 }
