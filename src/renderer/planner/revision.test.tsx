@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
-import type { PlannerTask } from '../../shared/types';
+import type { PlannerTask, TaskChange } from '../../shared/types';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { installMockApi, minimalPlannerTask, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
 import { plannerToday } from './format';
@@ -88,9 +88,9 @@ describe('the revision offer', () => {
   it('two quick clicks on Add make one call', async () => {
     const api = setup([lecture]);
     let release: () => void = () => {};
-    api.tasks.scheduleRevision.mockImplementation(
+    vi.mocked(api.tasks.scheduleRevision).mockImplementation(
       () =>
-        new Promise((resolve) => {
+        new Promise<TaskChange>((resolve) => {
           release = () => resolve({ tasks: [], removed: [] });
         }),
     );
