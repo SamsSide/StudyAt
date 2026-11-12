@@ -28,13 +28,17 @@ fails only while Sam's own StudyAt holds Ctrl+Alt+P. Waiting for Sam's hand-walk
 
 ## Up next
 
-1. **Sam's v1.2 hand-walk** (spec §10), then push and merge `worktree-feat-v1-2`.
-2. Sam's v1.1 hand-walk and look calls (verification record §5, §6), if not done yet.
-3. The v1.0 hand-walk items, if not done yet: spaces (one of your videos, a YouTube link), a rain
+1. **Tweek board feel** (Sam, 2026-11-12, planned): drag a task by its whole line, one click opens a
+   small Tweek card (Expand for the full detail), click any blank board line to type a task. Spec
+   `docs/planning/specs/2026-11-12-tweek-board-feel-design.md`, plan
+   `docs/planning/plans/2026-11-12-tweek-board-feel.md`, on `worktree-feat-v1-2`.
+2. **Sam's v1.2 hand-walk** (spec §10), then push and merge `worktree-feat-v1-2`.
+3. Sam's v1.1 hand-walk and look calls (verification record §5, §6), if not done yet.
+4. The v1.0 hand-walk items, if not done yet: spaces (one of your videos, a YouTube link), a rain
    and brown-noise mix, a Pomodoro tagged COMP2261 with both chimes, locking the PC mid-focus,
    closing the window (mini timer, Ctrl+Alt+P), Stats, Spotify, Calendar, Weather, the glass look.
-4. Fix what the hand-walks turn up, as new rows here.
-5. Ship as a new release (bump `package.json`, `npm run dist` on Windows, tag `vX.Y.Z`).
+5. Fix what the hand-walks turn up, as new rows here.
+6. Ship as a new release (bump `package.json`, `npm run dist` on Windows, tag `vX.Y.Z`).
 
 ## Rows
 
