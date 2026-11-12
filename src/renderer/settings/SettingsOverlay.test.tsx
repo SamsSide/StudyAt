@@ -45,10 +45,11 @@ beforeEach(() => {
 });
 
 describe('SettingsOverlay', () => {
-  it('lists the ten sections', () => {
+  it('lists the eleven sections', () => {
     setup();
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Timer',
+      'Tasks',
       'Chimes',
       'Goals & streak',
       'Subjects',
@@ -888,6 +889,79 @@ describe('SettingsOverlay', () => {
       await act(async () => releaseOld([DURHAM]));
       expect(screen.getByRole('button', { name: 'York, England, United Kingdom' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Durham, England, United Kingdom' })).toBeNull();
+    });
+  });
+
+  describe('Tasks', () => {
+    it('has a tab straight after Timer', () => {
+      setup();
+      const names = screen.getAllByRole('tab').map((t) => t.textContent);
+      expect(names.indexOf('Tasks')).toBe(names.indexOf('Timer') + 1);
+    });
+
+    it('rolling tasks forward is off by default and saves when switched on', async () => {
+      const api = setup();
+      await openSection('Tasks');
+      const sw = screen.getByRole('switch', { name: 'Move unfinished tasks to today' });
+      expect(sw).toHaveAttribute('aria-checked', 'false');
+      await userEvent.click(sw);
+      expect(api.settings.set).toHaveBeenCalledWith({ rollTasksForward: true });
+    });
+
+    it('revision tags: shows lecture, adds Lab as lab, removes lecture', async () => {
+      const api = setup();
+      await openSection('Tasks');
+      expect(screen.getByText('lecture')).toBeInTheDocument();
+      await userEvent.type(screen.getByLabelText('Add a revision tag'), 'Lab{Enter}');
+      expect(api.settings.set).toHaveBeenLastCalledWith({ revisionTags: ['lecture', 'lab'] });
+      await userEvent.click(screen.getByRole('button', { name: 'Remove lecture' }));
+      expect(api.settings.set).toHaveBeenLastCalledWith({ revisionTags: ['lab'] });
+    });
+
+    it('revision tags: an invalid tag is not saved', async () => {
+      const api = setup();
+      await openSection('Tasks');
+      await userEvent.type(screen.getByLabelText('Add a revision tag'), 'not a tag{Enter}');
+      expect(api.settings.set).not.toHaveBeenCalled();
+    });
+
+    it('revision tags: the input is disabled at eight, with a title', async () => {
+      setup(mockApi(), { ...publicDefaults(), revisionTags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] });
+      await openSection('Tasks');
+      const input = screen.getByLabelText('Add a revision tag');
+      expect(input).toBeDisabled();
+      expect(input).toHaveAttribute('title', 'Up to 8 tags');
+    });
+
+    it('revision days: shows 1, 3, 7, 21; no add button at four; changing 21 to 14 saves sorted', async () => {
+      const api = setup();
+      await openSection('Tasks');
+      const fields = screen.getAllByLabelText(/^Revision day \d$/);
+      expect(fields.map((f) => (f as HTMLInputElement).value)).toEqual(['1', '3', '7', '21']);
+      expect(screen.queryByRole('button', { name: 'Add a revision day' })).not.toBeInTheDocument();
+      const last = screen.getByLabelText('Revision day 4');
+      await userEvent.clear(last);
+      await userEvent.type(last, '14');
+      await userEvent.tab();
+      expect(api.settings.set).toHaveBeenLastCalledWith({ revisionDays: [1, 3, 7, 14] });
+    });
+
+    it('revision days: removing down to one hides the remove buttons', async () => {
+      const api = setup();
+      await openSection('Tasks');
+      for (let i = 0; i < 3; i += 1) {
+        await userEvent.click(screen.getAllByRole('button', { name: /^Remove revision day/ })[0] as HTMLElement);
+      }
+      expect(api.settings.set).toHaveBeenLastCalledWith({ revisionDays: [21] });
+      expect(screen.queryByRole('button', { name: /^Remove revision day/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add a revision day' })).toBeInTheDocument();
+    });
+
+    it('revision days: adding one saves a new day after the largest, sorted', async () => {
+      const api = setup(mockApi(), { ...publicDefaults(), revisionDays: [1, 3] });
+      await openSection('Tasks');
+      await userEvent.click(screen.getByRole('button', { name: 'Add a revision day' }));
+      expect(api.settings.set).toHaveBeenLastCalledWith({ revisionDays: [1, 3, 4] });
     });
   });
 });

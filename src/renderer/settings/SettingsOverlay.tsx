@@ -13,6 +13,7 @@ import { GoalsSection } from './sections/GoalsSection';
 import { ShortcutsSection } from './sections/ShortcutsSection';
 import { SpotifySection } from './sections/SpotifySection';
 import { SubjectsSection } from './sections/SubjectsSection';
+import { TasksSection } from './sections/TasksSection';
 import { TimerSection } from './sections/TimerSection';
 import { WeatherSection } from './sections/WeatherSection';
 import type { SectionProps } from './sections/types';
@@ -20,6 +21,7 @@ import styles from './settings.module.css';
 
 const SECTIONS = [
   'Timer',
+  'Tasks',
   'Chimes',
   'Goals & streak',
   'Subjects',
@@ -36,6 +38,8 @@ const render = (name: SectionName, props: SectionProps): ReactNode => {
   switch (name) {
     case 'Timer':
       return <TimerSection {...props} />;
+    case 'Tasks':
+      return <TasksSection {...props} />;
     case 'Chimes':
       return <ChimesSection {...props} />;
     case 'Goals & streak':
