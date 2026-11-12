@@ -139,6 +139,24 @@ describe('taskWritesService', () => {
     expect(onDay('2026-11-12')).toHaveLength(1);
   });
 
+  it('tick, untick, tick leaves one task on the next day', () => {
+    const w = writes();
+    const row = repo().create({ title: 'D', day: TODAY, listId: null, repeat: { kind: 'daily' } }, NOW);
+    w.update(row.id, { done: true });
+    w.update(row.id, { done: false });
+    const again = w.update(row.id, { done: true });
+    expect(again.tasks).toHaveLength(1);
+    expect(onDay('2026-11-12')).toHaveLength(1);
+  });
+
+  it('titles: empty and over-length have their own messages', () => {
+    const w = writes();
+    const row = repo().create({ title: 'T', day: TODAY, listId: null }, NOW);
+    rejects(() => w.update(row.id, { title: '  ' }), 'A task needs a title');
+    rejects(() => w.update(row.id, { title: 'x'.repeat(501) }), 'A title is 1 to 500 characters');
+    expect(() => w.update(row.id, { title: 'x'.repeat(500) })).not.toThrow();
+  });
+
   it('a task without a repeat makes no copy on ticking', () => {
     const w = writes();
     const row = repo().create({ title: 'P', day: TODAY, listId: null }, NOW);

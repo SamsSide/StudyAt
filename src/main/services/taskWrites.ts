@@ -79,7 +79,8 @@ export function taskWritesService(deps: TaskWritesDeps) {
     if (!subjects.list().some((s) => s.id === id)) fail(NO_SUBJECT);
   };
   const checkTitle = (title: string): void => {
-    if (title.trim().length === 0 || title.length > TASK_TITLE_MAX) fail('A task needs a title');
+    if (title.trim().length === 0) fail('A task needs a title');
+    if (title.length > TASK_TITLE_MAX) fail(`A title is 1 to ${TASK_TITLE_MAX} characters`);
   };
   const cleanTags = (tags: string[]): string[] => {
     const out = [...new Set(tags.map(normaliseTag).filter((t): t is string => t !== null))];
@@ -198,12 +199,14 @@ export function taskWritesService(deps: TaskWritesDeps) {
       const ids = [id];
       // Ticking is done going false -> true; only a dated repeating task makes the next copy.
       if (!current.done && next.done && next.repeat !== null && next.day !== null) {
-        const copy = copyOf(
-          tasks.get(id) ?? next,
-          nextRepeatDayOf(next.repeat, next.day),
-          null,
-        );
-        ids.push(copy.id);
+        const source = tasks.get(id) ?? next;
+        const target = nextRepeatDayOf(next.repeat, next.day);
+        const rule = JSON.stringify(source.repeat);
+        // Tick, untick, tick must not stack a second copy on the same day (appplan §3.6).
+        const already = tasks
+          .onDays(target, target)
+          .some((t) => t.title === source.title && t.kind === source.kind && JSON.stringify(t.repeat) === rule);
+        if (!already) ids.push(copyOf(source, target, null).id);
       }
       return changed(ids);
     },
