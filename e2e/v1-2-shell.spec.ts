@@ -345,15 +345,36 @@ test('YouTube quality: 4K asks for 2160p on a 4K video; Auto stays at 1080p or u
   await quality.getByRole('button', { name: 'Auto', exact: true }).click();
   await expect.poll(async () => (await win.evaluate(() => window.studyat.spaces.list())).find((s) => s.id === space.id)?.opts.quality).toBe('auto');
   const order = ['144p', '240p', '360p', '480p', '720p', '1080p', '1440p', '2160p', '4K+'];
+  // Switched in place, the player keeps the 4K stream it already has for a while (2 s on one run,
+  // over 15 s on the next): recorded, not asserted. Auto is then measured as a user meets it, on a
+  // player started under Auto (a renderer reload with the space open).
+  const inPlace: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    await sleep(2_000);
+    inPlace.push((await badge.innerText()).trim());
+  }
+  test.info().annotations.push({ type: 'auto in place', description: inPlace.join(', ') });
+  await reload(win);
+  await expect(win.locator('[data-testid="space-youtube"] iframe')).toHaveAttribute('src', new RegExp(VIDEO_4K));
+  if (!(await win.getByRole('button', { name: `Menu for ${space.name}`, exact: true }).isVisible())) await win.keyboard.press('g');
+  await win.getByRole('button', { name: `Menu for ${space.name}`, exact: true }).click();
+  await win.getByRole('menuitem', { name: 'Settings' }).click();
+  const autoGroup = win.locator(`section[aria-label="Settings for ${space.name}"]`).getByRole('group', { name: 'Quality' });
+  await expect(autoGroup.getByRole('button', { name: 'Auto', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const autoBadge = autoGroup.getByRole('status', { name: 'Playing quality' });
+  await expect(autoBadge).toHaveText(/^Playing · /, { timeout: 45_000 });
   const seen: string[] = [];
   for (let i = 0; i < 30; i++) {
     await sleep(2_000);
-    seen.push((await badge.innerText()).trim());
+    seen.push((await autoBadge.innerText()).trim());
   }
   test.info().annotations.push({ type: 'auto badge samples', description: seen.join(', ') });
+  // Every sample is "—" (not playing) or "Playing · <a known label>" at or under 1080p.
   for (const s of seen) {
-    const label = s.replace('Playing · ', '');
-    if (order.includes(label)) expect(order.indexOf(label), s).toBeLessThanOrEqual(order.indexOf('1080p'));
+    if (s === '—') continue;
+    const label = s.startsWith('Playing · ') ? s.slice('Playing · '.length) : '';
+    expect(order, s).toContain(label);
+    expect(order.indexOf(label), s).toBeLessThanOrEqual(order.indexOf('1080p'));
   }
   expect(seen.some((s) => s.startsWith('Playing · '))).toBe(true);
 });
@@ -381,8 +402,10 @@ test('background: V pauses and plays a YouTube space, a space change resets it, 
     if (!frame) return null;
     return frame.evaluate(() => document.querySelector('video')?.paused ?? null).catch(() => null);
   };
-  const pauseBtn = win.getByRole('button', { name: 'Pause background', exact: true });
-  const playBtn = win.getByRole('button', { name: 'Play background', exact: true });
+  // The top bar's button: the reduced-motion footer in SpaceBackground has the same names.
+  const topBar = win.locator('header[class*="topBar"]');
+  const pauseBtn = topBar.getByRole('button', { name: 'Pause background', exact: true });
+  const playBtn = topBar.getByRole('button', { name: 'Play background', exact: true });
 
   await use(rain.name);
   await expect.poll(() => paused(rain.source), { timeout: 45_000 }).toBe(false);
@@ -421,8 +444,12 @@ test('deadlines: form and bridge adds count down in the right format; Past; chip
   const ai = subjects.find((s) => s.name.startsWith('COMP2261'))!;
 
   const now = Date.now();
+  // Same day next month, clamped to that month's last day (31 Jan -> 28/29 Feb, not 3 Mar).
   const nextMonth = new Date(now);
+  const lastOfNext = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 2, 0).getDate();
+  nextMonth.setDate(1);
   nextMonth.setMonth(nextMonth.getMonth() + 1);
+  nextMonth.setDate(Math.min(new Date(now).getDate(), lastOfNext));
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -463,8 +490,11 @@ test('deadlines: form and bridge adds count down in the right format; Past; chip
   );
   await reload(win);
   const soon = row('Problem sheet 6').locator('[class*="countdown"]');
-  await expect(soon).toHaveText(/^29m 5\ds$/);
+  // A slow reload can push it into "29m 4xs"; the reference taken after the reload pins it.
+  await expect(soon).toHaveText(/^29m [45]\ds$/);
   const t1 = (await soon.innerText()).trim();
+  const left = Math.floor((soonDue - Date.now()) / 1000);
+  expect(Math.abs(29 * 60 + Number(t1.slice(4, 6)) - left), `${t1} vs ${left}s left`).toBeLessThanOrEqual(2);
   await expect.poll(async () => (await soon.innerText()).trim(), { timeout: 2_000, intervals: [200] }).not.toBe(t1);
   test.info().annotations.push({
     type: 'countdowns',
@@ -480,15 +510,21 @@ test('deadlines: form and bridge adds count down in the right format; Past; chip
   const soonDay = formatDayLabel(studyDay(soonDue));
   await expect(board.locator(`section[aria-label="${soonDay}"]`)).toContainText('Problem sheet 6');
   const cwDue = new Date(`${localParts(tomorrow.getTime()).date}T12:00`).getTime();
-  if (weekStartOf(studyDay(cwDue)) === weekStartOf(studyDay(Date.now()))) {
-    const cwDay = formatDayLabel(studyDay(cwDue));
-    await expect(board.locator(`section[aria-label="${cwDay}"]`)).toContainText('Lab report hand-in');
-  }
   await calm(win);
   await shot(win, 'v12-deadlines-board-week.png');
+  // Tomorrow can fall in next study week (a Sunday run): step the board on to it.
+  if (weekStartOf(studyDay(cwDue)) !== weekStartOf(studyDay(Date.now()))) {
+    await board.getByRole('button', { name: 'Next week' }).click();
+  }
+  const cwDay = formatDayLabel(studyDay(cwDue));
+  await expect(board.locator(`section[aria-label="${cwDay}"]`)).toContainText('Lab report hand-in');
+  // Month, from today's month to the next: the exam sits in its own day's cell.
   await board.getByRole('group', { name: 'Board view' }).getByRole('button', { name: 'Month' }).click();
+  const todayBtn = board.getByRole('button', { name: 'Today', exact: true });
+  if ((await todayBtn.getAttribute('aria-disabled')) !== 'true') await todayBtn.click();
   await board.getByRole('button', { name: 'Next month' }).click();
-  await expect(board).toContainText('COMP2261 final exam');
+  const examDay = studyDay(new Date(exam.due).getTime());
+  await expect(board.locator(`[data-month-cell="${examDay}"]`)).toContainText('COMP2261 final exam');
   await win.keyboard.press('Escape');
 
   // Mark the lab report done in its detail; Past shows it as done.
