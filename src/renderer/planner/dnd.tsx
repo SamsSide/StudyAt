@@ -21,12 +21,39 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
 import type { PlannerTask, TaskList, TaskMove } from '../../shared/types';
 import { formatDayLabel } from '../stats/format';
 import { usePlannerStore } from './plannerStore';
 import { TaskRow } from './TaskRow';
 import styles from './planner.module.css';
+
+/** A click this soon after a drag ends or is cancelled is the drag's own release, not a click on the
+ *  row: rows ignore it. UI timing only, never study-time accounting. */
+export const DRAG_CLICK_GUARD_MS = 250;
+let lastDragEnd = Number.NEGATIVE_INFINITY;
+export function markDragEnded(now: number): void {
+  lastDragEnd = now;
+}
+export function justDragged(now: number): boolean {
+  return now - lastDragEnd < DRAG_CLICK_GUARD_MS;
+}
+export function resetDragGuard(): void {
+  lastDragEnd = Number.NEGATIVE_INFINITY;
+}
+
+type Listeners = ReturnType<typeof useSortable>['listeners'];
+
+/** dnd-kit types its listeners as `Function`; the row takes the pointer one, the grip the key one. */
+export function splitListeners(listeners: Listeners): {
+  onPointerDown?: (e: PointerEvent<HTMLElement>) => void;
+  onKeyDown?: (e: KeyboardEvent<HTMLElement>) => void;
+} {
+  return {
+    onPointerDown: listeners?.onPointerDown as ((e: PointerEvent<HTMLElement>) => void) | undefined,
+    onKeyDown: listeners?.onKeyDown as ((e: KeyboardEvent<HTMLElement>) => void) | undefined,
+  };
+}
 
 export const dayZone = (day: string): string => `day:${day}`;
 export const listZone = (id: number): string => `list:${id}`;
@@ -176,6 +203,7 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
   );
 
   const onDragEnd = ({ active, over }: DragEndEvent): void => {
+    markDragEnded(Date.now());
     const drop = resolveDrop(
       String(active.id),
       over ? String(over.id) : null,
@@ -194,6 +222,7 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
       collisionDetection={collisions}
       accessibility={{ announcements }}
       onDragEnd={onDragEnd}
+      onDragCancel={() => markDragEnded(Date.now())}
     >
       {children}
     </DndContext>
@@ -224,11 +253,13 @@ export function DropZone({
   );
 }
 
-/** A sortable row with a grip button `Move "<title>"` (Space to lift, arrows to move, Space to drop).
+/** A sortable row, dragged by its whole line (pointer), with a grip button `Move "<title>"` for the
+ *  keyboard (Space to lift, arrows to move, Space to drop); the grip shows only on focus.
  *  `variant` passes through to TaskRow: the board's columns use 'compact'. */
 export function SortableTask({ task, variant }: { task: PlannerTask; variant?: 'full' | 'compact' }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: taskDrag(task.id) });
+  const split = splitListeners(listeners);
   return (
     <TaskRow
       task={task}
@@ -239,13 +270,14 @@ export function SortableTask({ task, variant }: { task: PlannerTask; variant?: '
       }}
       dragging={isDragging}
       variant={variant}
+      rowPointer={{ onPointerDown: split.onPointerDown }}
       grip={
         <button
           type="button"
           ref={setActivatorNodeRef}
           className={styles.grip}
           {...attributes}
-          {...listeners}
+          onKeyDown={split.onKeyDown}
           aria-label={`Move "${task.title}"`}
         >
           ⠿

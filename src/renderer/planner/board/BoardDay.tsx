@@ -10,7 +10,7 @@ import { formatGoal } from '../../shell/format';
 import { useStudyStore } from '../../shell/store';
 import { formatDayLabel } from '../../stats/format';
 import { DeadlineChip } from '../DeadlineChip';
-import { DropZone, dayZone, taskDrag } from '../dnd';
+import { DropZone, dayZone, justDragged, splitListeners, taskDrag } from '../dnd';
 import { estimateChip, rolledLabel } from '../format';
 import { tasksOnDay, usePlannerStore, type PlannerState } from '../plannerStore';
 import { QuickAdd } from '../QuickAdd';
@@ -30,9 +30,11 @@ function DayCard({ task }: { task: PlannerTask }) {
   const startTask = usePlannerStore((s) => s.startTask);
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id: taskDrag(task.id) });
+  const split = splitListeners(listeners);
   const estimate = task.estimateMin === null ? null : estimateChip(task.actualMs, task.estimateMin);
 
   const onCardClick = (e: MouseEvent<HTMLElement>): void => {
+    if (justDragged(Date.now())) return;
     if ((e.target as HTMLElement).closest('button, input, label')) return;
     openDetail(task.id);
   };
@@ -50,6 +52,7 @@ function DayCard({ task }: { task: PlannerTask }) {
       data-done={task.done}
       data-colour={task.colour ?? undefined}
       onClick={onCardClick}
+      onPointerDown={split.onPointerDown}
     >
       <div className={styles.cardHead}>
         <input
@@ -59,7 +62,13 @@ function DayCard({ task }: { task: PlannerTask }) {
           aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`}
           onChange={() => void update(task.id, { done: !task.done })}
         />
-        <button type="button" className={styles.cardTitle} onClick={() => openDetail(task.id)}>
+        <button
+          type="button"
+          className={styles.cardTitle}
+          onClick={() => {
+            if (!justDragged(Date.now())) openDetail(task.id);
+          }}
+        >
           {task.title}
         </button>
         <span className={styles.cardTools}>
@@ -76,7 +85,7 @@ function DayCard({ task }: { task: PlannerTask }) {
             ref={setActivatorNodeRef}
             className={row.grip}
             {...attributes}
-            {...listeners}
+            onKeyDown={split.onKeyDown}
             aria-label={`Move "${task.title}"`}
           >
             ⠿

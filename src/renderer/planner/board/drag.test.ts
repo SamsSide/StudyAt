@@ -1,5 +1,10 @@
 import type { ClientRect, Modifier } from '@dnd-kit/core';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { minimalPlannerTask } from '../../test/mockApi';
+import { markDragEnded, PlannerDnd, resetDragGuard, SortableTask } from '../dnd';
+import { resetPlannerStore, usePlannerStore } from '../plannerStore';
 import { keepGrabPoint } from './BoardDrag';
 
 const rect = (left: number, top: number, width: number, height: number): ClientRect => ({
@@ -63,5 +68,39 @@ describe('keepGrabPoint (the drag overlay sits where the row was grabbed)', () =
       }),
     );
     expect(out).toMatchObject({ x: 40, y: 10 });
+  });
+});
+
+describe.each(['compact', 'full'] as const)('a %s row dragged by its whole line', (variant) => {
+  const task = minimalPlannerTask({ id: 1, title: 'Read', day: '2026-11-11' });
+  let container: HTMLElement;
+  beforeEach(() => {
+    resetPlannerStore();
+    resetDragGuard();
+    usePlannerStore.setState({ tasks: { 1: task } });
+    ({ container } = render(
+      createElement(
+        PlannerDnd,
+        null,
+        createElement('ul', null, createElement(SortableTask, { task, variant })),
+      ),
+    ));
+  });
+
+  it('puts the pointer handle on the row and keeps the keyboard grip as a separate button', () => {
+    const row = container.querySelector('li[data-task-id="1"]')!;
+    expect(row).not.toHaveAttribute('role');
+    expect(row).not.toHaveAttribute('aria-roledescription');
+    const grip = screen.getByRole('button', { name: 'Move "Read"' });
+    expect(grip).toHaveAttribute('aria-roledescription', 'sortable');
+  });
+
+  it('a row click right after a drag does not open the detail; a later one does', () => {
+    markDragEnded(Date.now());
+    fireEvent.click(screen.getByText('Read'));
+    expect(usePlannerStore.getState().detailTaskId).toBeNull();
+    resetDragGuard();
+    fireEvent.click(screen.getByText('Read'));
+    expect(usePlannerStore.getState().detailTaskId).toBe(1);
   });
 });

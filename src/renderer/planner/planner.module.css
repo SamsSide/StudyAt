@@ -190,6 +190,7 @@
   border-left: 3px solid transparent;
   border-radius: var(--radius-xs);
   cursor: pointer;
+  user-select: none;
 }
 
 .row:hover,
@@ -428,9 +429,15 @@
   transform: rotate(90deg);
 }
 
+/* The grip is the keyboard handle (the whole line drags with the pointer): visually hidden with the
+   clip pattern, so it stays in the tab order and the accessibility tree, and shown on focus. */
 .grip {
-  width: 24px;
-  height: 24px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
   border: 0;
   border-radius: 50%;
   background: transparent;
@@ -438,6 +445,19 @@
   font: inherit;
   cursor: grab;
   touch-action: none;
+}
+
+.grip:focus-visible {
+  position: static;
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+}
+
+body:has([data-drag-overlay]) {
+  cursor: grabbing;
 }
 
 .grip:hover {

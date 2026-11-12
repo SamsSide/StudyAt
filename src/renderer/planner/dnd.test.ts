@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { minimalPlannerTask } from '../test/mockApi';
 import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core';
-import { buildAnnouncements, dayZone, listZone, resolveDrop, taskDrag } from './dnd';
+import {
+  buildAnnouncements,
+  DRAG_CLICK_GUARD_MS,
+  dayZone,
+  justDragged,
+  listZone,
+  markDragEnded,
+  resetDragGuard,
+  resolveDrop,
+  taskDrag,
+} from './dnd';
 
 const t = (id: number, over: Parameters<typeof minimalPlannerTask>[0] = {}) =>
   minimalPlannerTask({ id, ...over });
@@ -98,5 +108,19 @@ describe('buildAnnouncements', () => {
     expect(a.onDragEnd?.(ev('task:1', null) as DragEndEvent)).toBe('Put "Read" back.');
     expect(a.onDragEnd?.(ev('task:1', 'day:2026-11-11') as DragEndEvent)).toBe('Put "Read" back.');
     expect(a.onDragCancel?.(ev('task:1', null) as DragEndEvent)).toBe('Put "Read" back.');
+  });
+});
+
+describe('the click-after-drag guard', () => {
+  beforeEach(() => resetDragGuard());
+  it('is off before any drag', () => {
+    expect(justDragged(1_000)).toBe(false);
+  });
+  it('swallows a click up to 250 ms after a drag ends, and not after', () => {
+    markDragEnded(10_000);
+    expect(DRAG_CLICK_GUARD_MS).toBe(250);
+    expect(justDragged(10_000)).toBe(true);
+    expect(justDragged(10_249)).toBe(true);
+    expect(justDragged(10_250)).toBe(false);
   });
 });

@@ -8,12 +8,14 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   type Ref,
 } from 'react';
 import type { PlannerTask } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import { estimateChip, rolledLabel, subtaskCount } from './format';
+import { justDragged } from './dnd';
 import { usePlannerStore } from './plannerStore';
 import styles from './planner.module.css';
 
@@ -26,9 +28,11 @@ interface RowProps {
   dragging?: boolean;
   /** 'compact': the board's ruled-line row. The widget keeps the full row. */
   variant?: 'full' | 'compact';
+  /** For a sortable row: the pointer handle on the whole line (the grip keeps the keyboard). */
+  rowPointer?: { onPointerDown?: (e: PointerEvent<HTMLElement>) => void };
 }
 
-export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' }: RowProps) {
+export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full', rowPointer }: RowProps) {
   const subject = useStudyStore((s) => s.subjects.find((x) => x.id === task.effectiveSubjectId));
   const update = usePlannerStore((s) => s.update);
   const openDetail = usePlannerStore((s) => s.openDetail);
@@ -41,6 +45,7 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
   const [titleFocus, setTitleFocus] = useState(false);
 
   const onRowClick = (e: MouseEvent<HTMLElement>): void => {
+    if (justDragged(Date.now())) return;
     if ((e.target as HTMLElement).closest('button, input')) return;
     openDetail(task.id);
   };
@@ -79,6 +84,7 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
         data-done={task.done}
         data-colour={task.colour ?? undefined}
         onClick={onRowClick}
+        {...rowPointer}
       >
         <input
           type="checkbox"
@@ -125,6 +131,7 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
       data-done={task.done}
       data-colour={task.colour ?? undefined}
       onClick={onRowClick}
+      {...rowPointer}
     >
       <input
         type="checkbox"
@@ -133,7 +140,13 @@ export function TaskRow({ task, grip, rowRef, style, dragging, variant = 'full' 
         aria-label={task.done ? `Mark "${task.title}" as not done` : `Mark "${task.title}" as done`}
         onChange={() => void update(task.id, { done: !task.done })}
       />
-      <button type="button" className={styles.title} onClick={() => openDetail(task.id)}>
+      <button
+        type="button"
+        className={styles.title}
+        onClick={() => {
+          if (!justDragged(Date.now())) openDetail(task.id);
+        }}
+      >
         {task.title}
       </button>
       <span className={styles.chips}>

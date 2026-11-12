@@ -470,6 +470,7 @@
   border-bottom: 1px solid var(--separator);
   border-left: 3px solid transparent;
   cursor: pointer;
+  user-select: none;
   transition: background var(--duration) var(--ease);
 }
 

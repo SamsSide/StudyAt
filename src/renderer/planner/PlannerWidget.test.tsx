@@ -16,6 +16,7 @@ import {
   type MockApi,
 } from '../test/mockApi';
 import { plannerToday } from './format';
+import { resetDragGuard } from './dnd';
 import { PlannerWidget } from './PlannerWidget';
 import { resetPlannerStore, usePlannerStore } from './plannerStore';
 import { usePlannerEvents } from './usePlannerEvents';
@@ -116,6 +117,7 @@ const NOON = new Date(2026, 10, 11, 12, 0).getTime();
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOON);
+  resetDragGuard();
   resetPlannerStore();
   resetStudyStore();
 });
@@ -286,7 +288,11 @@ describe('PlannerWidget', () => {
   it('Week pads after Sunday so the content after today fills the scroller, and scrolls to the exact offset', async () => {
     const user = userEvent.setup();
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-      const top = this.matches('section[data-today]') ? 340 : this.matches('[class*="weekSpacer"]') ? 700 : 100;
+      const top = this.matches('section[data-today]')
+        ? 340
+        : this.matches('[class*="weekSpacer"]')
+          ? 700
+          : 100;
       return {
         top,
         bottom: top + 40,
@@ -322,8 +328,22 @@ describe('PlannerWidget', () => {
     const user = userEvent.setup();
     // The widget draws at half size: rects are screen px (the scroller's 100 tall on screen is 200 CSS px).
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-      const top = this.matches('section[data-today]') ? 340 : this.matches('[class*="weekSpacer"]') ? 700 : 100;
-      return { top, bottom: top + 100, left: 0, right: 300, width: 300, height: 100, x: 0, y: top, toJSON: () => ({}) };
+      const top = this.matches('section[data-today]')
+        ? 340
+        : this.matches('[class*="weekSpacer"]')
+          ? 700
+          : 100;
+      return {
+        top,
+        bottom: top + 100,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 100,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      };
     });
     vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(200);
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800);
@@ -394,7 +414,17 @@ describe('PlannerWidget', () => {
   function todayAt(pushed: { by: number }): void {
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
       const top = this.matches('section[data-today]') ? 340 + pushed.by : 100;
-      return { top, bottom: top + 40, left: 0, right: 300, width: 300, height: 40, x: 0, y: top, toJSON: () => ({}) };
+      return {
+        top,
+        bottom: top + 40,
+        left: 0,
+        right: 300,
+        width: 300,
+        height: 40,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      };
     });
   }
 
