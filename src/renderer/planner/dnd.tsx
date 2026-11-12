@@ -21,7 +21,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { KeyboardEvent, PointerEvent, ReactNode } from 'react';
+import { useEffect, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { PlannerTask, TaskList, TaskMove } from '../../shared/types';
 import { formatDayLabel } from '../stats/format';
 import { usePlannerStore } from './plannerStore';
@@ -204,7 +204,22 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // While a drag is live, Esc cancels it and must not also close the board (spec §7). dnd-kit's
+  // pointer sensor cancels on Escape without preventDefault, and the shell closes on any Escape
+  // nobody claimed, so claim it here, first (capture). Never stop propagation: dnd-kit's own
+  // document listener still has to see the key to cancel the drag.
+  const [live, setLive] = useState(false);
+  useEffect(() => {
+    if (!live) return;
+    const claimEsc = (e: globalThis.KeyboardEvent): void => {
+      if (e.key === 'Escape') e.preventDefault();
+    };
+    document.addEventListener('keydown', claimEsc, true);
+    return () => document.removeEventListener('keydown', claimEsc, true);
+  }, [live]);
+
   const onDragEnd = ({ active, over }: DragEndEvent): void => {
+    setLive(false);
     markDragEnded(Date.now());
     const drop = resolveDrop(
       String(active.id),
@@ -223,8 +238,12 @@ export function PlannerDnd({ children }: { children: ReactNode }) {
       sensors={sensors}
       collisionDetection={collisions}
       accessibility={{ announcements }}
+      onDragStart={() => setLive(true)}
       onDragEnd={onDragEnd}
-      onDragCancel={() => markDragEnded(Date.now())}
+      onDragCancel={() => {
+        setLive(false);
+        markDragEnded(Date.now());
+      }}
     >
       {children}
     </DndContext>

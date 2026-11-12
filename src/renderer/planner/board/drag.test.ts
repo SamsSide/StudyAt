@@ -133,6 +133,84 @@ describe.each(['compact', 'full'] as const)('a %s row dragged by its whole line'
   });
 });
 
+describe('a drag ended by the pointer (the guard is stamped on drop)', () => {
+  const task = minimalPlannerTask({ id: 1, title: 'Read', day: '2026-11-11' });
+  beforeEach(() => {
+    resetPlannerStore();
+    resetDragGuard();
+    usePlannerStore.setState({ tasks: { 1: task } });
+    render(
+      createElement(
+        PlannerDnd,
+        null,
+        createElement('ul', null, createElement(SortableTask, { task, variant: 'full' })),
+      ),
+    );
+  });
+
+  it('a click after dnd-kit stops swallowing clicks, but inside the guard window, opens nothing', async () => {
+    fireEvent.pointerDown(screen.getByText('Read'), { isPrimary: true, button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(document, { clientX: 0, clientY: 10 });
+    fireEvent.pointerUp(document);
+    // dnd-kit's own click swallow lasts 50ms; the guard (250ms) must cover what is left.
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    fireEvent.click(screen.getByText('Read'));
+    expect(usePlannerStore.getState().detailTaskId).toBeNull();
+  });
+});
+
+describe('Esc during a pointer drag', () => {
+  const task = minimalPlannerTask({ id: 1, title: 'Read', day: '2026-11-11' });
+  let shellSaw: KeyboardEvent[];
+  const shell = (e: KeyboardEvent): void => {
+    shellSaw.push(e);
+  };
+  beforeEach(() => {
+    shellSaw = [];
+    resetPlannerStore();
+    resetDragGuard();
+    usePlannerStore.setState({ tasks: { 1: task } });
+    render(
+      createElement(
+        PlannerDnd,
+        null,
+        createElement('ul', null, createElement(SortableTask, { task, variant: 'full' })),
+      ),
+    );
+    // Stands in for the shell's window listener, which closes the board unless the key is claimed.
+    window.addEventListener('keydown', shell);
+  });
+  afterEach(async () => {
+    window.removeEventListener('keydown', shell);
+    await settleDrag();
+  });
+
+  it('cancels the drag and claims the key, so the shell leaves the board open', () => {
+    const row = document.querySelector('li[data-task-id="1"]')!;
+    fireEvent.pointerDown(screen.getByText('Read'), { isPrimary: true, button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(document, { clientX: 0, clientY: 10 });
+    expect(row).toHaveAttribute('data-dragging', 'true');
+    fireEvent.keyDown(document, { code: 'Escape', key: 'Escape' });
+    expect(row).not.toHaveAttribute('data-dragging');
+    expect(shellSaw).toHaveLength(1);
+    expect(shellSaw[0]!.defaultPrevented).toBe(true);
+    expect(usePlannerStore.getState().detailTaskId).toBeNull();
+  });
+
+  it('leaves Esc alone when no drag is live', () => {
+    fireEvent.keyDown(document, { code: 'Escape', key: 'Escape' });
+    expect(shellSaw[0]!.defaultPrevented).toBe(false);
+  });
+
+  it('stops claiming Esc once the drag has ended', () => {
+    fireEvent.pointerDown(screen.getByText('Read'), { isPrimary: true, button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(document, { clientX: 0, clientY: 10 });
+    fireEvent.pointerUp(document);
+    fireEvent.keyDown(document, { code: 'Escape', key: 'Escape' });
+    expect(shellSaw[0]!.defaultPrevented).toBe(false);
+  });
+});
+
 describe('a board Day card', () => {
   const task = minimalPlannerTask({ id: 1, title: 'Read', day: '2026-11-11' });
   const MIN_NOON = new Date(2026, 10, 11, 12, 0).getTime();

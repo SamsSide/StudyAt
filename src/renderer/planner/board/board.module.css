@@ -293,11 +293,6 @@
   font-size: var(--text-sm);
 }
 
-.rule[data-rule='add'] > form > input:focus-visible {
-  background: var(--hover);
-  border-radius: 6px;
-}
-
 /* Lists: one row straight under the week (or month), each list a day column's width, in sort order;
    more than fit scroll sideways, and "+ New list" ends the row. In the Day view they stack. */
 .lists {
@@ -625,11 +620,6 @@
   border-radius: 0;
   background: transparent;
   padding: 0 var(--space-2);
-}
-
-.dayAdd > form > input:focus-visible {
-  background: var(--hover);
-  border-radius: 6px;
 }
 
 /* The lists, one to a row, scrolling in their own column. */

@@ -4,7 +4,7 @@
 // page; a column never scrolls inside itself.
 import { Fragment, useRef, type MouseEvent } from 'react';
 import type { PlannerTask } from '../../../shared/types';
-import { SortableTask } from '../dnd';
+import { justDragged, SortableTask } from '../dnd';
 import { QuickAdd } from '../QuickAdd';
 import { InsertLine, useInsertHint } from './BoardDrag';
 import styles from './board.module.css';
@@ -26,6 +26,7 @@ export function RuledLines({ zone, tasks, addLabel, place, rows }: Props) {
 
   // A click on blank paper types a task; a click on a row, button, input or link is its own.
   const focusAdd = (e: MouseEvent): void => {
+    if (justDragged(Date.now())) return;
     if ((e.target as HTMLElement).closest('li, button, input, label, a, [role="button"]')) return;
     addRef.current?.focus();
   };

@@ -557,6 +557,19 @@ describe('TasksBoard, the Tweek look', () => {
     expect(within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' })).toHaveFocus();
   });
 
+  it("a click on another day's blank line moves the caret there and keeps what was typed", async () => {
+    await renderBoard();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const fri = screen.getByRole('region', { name: 'Fri 13 Nov' });
+    const mon = screen.getByRole('region', { name: 'Mon 9 Nov' });
+    const friAdd = within(fri).getByRole('textbox', { name: 'Add to Fri 13 Nov' });
+    await user.click(friAdd);
+    await user.keyboard('half a task');
+    fireEvent.click(mon.querySelectorAll('[data-rule="blank"]')[0]!);
+    expect(within(mon).getByRole('textbox', { name: 'Add to Mon 9 Nov' })).toHaveFocus();
+    expect(friAdd).toHaveValue('half a task');
+  });
+
   it('the same for a list column, the Inbox included', async () => {
     await renderBoard({ lists: [list({ id: 1, name: 'Inbox', subjectId: null, sort: -1 }), list()] });
     const inbox = await screen.findByRole('region', { name: 'Inbox' });

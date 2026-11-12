@@ -168,6 +168,7 @@ export function BoardDay({ day }: { day: string }) {
   const lastOpen = tasks.reduce((at, t, i) => (t.done ? at : i), -1);
   const addRef = useRef<HTMLInputElement>(null);
   const focusAdd = (e: MouseEvent): void => {
+    if (justDragged(Date.now())) return;
     if ((e.target as HTMLElement).closest('li, button, input, label, a, [role="button"]')) return;
     addRef.current?.focus();
   };

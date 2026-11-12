@@ -251,4 +251,15 @@ describe('TaskCard', () => {
     expect(opener).toHaveFocus();
     opener.remove();
   });
+
+  it('says so on the card when a save comes back unchanged', async () => {
+    const user = userEvent.setup();
+    setup();
+    const card = screen.getByRole('dialog', { name: 'Task: Read chapter 4' });
+    const note = within(card).getByRole('textbox', { name: 'Note' });
+    await user.type(note, 'Kept');
+    await user.tab();
+    expect(await within(card).findByRole('alert')).toHaveTextContent("Couldn't save that. Try again.");
+    expect(note).toHaveValue('Kept');
+  });
 });
