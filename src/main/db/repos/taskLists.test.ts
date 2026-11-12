@@ -17,20 +17,21 @@ describe('taskListsRepo', () => {
     cleanup();
   });
 
-  it('has the seeded lists on a fresh database, one per subject', () => {
+  it('has the seeded lists on a fresh database, the Inbox then one per subject', () => {
     const repo = taskListsRepo(db);
-    expect(repo.count()).toBe(6);
-    expect(repo.list().map((l) => l.sort)).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(repo.list().every((l) => l.subjectId !== null)).toBe(true);
+    expect(repo.count()).toBe(7);
+    expect(repo.list().map((l) => l.sort)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(repo.list()[0]).toMatchObject({ name: 'Inbox', subjectId: null });
+    expect(repo.list().slice(1).every((l) => l.subjectId !== null)).toBe(true);
   });
 
   it('creates at the end, updates name and subject, reorders and removes', () => {
     const repo = taskListsRepo(db);
     const a = repo.create({ name: 'Reading', subjectId: null }, NOW);
-    expect(a).toMatchObject({ name: 'Reading', subjectId: null, sort: 6, createdAt: NOW });
+    expect(a).toMatchObject({ name: 'Reading', subjectId: null, sort: 7, createdAt: NOW });
     const b = repo.create({ name: 'Labs', subjectId: 1 }, NOW + 1);
-    expect(b.sort).toBe(7);
-    expect(repo.count()).toBe(8);
+    expect(b.sort).toBe(8);
+    expect(repo.count()).toBe(9);
 
     expect(repo.update(a.id, { name: 'Papers' })).toMatchObject({ name: 'Papers', subjectId: null });
     expect(repo.update(a.id, { subjectId: 2 })).toMatchObject({ name: 'Papers', subjectId: 2 });
@@ -43,6 +44,6 @@ describe('taskListsRepo', () => {
     expect(repo.remove(a.id)).toMatchObject({ id: a.id, name: 'Papers' });
     expect(repo.get(a.id)).toBeNull();
     expect(repo.remove(a.id)).toBeNull();
-    expect(repo.count()).toBe(7);
+    expect(repo.count()).toBe(8);
   });
 });

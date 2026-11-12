@@ -1,7 +1,7 @@
 // First-run seeding (spec §3.3): the six subjects of §3.12, the built-in spaces (§3.8) and sounds
 // (§3.9) from assets/builtin.json, the timer and accounting settings, and the active space. Each
 // table is seeded only while empty; a stored setting is never overwritten. Seeded subjects also get
-// one planner list each (v1.2 Plan notes 2).
+// one planner list each, after the Inbox list (v1.2 Plan notes 2).
 import { LIST_NAME_MAX } from '../../shared/planner';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { SEED_SUBJECTS } from '../../shared/subjects';
@@ -33,6 +33,9 @@ const PINNED_SETTINGS: readonly (keyof Settings)[] = [
   'idleMinutes',
 ];
 
+/** The subject-less list every install starts with, at sort 0 (migration v4 seeds the same). */
+const INBOX_LIST_NAME = 'Inbox';
+
 const isEmpty = (db: Db, table: 'subjects' | 'spaces' | 'sounds'): boolean =>
   Number(one(db.raw, `SELECT count(*) AS n FROM ${table}`)!.n) === 0;
 
@@ -45,8 +48,18 @@ export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
   const raw = db.raw;
   transaction(raw, () => {
     if (isEmpty(db, 'subjects')) {
-      // One planner list per seeded subject, as migration v4 gives an existing database: on a
-      // fresh install v4 ran before there were subjects (v1.2 Plan notes 2).
+      // The Inbox list, then one planner list per seeded subject, as migration v4 gives an existing
+      // database: on a fresh install v4 ran before there were subjects (v1.2 Plan notes 2). v4 has
+      // already made the Inbox there, so it is added only when missing.
+      const hasInbox = one(raw, 'SELECT 1 AS x FROM task_lists WHERE name = ? AND subject_id IS NULL', [
+        INBOX_LIST_NAME,
+      ]);
+      if (!hasInbox) {
+        raw.run('INSERT INTO task_lists (name, subject_id, sort, created_at) VALUES (?, NULL, 0, ?)', [
+          INBOX_LIST_NAME,
+          now,
+        ]);
+      }
       SEED_SUBJECTS.forEach((s, i) => {
         const subjectId = insert(
           raw,
@@ -56,7 +69,7 @@ export function seedIfEmpty(db: Db, builtin: BuiltinAssets, now: number): void {
         raw.run('INSERT INTO task_lists (name, subject_id, sort, created_at) VALUES (?, ?, ?, ?)', [
           s.name.slice(0, LIST_NAME_MAX),
           subjectId,
-          i,
+          i + 1,
           now,
         ]);
       });

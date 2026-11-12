@@ -234,8 +234,9 @@ describe('migrations', () => {
         [2, 'B', 'pink', 1],
       ],
     );
-    expect(db.raw.exec('SELECT name, subject_id, sort FROM task_lists')[0]!.values).toEqual([
-      ['COMP2221 Programming Paradigms', 1, 0],
+    expect(db.raw.exec('SELECT name, subject_id, sort FROM task_lists ORDER BY sort')[0]!.values).toEqual([
+      ['Inbox', null, 0],
+      ['COMP2221 Programming Paradigms', 1, 1],
     ]);
     expect(db.raw.exec("SELECT seq FROM sqlite_sequence WHERE name = 'tasks'")[0]!.values).toEqual([[7]]);
     db.raw.run(
@@ -283,7 +284,7 @@ describe('migrations', () => {
     empty.close();
   });
 
-  it('v4 seeds at most 20 lists, from unarchived subjects in sort order, names cut to 60 chars', async () => {
+  it('v4 seeds an Inbox first, then at most 19 lists from unarchived subjects in sort order, names cut to 60 chars', async () => {
     const SQL = await initSqlJs({ locateFile: () => WASM_PATH });
     const raw = new SQL.Database();
     await migrate(
@@ -303,12 +304,16 @@ describe('migrations', () => {
     await migrate(raw, null, NOW);
     const rows = raw.exec('SELECT name, subject_id, sort FROM task_lists ORDER BY sort')[0]!.values;
     expect(rows).toHaveLength(20);
-    expect(rows.slice(0, 3)).toEqual([
-      ['x'.repeat(60), 25, 0],
-      ['S0', 1, 1],
-      ['S2', 3, 2],
+    expect(rows.slice(0, 4)).toEqual([
+      ['Inbox', null, 0],
+      ['x'.repeat(60), 25, 1],
+      ['S0', 1, 2],
+      ['S2', 3, 3],
     ]);
     expect(rows.map((r) => r[2])).toEqual([...Array(20).keys()]);
+    // 24 unarchived subjects, 19 lists: the last in sort order are the ones left out.
+    expect(rows[19]).toEqual(['S18', 19, 19]);
+    expect(rows.filter((r) => r[1] === null)).toHaveLength(1);
     raw.close();
   });
 
@@ -413,6 +418,10 @@ describe('migrations', () => {
     await migrate(raw, null, NOW);
     expect(schemaVersion(raw)).toBe(4);
     expect(raw.exec('SELECT text FROM tasks_v1_archive')[0]!.values).toEqual([['A']]);
+    expect(raw.exec('SELECT name, subject_id, sort FROM task_lists ORDER BY sort')[0]!.values).toEqual([
+      ['Inbox', null, 0],
+      ['Maths', 1, 1],
+    ]);
     raw.close();
   });
 

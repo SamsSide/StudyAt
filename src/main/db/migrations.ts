@@ -132,8 +132,9 @@ export const MIGRATIONS: Migration[] = [
   {
     // v4 (v1.2 spec §5): the planner, deadlines, stats widgets, note stickies and the session
     // intention and outcome. The old sticky-note tasks are kept, untouched, as `tasks_v1_archive`
-    // (the legacy widget reads it until Task 33; JSON export carries it as `tasksV1`). One list per
-    // unarchived subject, at most 20 (the list limit). Existing sessions and notes keep every value;
+    // (the legacy widget reads it until Task 33; JSON export carries it as `tasksV1`). An "Inbox"
+    // list with no subject comes first (sort 0), then one list per unarchived subject, at most 20
+    // lists in all (the list limit), so at most 19 subject lists. Existing sessions and notes keep every value;
     // the new columns are NULL or their defaults. `"range"` is quoted: RANGE is an SQL keyword.
     version: 4,
     up(db) {
@@ -143,9 +144,11 @@ export const MIGRATIONS: Migration[] = [
           id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, subject_id INTEGER NULL,
           sort INTEGER NOT NULL, created_at INTEGER NOT NULL);
         INSERT INTO task_lists (name, subject_id, sort, created_at)
-          SELECT substr(name, 1, 60), id, row_number() OVER (ORDER BY sort, id) - 1,
+          VALUES ('Inbox', NULL, 0, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        INSERT INTO task_lists (name, subject_id, sort, created_at)
+          SELECT substr(name, 1, 60), id, row_number() OVER (ORDER BY sort, id),
                  CAST(strftime('%s', 'now') AS INTEGER) * 1000
-          FROM subjects WHERE archived = 0 ORDER BY sort, id LIMIT 20;
+          FROM subjects WHERE archived = 0 ORDER BY sort, id LIMIT 19;
         CREATE TABLE tasks (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
