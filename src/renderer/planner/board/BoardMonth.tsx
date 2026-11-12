@@ -139,13 +139,13 @@ function MonthCell({
 export function BoardMonth({ month, onPickDay }: { month: string; onPickDay(day: string): void }) {
   const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? 4);
   const today = useToday(rolloverHour);
-  const loadRange = usePlannerStore((s) => s.loadRange);
+  const watchRange = usePlannerStore((s) => s.watchRange);
   const days = monthDays(month);
   const weeks = Array.from({ length: days.length / 7 }, (_, i) => days.slice(i * 7, i * 7 + 7));
 
   useEffect(() => {
-    void loadRange('month', month);
-  }, [month, loadRange]);
+    return watchRange('month', month).release;
+  }, [month, watchRange]);
 
   return (
     <div role="table" aria-label={monthTitle(month)} className={styles.month}>

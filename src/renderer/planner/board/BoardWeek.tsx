@@ -77,14 +77,14 @@ function DayColumn({ day, today, rows }: { day: string; today: string; rows: num
 export function BoardWeek({ weekStart }: { weekStart: string }) {
   const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? 4);
   const today = useToday(rolloverHour);
-  const loadRange = usePlannerStore((s) => s.loadRange);
+  const watchRange = usePlannerStore((s) => s.watchRange);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const weekdays = days.slice(0, 5);
   const weekend = days.slice(5);
 
   useEffect(() => {
-    void loadRange('week', weekStart);
-  }, [weekStart, loadRange]);
+    return watchRange('week', weekStart).release;
+  }, [weekStart, watchRange]);
 
   return (
     <div className={styles.week} role="group" aria-label="Week">

@@ -12,6 +12,7 @@ import {
   usePlannerStore,
 } from './plannerStore';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
+import type { Deadline } from '../../shared/types';
 
 const store = () => usePlannerStore.getState();
 const flush = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
@@ -90,6 +91,91 @@ describe('plannerStore', () => {
     await store().loadRange('day', '1970-01-05');
     expect(deadlinesOn(store(), '1970-01-05')).toEqual([d]);
     expect(deadlinesOn(store(), '1970-01-06')).toEqual([]);
+  });
+
+  describe('stale deadlines and mounted ranges', () => {
+    const dl = (id: number, due: string, over: Partial<Deadline> = {}): Deadline => ({
+      id,
+      title: `D${id}`,
+      kind: 'exam',
+      subjectId: 1,
+      due,
+      note: '',
+      done: false,
+      createdAt: 0,
+      updatedAt: 0,
+      ...over,
+    });
+    const range = (from: string, to: string, deadlines: Deadline[]) => ({
+      from,
+      to,
+      tasks: [],
+      deadlines,
+      studiedMs: {},
+    });
+
+    it('a range reply drops stored deadlines on its days that it no longer holds', async () => {
+      const outside = dl(3, '2099-01-01T09:00');
+      let reply = [dl(1, '1970-01-06T12:00'), dl(2, '1970-01-07T12:00'), outside];
+      installMockApi(
+        mockApi({
+          planner: {
+            week: vi.fn(() => Promise.resolve(range('1970-01-05', '1970-01-11', reply.slice(0, 2)))),
+            lists: vi.fn(() => Promise.resolve({ lists: [], tasks: [], deadlines: [] })),
+          },
+        }),
+      );
+      store().apply({ tasks: [], removed: [] });
+      usePlannerStore.setState({ deadlines: { 3: outside } });
+      await store().loadRange('week', '1970-01-05');
+      expect(Object.keys(store().deadlines).sort()).toEqual(['1', '2', '3']);
+      reply = [dl(2, '1970-01-07T12:00')];
+      installMockApi(
+        mockApi({
+          planner: { week: vi.fn(() => Promise.resolve(range('1970-01-05', '1970-01-11', reply))) },
+        }),
+      );
+      await store().loadRange('week', '1970-01-05');
+      expect(Object.keys(store().deadlines).sort()).toEqual(['2', '3']);
+    });
+
+    it('a lists reply rebuilds the upcoming deadlines', async () => {
+      installMockApi(
+        mockApi({
+          planner: {
+            lists: vi.fn(() =>
+              Promise.resolve({ lists: [], tasks: [], deadlines: [dl(2, '2099-01-01T09:00')] }),
+            ),
+          },
+        }),
+      );
+      usePlannerStore.setState({
+        deadlines: { 1: dl(1, '2099-01-01T09:00'), 2: dl(2, '2099-01-01T09:00'), 5: dl(5, '1970-01-01T09:00') },
+      });
+      await store().loadLists();
+      expect(Object.keys(store().deadlines).sort()).toEqual(['2', '5']);
+    });
+
+    it('reload refreshes every mounted key of a kind, until each view releases it', async () => {
+      const day = vi.fn((d: string) => Promise.resolve(range(d, d, [])));
+      installMockApi(mockApi({ planner: { day } }));
+      const a = store().watchRange('day', '1970-01-05');
+      const b = store().watchRange('day', '1970-01-06');
+      const a2 = store().watchRange('day', '1970-01-05');
+      await a.loaded;
+      day.mockClear();
+      await store().reload();
+      expect(day.mock.calls.map((c) => c[0]).sort()).toEqual(['1970-01-05', '1970-01-06']);
+      a.release();
+      day.mockClear();
+      await store().reload();
+      expect(day).toHaveBeenCalledTimes(2); // the second view on the 5th still holds it
+      a2.release();
+      b.release();
+      day.mockClear();
+      await store().reload();
+      expect(day.mock.calls.map((c) => c[0])).toEqual(['1970-01-06']); // none mounted: the last loaded
+    });
   });
 
   describe('revision offer', () => {

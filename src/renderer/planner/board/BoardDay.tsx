@@ -149,7 +149,7 @@ function DayCard({ task }: { task: PlannerTask }) {
 export function BoardDay({ day }: { day: string }) {
   const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? 4);
   const today = useToday(rolloverHour);
-  const loadRange = usePlannerStore((s) => s.loadRange);
+  const watchRange = usePlannerStore((s) => s.watchRange);
   const tasks = usePlannerStore(useShallow((s: PlannerState) => tasksOnDay(s, day)));
   const planned = usePlannerStore((s) => plannedMs(Object.values(s.tasks).filter((t) => t.day === day)));
   const studied = usePlannerStore((s) => s.studiedMs[day] ?? 0);
@@ -160,8 +160,8 @@ export function BoardDay({ day }: { day: string }) {
   const label = formatDayLabel(day);
 
   useEffect(() => {
-    void loadRange('day', day);
-  }, [day, loadRange]);
+    return watchRange('day', day).release;
+  }, [day, watchRange]);
 
   return (
     <div className={styles.dayBoard}>

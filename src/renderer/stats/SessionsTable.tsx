@@ -10,6 +10,7 @@ import type { Session, SessionOutcome } from '../../shared/types';
 import { logIpcError } from '../lib/ipcError';
 import { formatHm } from '../shell/format';
 import { useStudyStore } from '../shell/store';
+import { usePlannerStore } from '../planner/plannerStore';
 import { refreshStatCards } from '../statWidgets/statWidgetsStore';
 import { formatClockTime, formatDayLabel } from './format';
 import { LoadError } from './LoadError';
@@ -127,6 +128,7 @@ export function SessionsTable({
       settle(s.id, subjectId, (e) => ({ ...e, saved: true }));
       onChanged();
       refreshStatCards();
+      void usePlannerStore.getState().reload();
     } catch (err) {
       logIpcError('Changing a session subject failed', err);
       settle(s.id, subjectId, () => null);
@@ -153,6 +155,7 @@ export function SessionsTable({
       wrap.current?.focus();
       onChanged();
       refreshStatCards();
+      void usePlannerStore.getState().reload();
     } catch (err) {
       logIpcError('Deleting a session failed', err);
       setError('Couldn’t delete that session. Please try again.');

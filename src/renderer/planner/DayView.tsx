@@ -19,13 +19,13 @@ export function DayView() {
   const chosen = usePlannerStore((s) => s.day);
   const day = chosen ?? today;
   const setDay = usePlannerStore((s) => s.setDay);
-  const loadRange = usePlannerStore((s) => s.loadRange);
+  const watchRange = usePlannerStore((s) => s.watchRange);
   const tasks = usePlannerStore(useShallow((s) => tasksOnDay(s, day)));
   const deadlines = usePlannerStore(useShallow((s) => deadlinesOn(s, day)));
 
   useEffect(() => {
-    void loadRange('day', day);
-  }, [day, loadRange]);
+    return watchRange('day', day).release;
+  }, [day, watchRange]);
 
   const go = (to: string): void => setDay(to === today ? null : to);
 

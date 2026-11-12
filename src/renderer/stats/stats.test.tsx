@@ -24,6 +24,7 @@ import { RecapList } from './RecapList';
 import { SessionsTable } from './SessionsTable';
 import { StatsOverlay } from './StatsOverlay';
 import { SubjectBreakdown } from './SubjectBreakdown';
+import { usePlannerStore } from '../planner/plannerStore';
 import { TaskBreakdown } from './TaskBreakdown';
 import { Tiles } from './Tiles';
 import { TrendChart } from './TrendChart';
@@ -442,6 +443,9 @@ describe('SessionsTable', () => {
 
   it('editing or deleting a row refreshes the stats widgets', async () => {
     const refresh = vi.spyOn(statWidgetsStore, 'refreshStatCards');
+    const planner = usePlannerStore.getState().reload;
+    const reloadPlanner = vi.fn(() => Promise.resolve());
+    usePlannerStore.setState({ reload: reloadPlanner });
     setupSessions([session({ id: 7 })]);
     const row = (await screen.findByText('1h 05m')).closest('tr') as HTMLElement;
     await userEvent.selectOptions(within(row).getByRole('combobox', { name: 'Subject' }), SUBJECT_2);
@@ -449,6 +453,9 @@ describe('SessionsTable', () => {
     await userEvent.click(within(row).getByRole('button', { name: 'Delete session' }));
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    // The planner's actuals and studied totals refresh with them.
+    expect(reloadPlanner).toHaveBeenCalledTimes(2);
+    usePlannerStore.setState({ reload: planner });
     refresh.mockRestore();
   });
 

@@ -318,6 +318,32 @@ describe('PlannerWidget', () => {
     expect(set).toHaveBeenCalledWith(scroller, 240);
   });
 
+  it('Week works in CSS px when the widget is scaled: scrollTop and the spacer are right in one pass', async () => {
+    const user = userEvent.setup();
+    // The widget draws at half size: rects are screen px (the scroller's 100 tall on screen is 200 CSS px).
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const top = this.matches('section[data-today]') ? 340 : this.matches('[class*="weekSpacer"]') ? 700 : 100;
+      return { top, bottom: top + 100, left: 0, right: 300, width: 300, height: 100, x: 0, y: top, toJSON: () => ({}) };
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(200);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800);
+    const set = vi.fn();
+    vi.spyOn(Element.prototype, 'scrollTop', 'set').mockImplementation(function (this: Element, v: number) {
+      set(this, v);
+    });
+    setup({ tasks: [] });
+    render(<PlannerWidget />);
+    await user.click(screen.getByRole('tab', { name: 'Week' }));
+    const today = (await screen.findAllByRole('button', { name: /open$/ }))
+      .find((h) => h.closest('section')?.hasAttribute('data-today'))
+      ?.closest('section');
+    const scroller = today?.closest('[class*="weekDays"]');
+    const pad = scroller?.querySelector<HTMLElement>('[class*="weekSpacer"]');
+    // 240 screen px down is 480 CSS px; 360 screen px of content after today is 720, so 80 px short of 800.
+    expect(set).toHaveBeenCalledWith(scroller, 480);
+    expect(pad?.style.height).toBe('80px');
+  });
+
   it("Week scrolls to today again once the week's tasks arrive and push it down", async () => {
     const user = userEvent.setup();
     // Today's section sits 240 px down the scroller, 300 px once Monday's task row is drawn.

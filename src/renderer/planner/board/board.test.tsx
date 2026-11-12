@@ -388,6 +388,27 @@ describe('TasksBoard lists', () => {
   });
 });
 
+describe('TasksBoard deadlines', () => {
+  it('a deleted or completed deadline leaves its chip and the exam line after a reload', async () => {
+    const seed: Seed = {
+      lists: [list()],
+      deadlines: [
+        deadline({ id: 1, title: 'Networks CW', due: '2026-11-10T12:00' }),
+        deadline({ id: 4, kind: 'exam', title: 'Paradigms exam', due: '2026-12-04T09:00' }),
+      ],
+    };
+    await renderBoard(seed);
+    const card = await screen.findByRole('region', { name: 'COMP2221 Programming Paradigms' });
+    expect(await screen.findByText(/Networks CW/)).toBeInTheDocument();
+    expect(await within(card).findByText('Exam in 23 days')).toBeInTheDocument();
+    // Main no longer reports either: one was deleted, the other ticked done.
+    seed.deadlines = [];
+    await act(() => usePlannerStore.getState().reload());
+    await waitFor(() => expect(screen.queryByText(/Networks CW/)).not.toBeInTheDocument());
+    expect(within(card).queryByText('Exam in 23 days')).not.toBeInTheDocument();
+  });
+});
+
 describe('TasksBoard drag feel', () => {
   const seed = {
     lists: [list()],

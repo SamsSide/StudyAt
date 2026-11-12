@@ -18,8 +18,10 @@ import type {
   TaskMove,
   TaskUpdate,
 } from '../../shared/types';
+import { wallStamp } from '../../core/wallclock';
 import { logIpcError } from '../lib/ipcError';
 import { useStudyStore } from '../shell/store';
+import { deadlineDayKey } from './format';
 
 export type PlannerTab = 'day' | 'week' | 'lists';
 export interface PlannerFilter {
@@ -28,6 +30,10 @@ export interface PlannerFilter {
 }
 
 type RangeKind = 'day' | 'week' | 'month';
+export interface RangeWatch {
+  loaded: Promise<void>;
+  release(): void;
+}
 
 export interface PlannerState {
   tasks: Record<number, PlannerTask>;
@@ -47,6 +53,8 @@ export interface PlannerState {
   /** A one-line status: NEXT_FOCUS_NOTE or TASK_GONE; cleared on the next action. */
   notice: string | null;
   loadRange(kind: RangeKind, key: string): Promise<void>;
+  /** Loads a range and keeps it mounted (ref-counted) so `reload` refreshes it; `release` on unmount. */
+  watchRange(kind: RangeKind, key: string): RangeWatch;
   loadLists(): Promise<void>;
   /** Re-runs every load made so far (actuals, another window's changes). */
   reload(): Promise<void>;
@@ -82,8 +90,10 @@ export interface PlannerState {
 
 const api = () => window.studyat;
 
-/** The last key loaded per range kind, and whether the lists were loaded: what `reload` repeats. */
+/** The last key loaded per range kind: what `reload` repeats when no view has the kind mounted. */
 let loaded = new Map<RangeKind, string>();
+/** The keys views currently show, per kind, ref-counted: `reload` refreshes every one. */
+let watched = new Map<RangeKind, Map<string, number>>();
 let listsLoaded = false;
 
 const initialData = () => ({
@@ -149,7 +159,15 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
           delete tasks[t.id];
       }
       for (const t of range.tasks) tasks[t.id] = t;
+      // Main sends the open deadlines on the range's study days, so a stored one on those days that
+      // the reply lacks was deleted, completed or moved out.
       const deadlines = { ...s.deadlines };
+      const seen = new Set(range.deadlines.map((d) => d.id));
+      const rollover = useStudyStore.getState().settings?.rolloverHour ?? DEFAULT_SETTINGS.rolloverHour;
+      for (const d of Object.values(deadlines)) {
+        const day = deadlineDayKey(d.due, rollover);
+        if (day >= range.from && day <= range.to && !seen.has(d.id)) delete deadlines[d.id];
+      }
       for (const d of range.deadlines) deadlines[d.id] = d;
       const studiedMs = { ...s.studiedMs };
       for (const day of daysIn(range.from, range.to)) delete studiedMs[day];
@@ -191,7 +209,11 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
           const tasks = { ...s.tasks };
           for (const t of Object.values(tasks)) if (t.listId !== null) delete tasks[t.id];
           for (const t of view.tasks) tasks[t.id] = t;
+          // The reply owns every open deadline due after now: a stored one in that set it lacks is gone.
           const deadlines = { ...s.deadlines };
+          const seen = new Set(view.deadlines.map((d) => d.id));
+          const now = wallStamp(Date.now());
+          for (const d of Object.values(deadlines)) if (d.due > now && !seen.has(d.id)) delete deadlines[d.id];
           for (const d of view.deadlines) deadlines[d.id] = d;
           return { lists: view.lists, tasks, deadlines };
         });
@@ -200,8 +222,31 @@ export const usePlannerStore = create<PlannerState>()((set, get) => {
       }
     },
 
+    watchRange(kind, key) {
+      const keys = watched.get(kind) ?? new Map<string, number>();
+      watched.set(kind, keys);
+      keys.set(key, (keys.get(key) ?? 0) + 1);
+      let released = false;
+      return {
+        loaded: get().loadRange(kind, key),
+        release: () => {
+          if (released) return;
+          released = true;
+          const n = (keys.get(key) ?? 1) - 1;
+          if (n <= 0) keys.delete(key);
+          else keys.set(key, n);
+        },
+      };
+    },
+
     async reload() {
-      const jobs: Promise<void>[] = [...loaded].map(([kind, key]) => get().loadRange(kind, key));
+      const jobs: Promise<void>[] = [];
+      for (const kind of ['day', 'week', 'month'] as const) {
+        const keys = watched.get(kind);
+        // Views mounted: every key on show. None (a store used on its own): the last one loaded.
+        const todo = keys && keys.size > 0 ? [...keys.keys()] : loaded.has(kind) ? [loaded.get(kind) as string] : [];
+        for (const key of todo) jobs.push(get().loadRange(kind, key));
+      }
       if (listsLoaded) jobs.push(get().loadLists());
       await Promise.all(jobs);
     },
@@ -376,6 +421,7 @@ export function deadlinesOn(s: PlannerState, day: string): Deadline[] {
 
 export function resetPlannerStore(): void {
   loaded = new Map();
+  watched = new Map();
   listsLoaded = false;
   usePlannerStore.setState(initialData());
 }

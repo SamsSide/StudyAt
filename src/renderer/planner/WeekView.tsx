@@ -57,7 +57,7 @@ export function WeekView() {
   const today = useToday(rolloverHour);
   const chosen = usePlannerStore((s) => s.day) ?? today;
   const setDay = usePlannerStore((s) => s.setDay);
-  const loadRange = usePlannerStore((s) => s.loadRange);
+  const watchRange = usePlannerStore((s) => s.watchRange);
   const start = weekStartOf(chosen);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
@@ -84,11 +84,15 @@ export function WeekView() {
         if (pad) pad.style.height = '0px';
         return;
       }
+      // Rects are screen px, scrollTop and clientHeight CSS px: the widget's transform: scale sits
+      // between them, so every rect distance is divided by it.
+      const boxRect = box.getBoundingClientRect();
+      const scale = box.offsetHeight > 0 && boxRect.height > 0 ? boxRect.height / box.offsetHeight : 1;
       const top = section.getBoundingClientRect().top;
-      const offset = top - box.getBoundingClientRect().top + box.scrollTop;
+      const offset = (top - boxRect.top) / scale + box.scrollTop;
       if (pad) {
         const bottom = parseFloat(getComputedStyle(box).paddingBottom) || 0;
-        const after = pad.getBoundingClientRect().top - top + bottom;
+        const after = (pad.getBoundingClientRect().top - top) / scale + bottom;
         pad.style.height = `${Math.max(0, Math.ceil(box.clientHeight - after))}px`;
       }
       box.scrollTop = offset;
@@ -108,16 +112,18 @@ export function WeekView() {
       if (section) observer.observe(section);
     }
     toToday();
-    void loadRange('week', start).then(() => {
+    const watch = watchRange('week', start);
+    void watch.loaded.then(() => {
       if (live) frame = requestAnimationFrame(toToday);
     });
     return () => {
       live = false;
+      watch.release();
       cancelAnimationFrame(frame);
       observer?.disconnect();
       for (const type of hands) box?.removeEventListener(type, stop);
     };
-  }, [start, today, loadRange]);
+  }, [start, today, watchRange]);
 
   // Landing on the week that holds today clears the day, so the Day tab opens on today.
   const go = (to: string): void => {
