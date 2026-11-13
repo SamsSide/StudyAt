@@ -19,8 +19,6 @@ export const EVENT_METHODS = {
   'app.onVisibility': CHANNELS.events.appVisibility,
   'app.onFlush': CHANNELS.events.appFlush,
   'settings.onChanged': CHANNELS.events.settingsChanged,
-  'planner.onOpenTask': CHANNELS.events.plannerOpenTask,
-  'planner.onChanged': CHANNELS.events.plannerChanged,
 } as const;
 
 type Fn = (...args: unknown[]) => unknown;

@@ -4,7 +4,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CHANNELS } from '../shared/ipc';
 import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { DeadlinesView, Note, PlannerTask, TaskChange, TaskList, TimerState } from '../shared/types';
+import type { DeadlinesView, Note, Task, TimerState } from '../shared/types';
 import type { CalendarAgenda, CalendarStatus, Place, WeatherReport } from '../shared/widgets';
 import type { Db } from './db/db';
 import { sessionsRepo } from './db/repos/sessions';
@@ -199,78 +199,92 @@ describe('registerIpc', () => {
     await expect(invoke(CHANNELS.stats.sessions, { from: 'yesterday' })).rejects.toThrow(IpcValidationError);
   });
 
-  describe('planner tasks (v1.2 spec §5)', () => {
-    const subjectId = (name: string): number => {
-      const row = db.raw.exec('SELECT id FROM subjects WHERE name = ?', [name])[0];
-      return Number(row?.values[0]?.[0]);
+  describe('sticky tasks and the timer (simple-tasks spec §3.2, §5)', () => {
+    const sticky = async (invoke: (c: string, ...a: unknown[]) => Promise<unknown>, text: string) => {
+      const list = (await invoke(CHANNELS.tasks.create, { text, colour: 'yellow' })) as Task[];
+      return list.find((t) => t.text === text)!;
     };
 
-    it('planner:task returns one task, null when missing, and rejects a bad id', async () => {
+    it('tasks.create/update/reorder/clearDone return the full list', async () => {
       const { invoke } = setup();
-      const made = (await invoke(CHANNELS.tasks.create, { title: 'Old', day: '2026-11-01' })) as TaskChange;
-      const id = made.tasks[0]!.id;
-      expect(await invoke(CHANNELS.planner.task, id)).toMatchObject({ id, title: 'Old', actualMs: 0 });
-      expect(await invoke(CHANNELS.planner.task, 99999)).toBeNull();
-      for (const bad of [0, -1, 1.5, '1', null, undefined]) {
-        await expect(invoke(CHANNELS.planner.task, bad)).rejects.toThrow(IpcValidationError);
-      }
+      expect(await invoke(CHANNELS.tasks.list)).toEqual([]);
+      const a = await sticky(invoke, 'Revise trees');
+      const afterB = (await invoke(CHANNELS.tasks.create, { text: 'Lab 7', colour: 'pink' })) as Task[];
+      expect(afterB.map((t) => [t.text, t.colour, t.done])).toEqual([
+        ['Revise trees', 'yellow', false],
+        ['Lab 7', 'pink', false],
+      ]);
+      const b = afterB[1]!;
+      const ticked = (await invoke(CHANNELS.tasks.update, a.id, { done: true, colour: 'blue' })) as Task[];
+      expect(ticked).toHaveLength(2);
+      expect(ticked.find((t) => t.id === a.id)).toMatchObject({ done: true, colour: 'blue', doneAt: NOW });
+      const renamed = (await invoke(CHANNELS.tasks.update, b.id, { text: 'Lab 7 write-up' })) as Task[];
+      expect(renamed.find((t) => t.id === b.id)?.text).toBe('Lab 7 write-up');
+      const reordered = (await invoke(CHANNELS.tasks.reorder, [b.id, a.id])) as Task[];
+      expect(reordered.map((t) => t.id)).toEqual([b.id, a.id]);
+      const left = (await invoke(CHANNELS.tasks.clearDone)) as Task[];
+      expect(left.map((t) => t.id)).toEqual([b.id]);
+      expect(await invoke(CHANNELS.tasks.list)).toEqual(left);
     });
 
-    it('timer:setTask passes the task title and its list subject, and an own subject wins', async () => {
+    it('tasks:create and tasks:update validate text, colour, done and ids', async () => {
       const { invoke } = setup();
-      const subject = subjectId('COMP2181 Theory of Computation');
-      const made_lists = (await invoke(CHANNELS.lists.create, {
-        name: 'Maths',
-        subjectId: subject,
-      })) as TaskList[];
-      const listId = made_lists[made_lists.length - 1]!.id;
-      const made = (await invoke(CHANNELS.tasks.create, { title: 'Lecture 5 notes', listId })) as TaskChange;
-      const id = made.tasks[0]!.id;
-      const setTask = vi.spyOn(timer, 'setTask');
-      const state = (await invoke(CHANNELS.timer.setTask, id)) as TimerState;
-      expect(setTask).toHaveBeenLastCalledWith(id, 'Lecture 5 notes', subject);
-      expect(state).toMatchObject({ taskId: id, taskText: 'Lecture 5 notes', subjectId: subject });
-      const other = subjectId('COMP2211 Networks and Systems');
-      const own = (await invoke(CHANNELS.tasks.create, {
-        title: 'Own',
-        listId,
-        subjectId: other,
-      })) as TaskChange;
-      await invoke(CHANNELS.timer.setTask, own.tasks[0]!.id);
-      expect(setTask).toHaveBeenLastCalledWith(own.tasks[0]!.id, 'Own', other);
+      await expect(invoke(CHANNELS.tasks.create, { text: 'x'.repeat(501), colour: 'yellow' })).rejects.toThrow(
+        IpcValidationError,
+      );
+      await expect(invoke(CHANNELS.tasks.create, { text: '  ', colour: 'yellow' })).rejects.toThrow(
+        IpcValidationError,
+      );
+      await expect(invoke(CHANNELS.tasks.create, { text: 'ok', colour: 'orange' })).rejects.toThrow(
+        IpcValidationError,
+      );
+      await expect(invoke(CHANNELS.tasks.create, 'ok')).rejects.toThrow(IpcValidationError);
+      const list = (await invoke(CHANNELS.tasks.create, { text: 'x'.repeat(500), colour: 'yellow' })) as Task[];
+      expect(list).toHaveLength(1);
+      const id = list[0]!.id;
+      await expect(invoke(CHANNELS.tasks.update, id, { text: '' })).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.tasks.update, id, { colour: 'orange' })).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.tasks.update, id, { done: 1 })).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.tasks.update, 1.5, { done: true })).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.tasks.update, 9999, { done: true })).rejects.toThrow('No such task');
+      await expect(invoke(CHANNELS.tasks.reorder, 'x')).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.tasks.reorder, [1, 1.5])).rejects.toThrow(IpcValidationError);
+      expect(await invoke(CHANNELS.tasks.list)).toMatchObject([{ id, text: 'x'.repeat(500), done: false }]);
     });
 
-    it('timer:setTask passes undefined for a task with no subject, and null clears', async () => {
+    it('timer.setTask snapshots the sticky text and rejects an unknown id with TASK_GONE', async () => {
       const { invoke } = setup();
-      const made = (await invoke(CHANNELS.tasks.create, { title: 'Loose' })) as TaskChange;
+      const task = await sticky(invoke, 'Revise trees');
+      await invoke(CHANNELS.timer.setSubject, null);
       const setTask = vi.spyOn(timer, 'setTask');
-      await invoke(CHANNELS.timer.setTask, made.tasks[0]!.id);
-      expect(setTask).toHaveBeenLastCalledWith(made.tasks[0]!.id, 'Loose', undefined);
+      const state = (await invoke(CHANNELS.timer.setTask, task.id)) as TimerState;
+      expect(setTask).toHaveBeenLastCalledWith(task.id, 'Revise trees');
+      expect(state).toMatchObject({ taskId: task.id, taskText: 'Revise trees', subjectId: null });
       expect(await invoke(CHANNELS.timer.setTask, null)).toMatchObject({ taskId: null, taskText: null });
       expect(setTask).toHaveBeenLastCalledWith(null, null);
-    });
-
-    it('timer:setTask and timer:startTask reject junk and a missing task with the gone copy', async () => {
-      const { invoke } = setup();
       await expect(invoke(CHANNELS.timer.setTask, 'x')).rejects.toThrow(IpcValidationError);
       await expect(invoke(CHANNELS.timer.setTask, 1.5)).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.timer.setTask, 9999)).rejects.toThrow(IpcValidationError);
       await expect(invoke(CHANNELS.timer.setTask, 9999)).rejects.toThrow('That task no longer exists.');
-      await expect(invoke(CHANNELS.timer.startTask, 9999)).rejects.toThrow('That task no longer exists.');
-      await expect(invoke(CHANNELS.timer.startTask, null)).rejects.toThrow(IpcValidationError);
-      expect(timer.getState().status).toBe('idle');
+      expect(setTask).toHaveBeenCalledTimes(2);
     });
 
-    it('timer:startTask sets the task and its subject, then starts focus', async () => {
+    it('timer:startTask passes the sticky text, never a subject, then starts focus', async () => {
       const { invoke } = setup();
-      const subject = subjectId('COMP2181 Theory of Computation');
-      const made = (await invoke(CHANNELS.tasks.create, {
-        title: 'Past paper',
-        subjectId: subject,
-      })) as TaskChange;
+      const task = await sticky(invoke, 'Past paper');
+      const before = timer.getState().subjectId;
       const startTask = vi.spyOn(timer, 'startTask');
-      const state = (await invoke(CHANNELS.timer.startTask, made.tasks[0]!.id)) as TimerState;
-      expect(startTask).toHaveBeenCalledWith(made.tasks[0]!.id, 'Past paper', subject);
-      expect(state).toMatchObject({ status: 'running', taskText: 'Past paper', subjectId: subject });
+      const state = (await invoke(CHANNELS.timer.startTask, task.id)) as TimerState;
+      expect(startTask).toHaveBeenCalledWith(task.id, 'Past paper');
+      expect(state).toMatchObject({ status: 'running', taskId: task.id, taskText: 'Past paper', subjectId: before });
+    });
+
+    it('timer:startTask rejects junk and a missing task with the gone copy', async () => {
+      const { invoke } = setup();
+      await expect(invoke(CHANNELS.timer.startTask, 9999)).rejects.toThrow('That task no longer exists.');
+      await expect(invoke(CHANNELS.timer.startTask, null)).rejects.toThrow(IpcValidationError);
+      await expect(invoke(CHANNELS.timer.startTask, 'x')).rejects.toThrow(IpcValidationError);
+      expect(timer.getState().status).toBe('idle');
     });
 
     it('timer:setIntention trims, turns blank into null and rejects 141 characters', async () => {
@@ -302,197 +316,9 @@ describe('registerIpc', () => {
       await expect(invoke(CHANNELS.timer.setOutcome, 7, 'done')).rejects.toThrow(IpcValidationError);
     });
 
-    it('tasks:create rejects what the limits forbid and accepts the edges', async () => {
-      const { invoke } = setup();
-      const bad: unknown[] = [
-        { title: 'x'.repeat(501) },
-        { title: '   ' },
-        { title: 'a', day: '2026-11-09', listId: 1 },
-        { title: 'a', day: '2026-02-31' },
-        { title: 'a', day: '2026-11-9' },
-        { title: 'a', estimateMin: 4 },
-        { title: 'a', estimateMin: 601 },
-        { title: 'a', estimateMin: 30.5 },
-        { title: 'a', estimateMin: Number.NaN },
-        { title: 'a', tags: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'] },
-        { title: 'a', tags: ['Bad Tag'] },
-        { title: 'a', tags: ['x'.repeat(25)] },
-        { title: 'a', tags: 'lecture' },
-        { title: 'a', note: 'n'.repeat(5001) },
-        { title: 'a', colour: 'orange' },
-        { title: 'a', listId: -1 },
-        { title: 'a', listId: 1.5 },
-        { title: 'a', subjectId: 'x' },
-        { title: 'a', subjectId: 9999 },
-        'text',
-      ];
-      for (const input of bad)
-        await expect(invoke(CHANNELS.tasks.create, input)).rejects.toThrow(IpcValidationError);
-      const ok = (await invoke(CHANNELS.tasks.create, {
-        title: `  ${'x'.repeat(500)}  `,
-        day: '2026-11-09',
-        estimateMin: 5,
-        tags: ['#Lecture', 'week-3'],
-        note: 'n'.repeat(5000),
-        colour: null,
-      })) as TaskChange;
-      expect(ok.tasks[0]).toMatchObject({ day: '2026-11-09', estimateMin: 5, tags: ['lecture', 'week-3'] });
-      expect(ok.tasks[0]!.title).toHaveLength(500);
-    });
-
-    it('tasks:update rejects a bad repeat, reminder, estimate and tag, and keeps the stored task', async () => {
-      const { invoke } = setup();
-      const made = (await invoke(CHANNELS.tasks.create, { title: 'a', day: '2026-11-09' })) as TaskChange;
-      const id = made.tasks[0]!.id;
-      const bad: unknown[] = [
-        { repeat: { kind: 'every', days: 31 } },
-        { repeat: { kind: 'every', days: 1 } },
-        { repeat: { kind: 'every', days: 2.5 } },
-        { repeat: { kind: 'every' } },
-        { repeat: { kind: 'monthly' } },
-        { repeat: 'daily' },
-        { reminder: '25:00' },
-        { reminder: '9:30' },
-        { reminder: 930 },
-        { estimateMin: 700 },
-        { estimateMin: Number.POSITIVE_INFINITY },
-        { tags: ['no spaces'] },
-        { title: '' },
-        { done: 'yes' },
-        { colour: 'mauve' },
-      ];
-      for (const patch of bad)
-        await expect(invoke(CHANNELS.tasks.update, id, patch)).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.tasks.update, 1.5, {})).rejects.toThrow(IpcValidationError);
-      const ok = (await invoke(CHANNELS.tasks.update, id, {
-        repeat: { kind: 'every', days: 30 },
-        reminder: '09:30',
-        estimateMin: null,
-        colour: 'blue',
-        done: false,
-      })) as TaskChange;
-      expect(ok.tasks[0]).toMatchObject({
-        repeat: { kind: 'every', days: 30 },
-        reminder: '09:30',
-        colour: 'blue',
-      });
-      expect(await invoke(CHANNELS.tasks.update, id, { repeat: null, reminder: null })).toMatchObject({
-        tasks: [{ repeat: null, reminder: null }],
-      });
-      await expect(invoke(CHANNELS.tasks.update, 9999, { title: 'x' })).rejects.toThrow(IpcValidationError);
-    });
-
-    it('tasks:move, remove, duplicate and scheduleRevision validate their arguments', async () => {
-      const { invoke } = setup();
-      const made = (await invoke(CHANNELS.tasks.create, {
-        title: 'Lecture',
-        day: '2026-11-09',
-      })) as TaskChange;
-      const id = made.tasks[0]!.id;
-      for (const to of [
-        { day: '2026-11-10' },
-        { day: '2026-11-10', index: -1 },
-        { day: '2026-11-10', index: 1.5 },
-        { day: '2026-11-10', listId: 1, index: 0 },
-        { index: 0 },
-        { day: 'tomorrow', index: 0 },
-        null,
-      ]) {
-        await expect(invoke(CHANNELS.tasks.move, id, to)).rejects.toThrow(IpcValidationError);
-      }
-      expect(await invoke(CHANNELS.tasks.move, id, { day: '2026-11-10', index: 0 })).toMatchObject({
-        tasks: [{ id, day: '2026-11-10' }],
-      });
-      for (const days of [[], [1, 2, 3, 4, 5], [0], [91], [1.5], [Number.NaN], 'x', [7, '7']]) {
-        await expect(invoke(CHANNELS.tasks.scheduleRevision, id, days)).rejects.toThrow(IpcValidationError);
-      }
-      const rev = (await invoke(CHANNELS.tasks.scheduleRevision, id, [1, 90])) as TaskChange;
-      expect(rev.tasks).toHaveLength(2);
-      const dup = (await invoke(CHANNELS.tasks.duplicate, id)) as TaskChange;
-      expect(dup.tasks.length).toBeGreaterThan(0);
-      await expect(invoke(CHANNELS.tasks.duplicate, 'x')).rejects.toThrow(IpcValidationError);
-      expect(await invoke(CHANNELS.tasks.remove, id)).toEqual({ tasks: [], removed: [id] });
-    });
-
-    it('subtasks:add rejects 201 characters and blanks; update, reorder and remove round-trip', async () => {
-      const { invoke } = setup();
-      const made = (await invoke(CHANNELS.tasks.create, { title: 'Essay' })) as TaskChange;
-      const id = made.tasks[0]!.id;
-      await expect(invoke(CHANNELS.subtasks.add, id, 'x'.repeat(201))).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.subtasks.add, id, '  ')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.subtasks.add, id, 7)).rejects.toThrow(IpcValidationError);
-      await invoke(CHANNELS.subtasks.add, id, 'x'.repeat(200));
-      const two = (await invoke(CHANNELS.subtasks.add, id, ' Plan ')) as PlannerTask;
-      expect(two.subtasks.map((t) => t.text)).toEqual(['x'.repeat(200), 'Plan']);
-      const [first, second] = two.subtasks;
-      await expect(invoke(CHANNELS.subtasks.update, first!.id, { text: '' })).rejects.toThrow(
-        IpcValidationError,
-      );
-      await expect(invoke(CHANNELS.subtasks.update, first!.id, { done: 1 })).rejects.toThrow(
-        IpcValidationError,
-      );
-      const ticked = (await invoke(CHANNELS.subtasks.update, second!.id, { done: true })) as PlannerTask;
-      expect(ticked.subtasks[1]?.done).toBe(true);
-      const reordered = (await invoke(CHANNELS.subtasks.reorder, id, [second!.id, first!.id])) as PlannerTask;
-      expect(reordered.subtasks.map((t) => t.id)).toEqual([second!.id, first!.id]);
-      await expect(invoke(CHANNELS.subtasks.reorder, id, 'x')).rejects.toThrow(IpcValidationError);
-      const left = (await invoke(CHANNELS.subtasks.remove, first!.id)) as PlannerTask;
-      expect(left.subtasks).toHaveLength(1);
-      await expect(invoke(CHANNELS.subtasks.remove, 9999)).rejects.toThrow(IpcValidationError);
-    });
-
-    it('lists:create rejects 61 code points and blanks; counts an emoji as one', async () => {
-      const { invoke } = setup();
-      await expect(invoke(CHANNELS.lists.create, { name: 'x'.repeat(61) })).rejects.toThrow(
-        IpcValidationError,
-      );
-      await expect(invoke(CHANNELS.lists.create, { name: ' ' })).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.lists.create, { name: 'a', subjectId: 9999 })).rejects.toThrow(
-        IpcValidationError,
-      );
-      const made = (await invoke(CHANNELS.lists.create, { name: '😀'.repeat(60) })) as TaskList[];
-      expect(made.some((l) => l.name === '😀'.repeat(60))).toBe(true);
-      await expect(invoke(CHANNELS.lists.create, { name: '😀'.repeat(61) })).rejects.toThrow(
-        IpcValidationError,
-      );
-      const id = made.find((l) => l.name.startsWith('😀'))!.id;
-      await expect(invoke(CHANNELS.lists.update, id, { name: '' })).rejects.toThrow(IpcValidationError);
-      expect(await invoke(CHANNELS.lists.update, id, { name: ' Renamed ', subjectId: null })).toEqual(
-        expect.arrayContaining([expect.objectContaining({ id, name: 'Renamed' })]),
-      );
-      await expect(invoke(CHANNELS.lists.reorder, 'x')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.lists.reorder, [1, 1.5])).rejects.toThrow(IpcValidationError);
-      expect(await invoke(CHANNELS.lists.clearDone, id)).toEqual({ tasks: [], removed: [] });
-      expect(await invoke(CHANNELS.lists.remove, id)).toMatchObject({ removed: [id] });
-      await expect(invoke(CHANNELS.lists.remove, id)).rejects.toThrow(IpcValidationError);
-    });
-
-    it('planner reads validate their keys', async () => {
-      const { invoke } = setup();
-      await expect(invoke(CHANNELS.planner.month, '2026-13')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.planner.month, '2026-00')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.planner.month, '2026-1')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.planner.week, '2026-02-31')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.planner.week, '2026-11-09T00:00')).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.planner.day, 5)).rejects.toThrow(IpcValidationError);
-      await expect(invoke(CHANNELS.planner.day)).rejects.toThrow(IpcValidationError);
-      expect(await invoke(CHANNELS.planner.month, '2026-11')).toMatchObject({
-        from: '2026-10-26',
-        to: '2026-12-06',
-      });
-      expect(await invoke(CHANNELS.planner.week, '2026-11-11')).toMatchObject({
-        from: '2026-11-09',
-        to: '2026-11-15',
-      });
-      await invoke(CHANNELS.tasks.create, { title: 'Today', day: '2026-11-11' });
-      expect(await invoke(CHANNELS.planner.day, '2026-11-11')).toMatchObject({ tasks: [{ title: 'Today' }] });
-      expect(await invoke(CHANNELS.planner.lists)).toMatchObject({ tasks: [], deadlines: [] });
-    });
-
-    it('registerIpc returns the planner and taskWrites services', () => {
-      const { services } = setup();
-      expect(typeof services.planner.week).toBe('function');
-      expect(typeof services.taskWrites.rollForward).toBe('function');
+    it('registers no planner, subtask or list channels', () => {
+      const { handlers } = setup();
+      expect([...handlers.keys()].filter((c) => /^(planner|subtasks|lists):/.test(c))).toEqual([]);
     });
   });
 
@@ -994,9 +820,10 @@ describe('createBroadcaster', () => {
       card: 'total',
       range: 'week',
     });
-    for (const card of ['total', 'subjects', 'goal', 'estimates'])
+    for (const card of ['total', 'subjects', 'goal'])
       expect(await invoke(CHANNELS.stats.card, card, 'today')).toMatchObject({ card });
     await expect(invoke(CHANNELS.stats.card, 'pie', 'week')).rejects.toThrow(IpcValidationError);
+    await expect(invoke(CHANNELS.stats.card, 'estimates', 'week')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.stats.card, 'total', 'year')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.stats.card, 'total')).rejects.toThrow(IpcValidationError);
     await expect(invoke(CHANNELS.stats.card, 7, 'week')).rejects.toThrow(IpcValidationError);

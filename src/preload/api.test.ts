@@ -87,45 +87,35 @@ describe('preload api', () => {
     ]);
   });
 
-  it('exposes the planner, task, subtask and list groups on their channels', async () => {
+  it('exposes the sticky task group and timer.startTask on their channels (simple-tasks spec §5)', async () => {
     const { ipc } = fakeIpc();
     const api = buildApi(ipc);
-    await api.planner.week('2026-11-09');
-    await api.planner.task(7);
-    await api.tasks.move(3, { day: '2026-11-10', index: 0 });
-    await api.subtasks.reorder(3, [2, 1]);
-    await api.lists.clearDone(4);
+    await api.tasks.list();
+    await api.tasks.create({ text: 'Lab 7', colour: 'pink' });
+    await api.tasks.update(3, { done: true });
+    await api.tasks.reorder([2, 1]);
+    await api.tasks.clearDone();
     await api.timer.startTask(5);
     await api.timer.setIntention(null);
     await api.timer.setOutcome('p1', 'partly');
     expect(vi.mocked(ipc.invoke).mock.calls).toEqual([
-      ['planner:week', '2026-11-09'],
-      ['planner:task', 7],
-      ['tasks:move', 3, { day: '2026-11-10', index: 0 }],
-      ['subtasks:reorder', 3, [2, 1]],
-      ['lists:clearDone', 4],
+      ['tasks:list'],
+      ['tasks:create', { text: 'Lab 7', colour: 'pink' }],
+      ['tasks:update', 3, { done: true }],
+      ['tasks:reorder', [2, 1]],
+      ['tasks:clearDone'],
       ['timer:startTask', 5],
       ['timer:setIntention', null],
       ['timer:setOutcome', 'p1', 'partly'],
     ]);
   });
 
-  it('planner.onOpenTask passes only the task id; onChanged unsubscribes', () => {
-    const { ipc, emit, listeners } = fakeIpc();
-    const api = buildApi(ipc);
-    const open = vi.fn();
-    const off = api.planner.onOpenTask(open);
-    emit(CHANNELS.events.plannerOpenTask, 12);
-    off();
-    emit(CHANNELS.events.plannerOpenTask, 13);
-    expect(open.mock.calls).toEqual([[12]]);
-    expect(listeners.get('planner:openTask')?.size).toBe(0);
-    const changed = vi.fn();
-    const offChanged = api.planner.onChanged(changed);
-    emit(CHANNELS.events.plannerChanged, undefined);
-    offChanged();
-    emit(CHANNELS.events.plannerChanged, undefined);
-    expect(changed).toHaveBeenCalledTimes(1);
+  it('has no planner, subtask or list groups (simple-tasks spec §3.3)', () => {
+    const api = buildApi(fakeIpc().ipc);
+    expect(Object.keys(api)).not.toContain('planner');
+    expect(api).not.toHaveProperty('subtasks');
+    expect(api).not.toHaveProperty('lists');
+    expect(Object.keys(api.tasks).sort()).toEqual(['clearDone', 'create', 'list', 'reorder', 'update']);
   });
 
   it('exposes the five images channels (v1.1 spec §5)', async () => {

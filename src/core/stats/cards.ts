@@ -5,7 +5,6 @@
 // is never set against a whole one.
 
 import type {
-  EstimatesCardData,
   GoalCardData,
   Session,
   StatRange,
@@ -33,8 +32,6 @@ export const OTHER_KEY = 'other';
 export const OTHER_NAME = 'Other';
 
 const DAY_MS = 86_400_000;
-/** The estimates card lists this many over-runs. */
-const TOP_OVERRUNS = 3;
 
 /** Inclusive day keys: today; Mon–Sun of this week; the 1st to the last of this month. */
 export function rangeDays(range: StatRange, ctx: StatsContext): { from: string; to: string } {
@@ -54,10 +51,6 @@ function lastOfMonth(first: string): string {
   let k = addDays(first, 28);
   while (k.slice(0, 7) === first.slice(0, 7)) k = addDays(k, 1);
   return addDays(k, -1);
-}
-
-function ratio1(num: number, den: number): number {
-  return Math.round((num / den) * 10) / 10;
 }
 
 function sumDays(totals: ReturnType<typeof dayTotals>, from: string, to: string): number {
@@ -160,70 +153,5 @@ export function goalCard(sessions: Session[], range: StatRange, ctx: StatsContex
     hitDays: days.filter((d) => d.hit).length,
     elapsedDays: days.filter((d) => !d.future).length,
     streak: currentStreak(totals, ctx),
-  };
-}
-
-export interface EstimateTask {
-  id: number;
-  title: string;
-  day: string;
-  estimateMin: number;
-  effectiveSubjectId: number | null;
-}
-
-/** `actualMs` maps a task id to its focus ms. Callers pass done tasks only. */
-export function estimatesCard(
-  tasks: EstimateTask[],
-  actualMs: ReadonlyMap<number, number>,
-  subjects: Subject[],
-  range: StatRange,
-  ctx: StatsContext,
-): EstimatesCardData {
-  const { from, to } = rangeDays(range, ctx);
-  const within = inDays(from, to);
-  const known = new Map(subjects.map((s) => [s.id, s]));
-  const picked = tasks.filter((t) => t.estimateMin > 0 && within(t.day));
-
-  let plannedMs = 0;
-  let focusedMs = 0;
-  const overruns: EstimatesCardData['overruns'] = [];
-  const groups = new Map<number | null, { label: string; planned: number; focused: number }>();
-  for (const t of picked) {
-    const estimateMs = t.estimateMin * MINUTE_MS;
-    const actual = actualMs.get(t.id) ?? 0;
-    plannedMs += estimateMs;
-    focusedMs += actual;
-    if (actual > estimateMs) overruns.push({ taskId: t.id, title: t.title, estimateMs, actualMs: actual });
-
-    const subject = t.effectiveSubjectId === null ? undefined : known.get(t.effectiveSubjectId);
-    const id = subject ? subject.id : null;
-    let g = groups.get(id);
-    if (!g) {
-      // The module code is the subject name's first word, e.g. "COMP2261".
-      g = {
-        label: subject ? (subject.name.trim().split(/\s+/)[0] ?? subject.name) : NO_SUBJECT_NAME,
-        planned: 0,
-        focused: 0,
-      };
-      groups.set(id, g);
-    }
-    g.planned += estimateMs;
-    g.focused += actual;
-  }
-
-  overruns.sort((a, b) => b.actualMs - b.estimateMs - (a.actualMs - a.estimateMs) || a.taskId - b.taskId);
-  const bySubject = [...groups.entries()]
-    .map(([subjectId, g]) => ({ subjectId, label: g.label, ratio: ratio1(g.focused, g.planned) }))
-    .sort((a, b) => b.ratio - a.ratio);
-
-  return {
-    card: 'estimates',
-    range,
-    tasks: picked.length,
-    plannedMs,
-    focusedMs,
-    ratio: plannedMs === 0 ? null : ratio1(focusedMs, plannedMs),
-    overruns: overruns.slice(0, TOP_OVERRUNS),
-    bySubject,
   };
 }

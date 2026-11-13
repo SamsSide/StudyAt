@@ -79,50 +79,16 @@ export interface Note {
   bare: boolean;
 }
 
-export type RepeatRule =
-  { kind: 'daily' } | { kind: 'weekdays' } | { kind: 'weekly' } | { kind: 'every'; days: number };
-export type TaskKind = 'task' | 'revision';
-export interface Subtask {
+export interface Task {
   id: number;
-  taskId: number;
   text: string;
+  colour: TaskColour;
   done: boolean;
   sort: number;
-}
-export interface PlannerTask {
-  id: number;
-  title: string;
-  note: string;
-  done: boolean;
+  createdAt: number;
   doneAt: number | null;
-  colour: TaskColour | null;
-  /** Study-day key, or null when the task is in a list. Exactly one of day / listId is set. */
-  day: string | null;
-  listId: number | null;
-  subjectId: number | null;
-  /** Its own subject, else its list's subject (spec §3.6). */
-  effectiveSubjectId: number | null;
-  estimateMin: number | null;
-  tags: string[];
-  subtasks: Subtask[];
-  repeat: RepeatRule | null;
-  reminder: string | null;
-  kind: TaskKind;
-  originTaskId: number | null;
-  rolledFrom: string | null;
-  sort: number;
-  createdAt: number;
-  updatedAt: number;
-  /** Focus ms of sessions with this task id, the running row live (spec §3.8). */
-  actualMs: number;
 }
-export interface TaskList {
-  id: number;
-  name: string;
-  subjectId: number | null;
-  sort: number;
-  createdAt: number;
-}
+
 export type DeadlineKind = 'exam' | 'coursework';
 export interface Deadline {
   id: number;
@@ -136,62 +102,9 @@ export interface Deadline {
   createdAt: number;
   updatedAt: number;
 }
-/** A planner query: the tasks dated `from..to` (inclusive), deadlines due those days, focus per day. */
-export interface PlannerRange {
-  from: string;
-  to: string;
-  tasks: PlannerTask[];
-  deadlines: Deadline[];
-  studiedMs: Record<string, number>;
-}
-export interface ListsView {
-  lists: TaskList[];
-  tasks: PlannerTask[];
-  deadlines: Deadline[];
-}
-/** Every task a write created or changed (full), and the ids it removed. */
-export interface TaskChange {
-  tasks: PlannerTask[];
-  removed: number[];
-}
-export interface ListsChange {
-  lists: TaskList[];
-  removed: number[];
-}
 export interface DeadlinesView {
   upcoming: Deadline[];
   past: Deadline[];
-}
-/** Write inputs (validated in main by Tasks 14-15, applied by Tasks 11-12). */
-export interface TaskInput {
-  title: string;
-  day?: string;
-  listId?: number;
-  subjectId?: number | null;
-  estimateMin?: number | null;
-  tags?: string[];
-  note?: string;
-  colour?: TaskColour | null;
-}
-export interface TaskUpdate {
-  title?: string;
-  note?: string;
-  done?: boolean;
-  colour?: TaskColour | null;
-  subjectId?: number | null;
-  estimateMin?: number | null;
-  tags?: string[];
-  repeat?: RepeatRule | null;
-  reminder?: string | null;
-}
-export type TaskMove = { day: string; index: number } | { listId: number; index: number };
-export interface ListInput {
-  name: string;
-  subjectId?: number | null;
-}
-export interface ListPatch {
-  name?: string;
-  subjectId?: number | null;
 }
 export interface DeadlineInput {
   title: string;
@@ -209,7 +122,7 @@ export interface DeadlinePatch {
   done?: boolean;
 }
 
-export type StatCard = 'total' | 'subjects' | 'goal' | 'estimates';
+export type StatCard = 'total' | 'subjects' | 'goal';
 export type StatRange = 'today' | 'week' | 'month';
 export interface StatWidget {
   id: number;
@@ -257,18 +170,7 @@ export interface GoalCardData {
   elapsedDays: number;
   streak: number;
 }
-export interface EstimatesCardData {
-  card: 'estimates';
-  range: StatRange;
-  tasks: number;
-  plannedMs: number;
-  focusedMs: number;
-  /** focused / planned to 1 dp; null when nothing is estimated. */
-  ratio: number | null;
-  overruns: { taskId: number; title: string; estimateMs: number; actualMs: number }[];
-  bySubject: { subjectId: number | null; label: string; ratio: number }[];
-}
-export type CardData = TotalCardData | SubjectsCardData | GoalCardData | EstimatesCardData;
+export type CardData = TotalCardData | SubjectsCardData | GoalCardData;
 
 /** What a YouTube space asks the player for: Auto leaves it to YouTube (spec §3.3). */
 export type SpaceQuality = 'auto' | '1080' | '1440' | '2160';
@@ -447,10 +349,7 @@ export interface Settings {
   windowBounds: WindowBounds | null;
   miniPos: { x: number; y: number } | null;
   countdownPips: boolean;
-  rollTasksForward: boolean;
   sessionIntention: boolean;
-  revisionTags: string[];
-  revisionDays: number[];
 }
 
 /**

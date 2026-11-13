@@ -1,7 +1,6 @@
-// Desktop notifications (spec §3.7, §3.11): a segment end, when `settings.notifications` is on, a
-// task reminder (v1.2 spec §3.6), and the one-time tray notice. They are silent: the chime is the sound (spec §3.9), so a toast never
+// Desktop notifications (spec §3.7, §3.11): a segment end, when `settings.notifications` is on, and
+// the one-time tray notice. They are silent: the chime is the sound (spec §3.9), so a toast never
 // doubles it. Electron's `Notification` is injected so this runs under a unit test.
-import { reminderTitle } from '../core/planner/reminders';
 import type { SegmentEnd, Settings } from '../shared/types';
 
 export const FOCUS_DONE = 'Focus done — time for a break.';
@@ -26,8 +25,6 @@ export interface NotifyDeps {
   isMainFocused(): boolean;
   /** A click on any notification brings StudyAt forward. */
   onClick(): void;
-  /** A click on a reminder then opens its task (v1.2 spec §3.6). */
-  onOpenTask?(taskId: number): void;
 }
 
 export function createNotifier(deps: NotifyDeps) {
@@ -35,14 +32,13 @@ export function createNotifier(deps: NotifyDeps) {
   // until it is clicked or closed.
   const live = new Set<NotificationLike>();
 
-  const show = (body: string, title = 'StudyAt', taskId?: number): boolean => {
+  const show = (body: string, title = 'StudyAt'): boolean => {
     if (!deps.isSupported()) return false;
     const n = deps.create({ title, body, icon: deps.icon, silent: true });
     live.add(n);
     n.on('click', () => {
       live.delete(n);
       deps.onClick();
-      if (taskId !== undefined) deps.onOpenTask?.(taskId);
     });
     n.on('close', () => live.delete(n));
     n.show();
@@ -58,14 +54,6 @@ export function createNotifier(deps: NotifyDeps) {
       if (!deps.settings().notifications || deps.isMainFocused()) return false;
       if (e.mode === 'countdown') return show(countdownBody(Math.round(segmentMs / 60_000)), COUNTDOWN_DONE_TITLE);
       return show(e.mode === 'focus' ? FOCUS_DONE : BREAK_DONE);
-    },
-    /**
-     * v1.2 spec §3.6: "Reminder · <title>", following `notifications`. Shown while StudyAt is
-     * focused too: nothing else on screen says the time came. True when shown.
-     */
-    notifyReminder(taskId: number, title: string): boolean {
-      if (!deps.settings().notifications) return false;
-      return show('', reminderTitle(title), taskId);
     },
     /**
      * The first close to the tray (spec §3.7, §3.14). Shown whatever `notifications` says: it is

@@ -94,36 +94,9 @@ describe('notifier', () => {
     expect(made[1]?.opts.body).toBe('90 min of focus.');
   });
 
-  it("a reminder shows 'Reminder · <title>' and its click opens the task", () => {
-    const calls: string[] = [];
-    const { notifier, made, settings } = setup({
-      isMainFocused: () => true, // shown even while StudyAt is focused
-      onClick: () => calls.push('click'),
-      onOpenTask: (id) => calls.push(`open ${id}`),
-    });
-    expect(notifier.notifyReminder(7, 'Read ch. 4')).toBe(true);
-    expect(made[0]?.opts).toMatchObject({ title: 'Reminder · Read ch. 4', silent: true, icon: '/assets/icons/icon.png' });
-    expect(made[0]?.n.show).toHaveBeenCalled();
-    made[0]?.n.fire('click');
-    expect(calls).toEqual(['click', 'open 7']);
-    settings.notifications = false;
-    expect(notifier.notifyReminder(7, 'Read ch. 4')).toBe(false);
-    expect(made).toHaveLength(1);
-  });
-
-  it('a reminder click without onOpenTask still opens StudyAt', () => {
-    const { notifier, made, deps } = setup();
-    notifier.notifyReminder(7, 'Read ch. 4');
-    made[0]?.n.fire('click');
-    expect(deps.onClick).toHaveBeenCalledTimes(1);
-  });
-
-  it('a segment-end click does not open a task', () => {
-    const onOpenTask = vi.fn();
-    const { notifier, made } = setup({ onOpenTask });
-    notifier.notifySegmentEnd({ mode: 'focus', next: 'short' }, 25 * MIN);
-    made[0]?.n.fire('click');
-    expect(onOpenTask).not.toHaveBeenCalled();
+  it('has no reminder notification (simple-tasks spec §3.3)', () => {
+    const { notifier } = setup();
+    expect(notifier).not.toHaveProperty('notifyReminder');
   });
 
   it('a countdown end is skipped like any other when notifications are off', () => {

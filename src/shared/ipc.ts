@@ -14,17 +14,11 @@ import type {
   ImageAddResult,
   ImagePatch,
   ImageWidget,
-  ListInput,
-  ListPatch,
-  ListsChange,
-  ListsView,
   Mix,
   Mode,
   Note,
   NowPlaying,
   Playlist,
-  PlannerRange,
-  PlannerTask,
   PublicSettings,
   SegmentEnd,
   Session,
@@ -42,13 +36,9 @@ import type {
   Subject,
   SubjectRange,
   SubjectTotal,
-  TaskChange,
+  Task,
   TaskColour,
-  TaskInput,
-  TaskList,
-  TaskMove,
   TaskTotal,
-  TaskUpdate,
   TimerState,
   TrendPoint,
   WeekBars,
@@ -84,6 +74,12 @@ export interface NotePatch {
   bare?: boolean;
 }
 
+export interface TaskPatch {
+  text?: string;
+  colour?: TaskColour;
+  done?: boolean;
+}
+
 export interface SpacePatch {
   name?: string;
   favourite?: boolean;
@@ -102,11 +98,15 @@ export interface StudyAtApi {
     skip(): Promise<TimerState>;
     setMode(mode: Mode): Promise<TimerState>;
     setSubject(subjectId: number | null): Promise<TimerState>;
-    /** A task from the list, or `null` for none; main snapshots its text (v1.1 spec §3.3). */
+    /**
+     * A task from the list, or `null` for none; main snapshots its text (v1.1 spec §3.3). The
+     * subject is left as it is. Rejects "That task no longer exists." (simple-tasks spec §3.2).
+     */
     setTask(taskId: number | null): Promise<TimerState>;
     /**
-     * ▶ on a planner task (v1.2 spec §3.8): sets the task and its effective subject in one split,
-     * then starts focus (an idle break switches to Focus first). Rejects "That task no longer exists."
+     * ▶ on a sticky (simple-tasks spec §3.2): sets the task in one split, then starts focus (an
+     * idle break switches to Focus first). The subject is left as it is. Rejects "That task no
+     * longer exists."
      */
     startTask(taskId: number): Promise<TimerState>;
     /** At most 140 characters, trimmed; blank is `null` (v1.2 spec §3.11). */
@@ -143,40 +143,12 @@ export interface StudyAtApi {
     update(id: number, patch: SubjectPatch): Promise<Subject[]>;
     archive(id: number): Promise<Subject[]>;
   };
-  /** The planner (v1.2 spec §3.6, §5): `week` takes any day of the week, `month` is `YYYY-MM`. */
-  planner: {
-    week(weekStart: string): Promise<PlannerRange>;
-    month(month: string): Promise<PlannerRange>;
-    day(day: string): Promise<PlannerRange>;
-    lists(): Promise<ListsView>;
-    /** One task by id wherever it sits (a late reminder for yesterday's task), or null if gone. */
-    task(id: number): Promise<PlannerTask | null>;
-    /** Main asks the planner to open this task (a reminder was clicked). */
-    onOpenTask(cb: (taskId: number) => void): Unsubscribe;
-    /** A task, subtask or list changed in main (roll forward, a reminder); refetch what is shown. */
-    onChanged(cb: () => void): Unsubscribe;
-  };
-  /** Every write returns the full changed tasks and the ids it removed (v1.2 spec §5). */
   tasks: {
-    create(input: TaskInput): Promise<TaskChange>;
-    update(id: number, patch: TaskUpdate): Promise<TaskChange>;
-    move(id: number, to: TaskMove): Promise<TaskChange>;
-    remove(id: number): Promise<TaskChange>;
-    duplicate(id: number): Promise<TaskChange>;
-    scheduleRevision(id: number, days: number[]): Promise<TaskChange>;
-  };
-  subtasks: {
-    add(taskId: number, text: string): Promise<PlannerTask>;
-    update(id: number, patch: { text?: string; done?: boolean }): Promise<PlannerTask>;
-    remove(id: number): Promise<PlannerTask>;
-    reorder(taskId: number, ids: number[]): Promise<PlannerTask>;
-  };
-  lists: {
-    create(input: ListInput): Promise<TaskList[]>;
-    update(id: number, patch: ListPatch): Promise<TaskList[]>;
-    reorder(ids: number[]): Promise<TaskList[]>;
-    remove(id: number): Promise<ListsChange>;
-    clearDone(id: number): Promise<TaskChange>;
+    list(): Promise<Task[]>;
+    create(input: { text: string; colour: TaskColour }): Promise<Task[]>;
+    update(id: number, patch: TaskPatch): Promise<Task[]>;
+    reorder(ids: number[]): Promise<Task[]>;
+    clearDone(): Promise<Task[]>;
   };
   spaces: {
     list(): Promise<Space[]>;
@@ -342,27 +314,12 @@ export const CHANNELS = {
     update: 'subjects:update',
     archive: 'subjects:archive',
   },
-  planner: { week: 'planner:week', month: 'planner:month', day: 'planner:day', lists: 'planner:lists', task: 'planner:task' },
   tasks: {
+    list: 'tasks:list',
     create: 'tasks:create',
     update: 'tasks:update',
-    move: 'tasks:move',
-    remove: 'tasks:remove',
-    duplicate: 'tasks:duplicate',
-    scheduleRevision: 'tasks:scheduleRevision',
-  },
-  subtasks: {
-    add: 'subtasks:add',
-    update: 'subtasks:update',
-    remove: 'subtasks:remove',
-    reorder: 'subtasks:reorder',
-  },
-  lists: {
-    create: 'lists:create',
-    update: 'lists:update',
-    reorder: 'lists:reorder',
-    remove: 'lists:remove',
-    clearDone: 'lists:clearDone',
+    reorder: 'tasks:reorder',
+    clearDone: 'tasks:clearDone',
   },
   spaces: {
     list: 'spaces:list',
@@ -441,8 +398,6 @@ export const CHANNELS = {
     appVisibility: 'app:visibility',
     appFlush: 'app:flush',
     settingsChanged: 'settings:changed',
-    plannerOpenTask: 'planner:openTask',
-    plannerChanged: 'planner:changed',
   },
 } as const;
 

@@ -111,37 +111,6 @@ describe('watchDateChange', () => {
     expect(backup).toHaveBeenCalledTimes(1);
   });
 
-  it('newStudyDay runs on a study-day change, and its failure is logged', async () => {
-    const order: string[] = [];
-    recaps.mockImplementation(() => void order.push('recaps'));
-    const newStudyDay = vi.fn<(now: number) => void>(() => {
-      order.push('newStudyDay');
-      throw new Error('roll forward failed');
-    });
-    stop = watchDateChange(deps({ newStudyDay }));
-    clock.advance(4 * HOUR); // 02:30: still Monday's study day
-    expect(newStudyDay).not.toHaveBeenCalled();
-    clock.advance(2 * HOUR); // 04:30: Tuesday's
-    expect(newStudyDay).toHaveBeenCalledTimes(1);
-    expect(newStudyDay).toHaveBeenCalledWith(start + 6 * HOUR);
-    expect(order).toEqual(['recaps', 'newStudyDay']);
-    expect(log).toHaveBeenCalledWith('StudyAt: starting the new study day failed', expect.any(Error));
-    clock.advance(HOUR);
-    expect(newStudyDay).toHaveBeenCalledTimes(1);
-    await flush();
-  });
-
-  it('newStudyDay still runs when the recaps fail', async () => {
-    recaps.mockImplementation(() => {
-      throw new Error('no recaps');
-    });
-    const newStudyDay = vi.fn<(now: number) => void>();
-    stop = watchDateChange(deps({ newStudyDay }));
-    clock.advance(6 * HOUR);
-    expect(newStudyDay).toHaveBeenCalledTimes(1);
-    await flush();
-  });
-
   it('never runs two backups at once', async () => {
     let release!: () => void;
     backup.mockImplementation(() => new Promise<void>((r) => (release = r)));

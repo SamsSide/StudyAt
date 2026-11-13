@@ -1,7 +1,7 @@
 // App bootstrap (Task 10, Task 13). Order: userData override → media scheme → single instance →
 // ready → database (migrate, seed; the corrupt dialog, spec §3.3) → daily backup → timer and orphan
-// recovery → pending recaps → media protocol → IPC → rolling tasks forward → power and the date watch →
-// main window → reminders → tray → hotkey and login item. Closing the window hides to the tray (appplan §4.4); only Quit ends the app, saving first.
+// recovery → pending recaps → media protocol → IPC → power and the date watch → main window → tray →
+// hotkey and login item. Closing the window hides to the tray (appplan §4.4); only Quit ends the app, saving first.
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -33,7 +33,6 @@ import { createRendererFlush } from './flush';
 import { createBroadcaster, registerIpc, type Dialogs } from './ipc';
 import { MiniWindow } from './mini';
 import { createNotifier } from './notify';
-import { startOfStudyDay, startReminders, type RemindersDeps } from './reminders';
 import { applyUserDataOverride } from './paths';
 import { installMediaProtocol, registerMediaScheme } from './protocol';
 import { CSP, DEV_CSP, hardenWebContents, installPermissionHandlers, shouldApplyCsp } from './security';
@@ -278,8 +277,6 @@ async function boot(): Promise<void> {
     settings: () => settingsStore.get(),
     isMainFocused: () => Boolean(main?.isVisible() && mainWindow?.isFocused()),
     onClick: () => main?.reveal(),
-    // v1.2 spec §3.6: a reminder's click (after onClick has shown the window) opens its task.
-    onOpenTask: (id) => broadcaster.send(CHANNELS.events.plannerOpenTask, id),
   });
 
   const timer = new TimerController({
@@ -333,14 +330,11 @@ async function boot(): Promise<void> {
   // Set once the date watch starts (below); stopped first on quit, so no backup or recap check
   // starts against a database that is closing.
   let stopDateWatch: (() => void) | null = null;
-  // Set once the main window exists (below); stopped first on quit with the date watch.
-  let stopReminders: (() => void) | null = null;
   const quitting = installQuit(
     app,
     () =>
       runShutdown(
         [
-          () => stopReminders?.(),
           () => stopDateWatch?.(),
           () => main?.flush(),
           () => mini?.flush(),
@@ -395,28 +389,6 @@ async function boot(): Promise<void> {
   });
   // Spec §3.5: every finished week is recapped on launch; the renderer asks for the pending one.
   services.recaps.computePending(Date.now());
-  // v1.2 spec §3.6, §7: with `rollTasksForward` on, open tasks on past days move to today at launch
-  // and at every study-day change (idempotent: only days before today move); the renderer refetches.
-  // A reminder pass runs first, so yesterday's due reminders fire before their task changes day.
-  const reminderDeps: RemindersDeps = {
-    db,
-    now: Date.now,
-    setInterval,
-    clearInterval,
-    settings: () => settingsStore.get(),
-    notify: (id, title) => void notifier.notifyReminder(id, title),
-  };
-  const startStudyDay = (now: number): void =>
-    startOfStudyDay(reminderDeps, () => {
-      if (services.taskWrites.rollForward(now).tasks.length > 0) {
-        broadcaster.send(CHANNELS.events.plannerChanged, null);
-      }
-    });
-  try {
-    startStudyDay(Date.now());
-  } catch (err) {
-    console.error('StudyAt: rolling tasks forward failed', err);
-  }
 
   installMediaProtocol(services.resolveMedia, () => {
     const origin = rendererOrigin();
@@ -436,7 +408,6 @@ async function boot(): Promise<void> {
     // While the corrupt dialog is unresolved the file is the fresh one, never a daily (R16, R32).
     backup: (now) => dailyBackup(userData, now, { skip: corruptState(db.raw).pendingAt !== null }),
     recaps: (now) => void services.recaps.computePending(now),
-    newStudyDay: startStudyDay,
     log: (msg, err) => console.error(msg, err),
   });
 
@@ -485,8 +456,6 @@ async function boot(): Promise<void> {
   win.on('closed', () => {
     mainWindow = null;
   });
-  // v1.2 spec §3.6: reminders fire from main, so they reach Sam while the window is in the tray.
-  stopReminders = startReminders(reminderDeps);
 
   try {
     const image = await trayImage(paths.assets).catch((err: unknown) => {

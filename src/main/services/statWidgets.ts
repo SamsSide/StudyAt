@@ -1,13 +1,13 @@
 // Stats widgets (v1.2 spec §3.12): up to six stat cards pinned on the study space. A new one
 // cascades like a popped note; the repo clamps position and scale.
 import { cascadeAt } from '../../core/cascade';
-import { LIMIT_COPY, MAX_STAT_WIDGETS } from '../../shared/planner';
+import { LIMIT_COPY, MAX_STAT_WIDGETS } from '../../shared/limits';
 import type { StatCard, StatRange, StatWidget, StatWidgetPatch } from '../../shared/types';
 import type { Db } from '../db/db';
 import { statWidgetsRepo } from '../db/repos/statWidgets';
 import { assertBool, assertEnum, IpcValidationError } from './validate';
 
-export const STAT_CARDS: readonly StatCard[] = ['total', 'subjects', 'goal', 'estimates'];
+export const STAT_CARDS: readonly StatCard[] = ['total', 'subjects', 'goal'];
 export const STAT_RANGES: readonly StatRange[] = ['today', 'week', 'month'];
 
 export interface StatWidgetsServiceDeps {

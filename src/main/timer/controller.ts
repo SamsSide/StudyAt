@@ -5,10 +5,10 @@
 // prompt that is discarded if not answered in 2 minutes, renderer or not, unless the away prompt
 // is switched off (v1.1 spec §3.1). A Countdown is a focus segment like a Pomodoro focus (spec
 // §3.2). A held task that is done or gone is let go whenever no focus segment runs (spec §3.3). A
-// task and its subject change in one split, and ▶ on a task starts focus (v1.2 spec §3.8). The
-// session intention labels the focus rows and, once the segment stops, asks how it went (v1.2 spec
-// §3.11); neither ever splits, extends or shortens focus time. No clock inside: time, intervals and
-// idle seconds are injected.
+// task change splits the row and never touches the subject, and ▶ on a task starts focus
+// (simple-tasks spec §3.2). The session intention labels the focus rows and, once the segment
+// stops, asks how it went (v1.2 spec §3.11); neither ever splits, extends or shortens focus time.
+// No clock inside: time, intervals and idle seconds are injected.
 import {
   initialState,
   lengthOf,
@@ -19,7 +19,7 @@ import {
 } from '../../core/timer/machine';
 import { dayKeyOf } from '../../core/time';
 import { isFocusMode } from '../../shared/modes';
-import { INTENTION_MAX } from '../../shared/planner';
+import { INTENTION_MAX } from '../../shared/limits';
 import type {
   AwayPrompt,
   Mode,
@@ -31,7 +31,7 @@ import type {
 import type { Db } from '../db/db';
 import { sessionsRepo, type SessionsRepo } from '../db/repos/sessions';
 import { settingsRepo, type SettingsRepo } from '../db/repos/settings';
-import { onTasksChanged, plannerTasksRepo, type PlannerTasksRepo } from '../db/repos/plannerTasks';
+import { onTasksChanged, tasksRepo, type TasksRepo } from '../db/repos/tasks';
 import { clearAwayMarker, readAwayMarker, writeAwayMarker } from './away-marker';
 import { AWAY_AUTO_DISCARD_MS, FocusLedger, IDLE_POLL_MS, IdleWatch } from './idle';
 
@@ -101,7 +101,7 @@ interface Emitted {
 export class TimerController {
   private readonly sessions: SessionsRepo;
   private readonly settings: SettingsRepo;
-  private readonly tasks: PlannerTasksRepo;
+  private readonly tasks: TasksRepo;
   private readonly stopTasks: () => void;
   private cfg!: TimerConfig;
   private idleThresholdMs = 10 * MINUTE;
@@ -158,7 +158,7 @@ export class TimerController {
   constructor(private readonly deps: ControllerDeps) {
     this.sessions = sessionsRepo(deps.db);
     this.settings = settingsRepo(deps.db);
-    this.tasks = plannerTasksRepo(deps.db);
+    this.tasks = tasksRepo(deps.db);
     this.loadSettings();
     this.machine = initialState(this.cfg);
     // Last, so a constructor that throws leaves no live subscription.
@@ -294,43 +294,32 @@ export class TimerController {
   /**
    * Spec §3.3: a task change splits the row exactly like a subject change. `text` is the task's
    * text now, recorded on the row so Stats keeps its old name. The same id again changes nothing.
-   * `subjectId` undefined leaves the subject as it is; a different one changes with the task in ONE
-   * split, on the same pomodoro and day key (v1.2 spec §3.8, ruling A3).
+   * The subject is never changed by a task (simple-tasks spec §3.2).
    */
-  setTask(id: number | null, text: string | null, subjectId?: number | null): TimerState {
-    return this.command((now) => this.changeTask(id, text, subjectId, now));
+  setTask(id: number | null, text: string | null): TimerState {
+    return this.command((now) => this.changeTask(id, text, now));
   }
 
   /**
-   * v1.2 spec §3.8 ▶ on a task: sets the task (and subject), then an idle focus mode starts; an idle
+   * Simple-tasks spec §3.2 ▶ on a sticky: sets the task, then an idle focus mode starts; an idle
    * break switches to Focus and starts it. A focus running or paused only takes the task (one
    * split); a break running or paused goes on, and the task waits for the next focus.
    */
-  startTask(id: number, text: string, subjectId?: number | null): TimerState {
+  startTask(id: number, text: string): TimerState {
     return this.command((now) => {
-      this.changeTask(id, text, subjectId, now);
+      this.changeTask(id, text, now);
       if (this.machine.status !== 'idle') return;
       if (!isFocusMode(this.machine.mode)) this.apply({ type: 'setMode', mode: 'focus' }, now);
       this.startNow(now);
     });
   }
 
-  private changeTask(
-    id: number | null,
-    text: string | null,
-    subjectId: number | null | undefined,
-    now: number,
-  ): void {
-    const taskChanged = id !== this.taskId;
-    const subjectChanged = subjectId !== undefined && subjectId !== this.subjectId;
-    if (!taskChanged && !subjectChanged) return;
-    if (taskChanged) {
-      this.taskId = id;
-      this.taskText = id === null ? null : text;
-      // Picking a task fills an empty intention with its title, never overwrites one (§3.11).
-      if (id !== null && this.intention === null && this.sessionIntention) this.intention = clean(text);
-    }
-    if (subjectChanged) this.subjectId = subjectId;
+  private changeTask(id: number | null, text: string | null, now: number): void {
+    if (id === this.taskId) return;
+    this.taskId = id;
+    this.taskText = id === null ? null : text;
+    // Picking a task fills an empty intention with its text, never overwrites one (v1.2 spec §3.11).
+    if (id !== null && this.intention === null && this.sessionIntention) this.intention = clean(text);
     this.split(now);
   }
 

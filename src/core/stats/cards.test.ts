@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Session, Subject } from '../../shared/types';
-import { estimatesCard, goalCard, rangeDays, subjectsCard, totalCard } from './cards';
+import { goalCard, rangeDays, subjectsCard, totalCard } from './cards';
 import { NO_SUBJECT_COLOUR } from './totals';
 import type { StatsContext } from './totals';
 
@@ -228,61 +228,5 @@ describe('goalCard', () => {
     const g = goalCard(rows, 'month', ctx);
     expect(g.days).toHaveLength(30);
     expect(g.elapsedDays).toBe(11);
-  });
-});
-
-describe('estimatesCard', () => {
-  it('ratio, overruns and per-subject ratio', () => {
-    const tasks = [
-      { id: 1, title: 'A', day: '2026-11-10', estimateMin: 60, effectiveSubjectId: 4 },
-      { id: 2, title: 'B', day: '2026-11-11', estimateMin: 30, effectiveSubjectId: 4 },
-      { id: 3, title: 'C', day: '2026-11-11', estimateMin: 30, effectiveSubjectId: null },
-      { id: 4, title: 'D', day: '2026-10-01', estimateMin: 30, effectiveSubjectId: null },
-    ];
-    const actual = new Map([
-      [1, 96 * MIN],
-      [2, 48 * MIN],
-      [3, 15 * MIN],
-      [4, 99 * MIN],
-    ]);
-    expect(estimatesCard(tasks, actual, subjects, 'week', ctx)).toEqual({
-      card: 'estimates',
-      range: 'week',
-      tasks: 3,
-      plannedMs: 120 * MIN,
-      focusedMs: 159 * MIN,
-      ratio: 1.3,
-      overruns: [
-        { taskId: 1, title: 'A', estimateMs: 60 * MIN, actualMs: 96 * MIN },
-        { taskId: 2, title: 'B', estimateMs: 30 * MIN, actualMs: 48 * MIN },
-      ],
-      bySubject: [
-        { subjectId: 4, label: 'COMP2261', ratio: 1.6 },
-        { subjectId: null, label: 'No subject', ratio: 0.5 },
-      ],
-    });
-    expect(estimatesCard([], new Map(), subjects, 'week', ctx)).toMatchObject({
-      tasks: 0,
-      ratio: null,
-      overruns: [],
-      bySubject: [],
-    });
-  });
-  it('keeps the 3 largest overruns and treats a task with no focus as 0', () => {
-    const tasks = [1, 2, 3, 4].map((id) => ({
-      id,
-      title: `T${id}`,
-      day: '2026-11-11',
-      estimateMin: 10,
-      effectiveSubjectId: 1,
-    }));
-    const actual = new Map([
-      [1, 20 * MIN],
-      [2, 50 * MIN],
-      [3, 30 * MIN],
-    ]);
-    const card = estimatesCard(tasks, actual, subjects, 'today', ctx);
-    expect(card.overruns.map((o) => o.taskId)).toEqual([2, 3, 1]);
-    expect(card.focusedMs).toBe(100 * MIN);
   });
 });

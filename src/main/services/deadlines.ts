@@ -2,7 +2,7 @@
 // lives here; the repo stores what it is given. "Today" is the calendar date, not the study day:
 // a deadline due earlier today is still upcoming (the widget shows "Due").
 import { calendarDate } from '../../core/wallclock';
-import { DEADLINE_NOTE_MAX, DEADLINE_TITLE_MAX } from '../../shared/planner';
+import { DEADLINE_NOTE_MAX, DEADLINE_TITLE_MAX } from '../../shared/limits';
 import type { Deadline, DeadlineInput, DeadlineKind, DeadlinePatch, DeadlinesView } from '../../shared/types';
 import type { Db } from '../db/db';
 import { deadlinesRepo } from '../db/repos/deadlines';

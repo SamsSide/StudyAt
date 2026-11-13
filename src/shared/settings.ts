@@ -1,6 +1,5 @@
 // Settings defaults and the patch sanitiser (spec §3.11). Pure: used by main (validation) and tests.
 import type { ChimeId, Settings, SettingsPatch, WeatherUnits, WidgetId, WidgetPos } from './types';
-import { MAX_TAGS, REVISION_DAYS_MAX, normaliseTag } from './planner';
 import type { Place } from './widgets';
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,10 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   windowBounds: null,
   miniPos: null,
   countdownPips: true,
-  rollTasksForward: false,
   sessionIntention: true,
-  revisionTags: ['lecture'],
-  revisionDays: [1, 3, 7, 21],
 };
 
 const MAX_STRING = 500;
@@ -198,28 +194,6 @@ const rect: Sanitiser = (v) => {
   return { x, y, width, height };
 };
 
-/** At most 8 entries (more is invalid); each through `normaliseTag`, bad ones dropped. */
-const revisionTags: Sanitiser = (v) => {
-  if (!Array.isArray(v) || v.length > MAX_TAGS) return NONE;
-  const out: string[] = [];
-  for (const raw of v) {
-    const tag = typeof raw === 'string' ? normaliseTag(raw) : null;
-    if (tag !== null && !out.includes(tag)) out.push(tag);
-  }
-  return out;
-};
-
-/** 1-4 whole days of 1..90, de-duplicated and sorted. */
-const revisionDays: Sanitiser = (v) => {
-  if (!Array.isArray(v) || v.length < 1 || v.length > 4) return NONE;
-  const out = new Set<number>();
-  for (const d of v) {
-    if (typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > REVISION_DAYS_MAX) return NONE;
-    out.add(d);
-  }
-  return [...out].sort((a, b) => a - b);
-};
-
 const point: Sanitiser = (v) => {
   if (v === null) return null;
   if (!isRecord(v)) return NONE;
@@ -269,10 +243,7 @@ const SANITISERS: Record<Exclude<keyof SettingsPatch, SetOnlyElsewhere>, Sanitis
   windowBounds: rect,
   miniPos: point,
   countdownPips: bool,
-  rollTasksForward: bool,
   sessionIntention: bool,
-  revisionTags,
-  revisionDays,
 };
 
 /**

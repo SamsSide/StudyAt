@@ -3,8 +3,7 @@ import type { AwayPrompt, SegmentEnd, TimerState } from '../../shared/types';
 import type { Db } from '../db/db';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
-import { plannerTasksRepo } from '../db/repos/plannerTasks';
-import { taskListsRepo } from '../db/repos/taskLists';
+import { tasksRepo } from '../db/repos/tasks';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { one } from '../db/sql';
 import { AWAY_MARKER_KEY, readAwayMarker } from './away-marker';
@@ -1022,12 +1021,11 @@ describe('TimerController', () => {
   // ── v1.1: a task on the timer (spec §3.3) ──
 
   /**
-   * Held tasks are real planner rows (v1.2): one that is missing is cleared whenever no focus
-   * segment runs.
+   * Held tasks are real sticky rows (simple-tasks spec §3.2): one that is missing is cleared
+   * whenever no focus segment runs.
    */
-  const addTask = (title: string): number =>
-    plannerTasksRepo(db).create({ title, day: '2026-11-08', listId: null }, clock.time).id;
-  const tickOff = (id: number) => plannerTasksRepo(db).update(id, { done: true }, clock.time);
+  const addTask = (text: string): number => tasksRepo(db).create({ text, colour: 'yellow' }, clock.time).id;
+  const tickOff = (id: number) => tasksRepo(db).update(id, { done: true }, clock.time);
 
   it('the held task is written on the row and in the state', () => {
     addTask('A');
@@ -1165,8 +1163,7 @@ describe('TimerController', () => {
 
   it('a held task ticked off, or removed by Clear done, while idle is cleared at once and broadcast', () => {
     const a = addTask('A');
-    const list = taskListsRepo(db).create({ name: 'L', subjectId: null }, clock.time);
-    const b = plannerTasksRepo(db).create({ title: 'B', day: null, listId: list.id }, clock.time).id;
+    const b = addTask('B');
     c.setTask(a, 'A');
     const before = states.length;
     tickOff(a);
@@ -1175,7 +1172,7 @@ describe('TimerController', () => {
     expect(states.at(-1)).toMatchObject({ taskId: null, taskText: null });
     c.setTask(b, 'B');
     db.raw.run('UPDATE tasks SET done = 1 WHERE id = ?', [b]);
-    plannerTasksRepo(db).clearDone(list.id);
+    tasksRepo(db).clearDone();
     expect(c.getState()).toMatchObject({ taskId: null, taskText: null });
     expect(rows()).toEqual([]);
   });
@@ -1224,71 +1221,63 @@ describe('TimerController', () => {
     expect(c.getState()).toMatchObject({ taskId: a });
   });
 
-  // ── v1.2: task with subject in one split, ▶ on a task, intention and outcome (spec §3.8, §3.11) ──
+  // ── simple tasks: no subject travels with a task, ▶ on a sticky (spec §3.2); intention (v1.2 §3.11) ──
 
-  it('setTask with a different subject splits once, on the pomodoro and day key', async () => {
+  it('a task change mid-focus splits once on the pomodoro and day key, and keeps the subject', async () => {
     const c = make();
     c.setSubject(1);
     c.start();
     at(10 * MIN);
-    c.setTask(5, 'Lecture 5 notes', 3);
+    c.setTask(5, 'Lecture 5 notes');
     at(25 * MIN);
     const r = rows();
     expect(r).toHaveLength(2);
     expect(r.map((s) => [s.subjectId, s.taskId, s.taskText, s.focusMs])).toEqual([
       [1, null, null, 10 * MIN],
-      [3, 5, 'Lecture 5 notes', 15 * MIN],
+      [1, 5, 'Lecture 5 notes', 15 * MIN],
     ]);
     expect(new Set(r.map((s) => s.pomodoroId)).size).toBe(1);
     expect(new Set(r.map((s) => s.dayKey)).size).toBe(1);
   });
-  it('setTask with undefined or the same subject leaves the subject and splits once', async () => {
+  it('setTask while idle sets the task without a row; the subject is unchanged', () => {
     const c = make();
-    c.setSubject(1);
-    c.start();
-    at(10 * MIN);
-    c.setTask(5, 'A');
-    at(12 * MIN);
-    c.setTask(6, 'B', 1);
-    at(25 * MIN);
-    expect(rows().map((s) => [s.subjectId, s.taskId])).toEqual([
-      [1, null],
-      [1, 5],
-      [1, 6],
-    ]);
-  });
-  it('setTask while idle sets task and subject without a row', () => {
-    const c = make();
-    expect(c.setTask(5, 'A', 3)).toMatchObject({ taskId: 5, taskText: 'A', subjectId: 3, status: 'idle' });
+    c.setSubject(3);
+    expect(c.setTask(5, 'A')).toMatchObject({ taskId: 5, taskText: 'A', subjectId: 3, status: 'idle' });
     expect(rows()).toHaveLength(0);
   });
-  // A focus start lets go of a held task that is done or missing, so ▶ needs a real planner task.
-  it('startTask from idle focus starts focus with the task and subject', () => {
-    const t = plannerTasksRepo(db).create({ title: 'A', day: '2026-11-08', listId: null }, NOW);
+  // A focus start lets go of a held task that is done or missing, so ▶ needs a real sticky.
+  it('startTask from idle Focus sets the task and starts focus; the subject is unchanged', () => {
+    const t = tasksRepo(db).create({ text: 'Lab 7', colour: 'yellow' }, NOW);
+    expect(t.id).toBeGreaterThan(0);
+    db.raw.run('UPDATE tasks SET id = 9 WHERE id = ?', [t.id]);
     const c = make();
-    expect(c.startTask(t.id, 'A', 3)).toMatchObject({
+    c.setSubject(3);
+    expect(c.startTask(9, 'Lab 7')).toMatchObject({
       mode: 'focus',
       status: 'running',
-      taskId: t.id,
+      taskId: 9,
       subjectId: 3,
     });
-    expect(rows()).toHaveLength(1);
+    const open = one(db.raw, 'SELECT task_id, task_text, subject_id FROM sessions WHERE ended_at IS NULL');
+    expect(open).toEqual({ task_id: 9, task_text: 'Lab 7', subject_id: 3 });
   });
-  it('startTask from an idle break switches to Focus and starts it', () => {
-    const t = plannerTasksRepo(db).create({ title: 'A', day: '2026-11-08', listId: null }, NOW);
+  it('startTask in an idle break switches to Focus and starts', () => {
+    const t = tasksRepo(db).create({ text: 'A', colour: 'yellow' }, NOW);
     const c = make();
     c.setMode('short');
     expect(c.startTask(t.id, 'A')).toMatchObject({ mode: 'focus', status: 'running', taskId: t.id });
+    expect(rows()).toHaveLength(1);
   });
   it('startTask while focus runs or is paused only sets the task, one split', async () => {
     const c = make();
+    c.setSubject(1);
     c.start();
     at(5 * MIN);
     c.pause();
-    expect(c.startTask(5, 'A', 3)).toMatchObject({ status: 'paused', taskId: 5, subjectId: 3 });
+    expect(c.startTask(5, 'A')).toMatchObject({ status: 'paused', taskId: 5, subjectId: 1 });
     expect(rows()).toHaveLength(2);
   });
-  it('startTask while a break runs only sets the task; the break goes on', () => {
+  it('startTask during a running break only sets the task', () => {
     const c = make();
     c.setMode('short');
     c.start();
@@ -1382,13 +1371,13 @@ describe('TimerController', () => {
     c.setIntention('Mine');
     expect(c.setTask(6, 'Other').intention).toBe('Mine');
   });
-  it('a held planner task ticked off mid-focus stays until the segment ends, then goes', async () => {
-    const t = plannerTasksRepo(db).create({ title: 'A', day: '2026-11-08', listId: null }, NOW);
+  it('a held task ticked off leaves the timer once no focus segment is open', async () => {
+    const t = tasksRepo(db).create({ text: 'A', colour: 'yellow' }, NOW);
     const c = make();
     c.setTask(t.id, 'A');
     c.start();
     at(5 * MIN);
-    plannerTasksRepo(db).update(t.id, { done: true }, NOW + 5 * MIN);
+    tasksRepo(db).update(t.id, { done: true }, NOW + 5 * MIN);
     expect(c.getState().taskId).toBe(t.id);
     at(25 * MIN);
     expect(c.getState().taskId).toBeNull();

@@ -1,8 +1,7 @@
 // The app lives in the tray for days, so "at launch" is not enough for the daily backup (study-dev
 // rule 2) or for storing a finished week's recap (spec §3.5). An hourly check, and one on every
 // resume and unlock, runs the backup when the local calendar date has changed since the last one,
-// and computes pending recaps, then runs `newStudyDay` (rolling tasks forward, v1.2 spec §3.6), when
-// the study day has changed. Never throws; failures are logged.
+// and computes pending recaps when the study day has changed. Never throws; failures are logged.
 import { localDateKey } from './db/backup';
 
 export const DATE_CHECK_MS = 3_600_000;
@@ -26,8 +25,6 @@ export interface DateWatchDeps {
   backup: (now: number) => Promise<void>;
   /** `recaps.computePending(now)`. */
   recaps: (now: number) => void;
-  /** Whatever else a new study day starts (rolling tasks forward); runs after the recaps. */
-  newStudyDay?: (now: number) => void;
   log: (msg: string, err: unknown) => void;
 }
 
@@ -60,11 +57,6 @@ export function watchDateChange(deps: DateWatchDeps): () => void {
         deps.recaps(now);
       } catch (err) {
         deps.log('StudyAt: computing weekly recaps failed', err);
-      }
-      try {
-        deps.newStudyDay?.(now);
-      } catch (err) {
-        deps.log('StudyAt: starting the new study day failed', err);
       }
     }
   };

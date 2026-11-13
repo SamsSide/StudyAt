@@ -4,60 +4,36 @@
 // injected (`ipc`, dialogs, window, app, shell) so every handler runs under a unit test.
 import { join } from 'node:path';
 import type { FileFilter, IpcMainInvokeEvent } from 'electron';
-import { CHANNELS, type NotePatch } from '../shared/ipc';
-import {
-  ESTIMATE_MAX,
-  ESTIMATE_MIN,
-  INTENTION_MAX,
-  LIMIT_COPY,
-  LIST_NAME_MAX,
-  MAX_POPPED_NOTES,
-  MAX_TAGS,
-  normaliseTag,
-  REMINDER_RE,
-  REPEAT_EVERY_MAX,
-  REPEAT_EVERY_MIN,
-  REVISION_DAYS_MAX,
-  SUBTASK_TEXT_MAX,
-  TASK_GONE,
-  TASK_NOTE_MAX,
-  TASK_TITLE_MAX,
-} from '../shared/planner';
+import { CHANNELS, type NotePatch, type TaskPatch } from '../shared/ipc';
+import { INTENTION_MAX, LIMIT_COPY, MAX_POPPED_NOTES, TASK_GONE } from '../shared/limits';
 import { cascadeAt } from '../core/cascade';
 import { sanitisePlace, sanitiseSettingsPatch } from '../shared/settings';
 import type {
   DeadlineInput,
   DeadlinePatch,
   ImagePatch,
-  ListInput,
-  ListPatch,
   Mode,
   PublicSettings,
-  RepeatRule,
   SessionOutcome,
   Settings,
   SettingsPatch,
   StatWidgetPatch,
   SubjectRange,
   TaskColour,
-  TaskInput,
-  TaskMove,
-  TaskUpdate,
 } from '../shared/types';
 import { localDateKey } from './db/backup';
 import type { Db } from './db/db';
 import { IMAGE_SCALE_MAX, IMAGE_SCALE_MIN } from './db/repos/images';
 import { mixesRepo } from './db/repos/mixes';
 import { NOTE_MAX_CHARS, NOTE_SCALE_MAX, NOTE_SCALE_MIN, notesRepo } from './db/repos/notes';
-import { plannerTasksRepo } from './db/repos/plannerTasks';
 import { type MainSettingsPatch, settingsRepo } from './db/repos/settings';
 import { subjectsRepo } from './db/repos/subjects';
+import { tasksRepo } from './db/repos/tasks';
 import type { MediaKind, MediaResolver } from './protocol';
 import { dataService } from './services/data';
 import { deadlinesService } from './services/deadlines';
 import type { CalendarService } from './services/calendar';
 import { imagesService, type ImagesService } from './services/images';
-import { plannerService } from './services/planner';
 import { recapsService } from './services/recaps';
 import { publicSettings } from './services/settings';
 import { AUDIO_EXTS, soundsService, type SoundsService } from './services/sounds';
@@ -65,7 +41,6 @@ import { IMAGE_EXTS, spacesService, VIDEO_EXTS, type SpacesService } from './ser
 import { spotifyCall, type SafeStorageLike } from './services/spotify';
 import { STAT_CARDS, STAT_RANGES, statWidgetsService } from './services/statWidgets';
 import { sanitiseSessionFilter, statsService } from './services/stats';
-import { taskWritesService } from './services/taskWrites';
 import {
   assertBool,
   assertColour,
@@ -91,10 +66,6 @@ const MODES: readonly Mode[] = ['focus', 'short', 'long', 'countdown'];
 const RANGES: readonly SubjectRange[] = ['week', 'month', 'all'];
 const TASK_COLOURS: readonly TaskColour[] = ['yellow', 'pink', 'blue', 'green', 'purple', 'grey'];
 const OUTCOMES: readonly SessionOutcome[] = ['done', 'partly', 'not'];
-const REPEAT_KINDS = ['daily', 'weekdays', 'weekly', 'every'] as const;
-const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
-/** Most revision offsets a task can schedule at once (the setting holds 1 to 4). */
-const MAX_REVISION_DAYS = 4;
 /** The most raw text read before trimming; the real limit applies after trimming. */
 const RAW_TEXT = 10_000;
 /** The id a pomodoro row carries (a uuid). */
@@ -261,6 +232,15 @@ function subjectPatch(v: unknown): { name?: string; colour?: string; sort?: numb
   return out;
 }
 
+function taskPatch(v: unknown): TaskPatch {
+  const p = assertRecord(v, 'patch');
+  const out: TaskPatch = {};
+  if (p.text !== undefined) out.text = assertStr(p.text, 'text', { nonEmpty: true });
+  if (p.colour !== undefined) out.colour = assertEnum(p.colour, TASK_COLOURS, 'colour');
+  if (p.done !== undefined) out.done = assertBool(p.done, 'done');
+  return out;
+}
+
 /** Image URLs are at most this long; the field in the add dialog is a pasted link. */
 const MAX_IMAGE_URL = 2048;
 
@@ -301,153 +281,12 @@ function statWidgetPatch(v: unknown): StatWidgetPatch {
   return out;
 }
 
-/** A real `YYYY-MM-DD` calendar day: `2026-02-31` is rejected (Date.parse would roll it over). */
-function dayKey(v: unknown, what: string): string {
-  const s = assertDayKey(v, what);
-  if (new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) !== s) {
-    throw new IpcValidationError(`${what} must be a real date`);
-  }
-  return s;
-}
-
-function monthKey(v: unknown): string {
-  const s = assertStr(v, 'month', { max: 7 });
-  if (!MONTH_KEY.test(s)) throw new IpcValidationError('month must be YYYY-MM');
-  return s;
-}
-
-/** A whole number within min..max; anything else (NaN, Infinity, 1.5) is rejected, never clamped. */
-function intIn(v: unknown, min: number, max: number, what: string): number {
-  if (typeof v !== 'number' || !Number.isInteger(v) || v < min || v > max) {
-    throw new IpcValidationError(`${what} must be a whole number from ${min} to ${max}`);
-  }
-  return v;
-}
-
 /** Trimmed text of `min`..`max` code points. */
 function trimmedText(v: unknown, what: string, min: number, max: number): string {
   const t = assertStr(v, what, { max: RAW_TEXT }).trim();
   const n = [...t].length;
   if (n < min || n > max) throw new IpcValidationError(`${what} is ${min} to ${max} characters`);
   return t;
-}
-
-const taskTitle = (v: unknown): string => trimmedText(v, 'title', 1, TASK_TITLE_MAX);
-
-function taskNote(v: unknown): string {
-  return assertStr(v, 'note', { max: TASK_NOTE_MAX });
-}
-
-function estimate(v: unknown): number | null {
-  return v === null ? null : intIn(v, ESTIMATE_MIN, ESTIMATE_MAX, 'estimateMin');
-}
-
-/** Each tag must already be a valid tag (a `#` and capitals are fine); an invalid one rejects the call. */
-function tagList(v: unknown): string[] {
-  if (!Array.isArray(v) || v.length > MAX_TAGS) {
-    throw new IpcValidationError(`tags must be a list of at most ${MAX_TAGS}`);
-  }
-  return v.map((t) => {
-    const tag = normaliseTag(assertStr(t, 'tag', { max: 40 }));
-    if (tag === null) throw new IpcValidationError('A tag is 1 to 24 letters, digits or dashes');
-    return tag;
-  });
-}
-
-function colourOrNull(v: unknown): TaskColour | null {
-  return v === null ? null : assertEnum(v, TASK_COLOURS, 'colour');
-}
-
-function repeatRule(v: unknown): RepeatRule | null {
-  if (v === null) return null;
-  const r = assertRecord(v, 'repeat');
-  const kind = assertEnum(r.kind, REPEAT_KINDS, 'repeat kind');
-  if (kind !== 'every') return { kind };
-  return { kind, days: intIn(r.days, REPEAT_EVERY_MIN, REPEAT_EVERY_MAX, 'repeat days') };
-}
-
-function reminder(v: unknown): string | null {
-  if (v === null) return null;
-  const s = assertStr(v, 'reminder', { max: 5 });
-  if (!REMINDER_RE.test(s)) throw new IpcValidationError('reminder must be HH:MM');
-  return s;
-}
-
-function taskInput(v: unknown): TaskInput {
-  const i = assertRecord(v, 'task');
-  const out: TaskInput = { title: taskTitle(i.title) };
-  if (i.day !== undefined) out.day = dayKey(i.day, 'day');
-  if (i.listId !== undefined) out.listId = assertInt(i.listId, 'listId');
-  if (out.day !== undefined && out.listId !== undefined) {
-    throw new IpcValidationError('A task is on a day or in a list');
-  }
-  if (i.subjectId !== undefined) out.subjectId = assertIntOrNull(i.subjectId, 'subjectId');
-  if (i.estimateMin !== undefined) out.estimateMin = estimate(i.estimateMin);
-  if (i.tags !== undefined) out.tags = tagList(i.tags);
-  if (i.note !== undefined) out.note = taskNote(i.note);
-  if (i.colour !== undefined) out.colour = colourOrNull(i.colour);
-  return out;
-}
-
-function taskUpdate(v: unknown): TaskUpdate {
-  const p = assertRecord(v, 'patch');
-  const out: TaskUpdate = {};
-  if (p.title !== undefined) out.title = taskTitle(p.title);
-  if (p.note !== undefined) out.note = taskNote(p.note);
-  if (p.done !== undefined) out.done = assertBool(p.done, 'done');
-  if (p.colour !== undefined) out.colour = colourOrNull(p.colour);
-  if (p.subjectId !== undefined) out.subjectId = assertIntOrNull(p.subjectId, 'subjectId');
-  if (p.estimateMin !== undefined) out.estimateMin = estimate(p.estimateMin);
-  if (p.tags !== undefined) out.tags = tagList(p.tags);
-  if (p.repeat !== undefined) out.repeat = repeatRule(p.repeat);
-  if (p.reminder !== undefined) out.reminder = reminder(p.reminder);
-  return out;
-}
-
-function taskMove(v: unknown): TaskMove {
-  const m = assertRecord(v, 'to');
-  const index = intIn(m.index, 0, MAX_IDS, 'index');
-  if ((m.day === undefined) === (m.listId === undefined)) {
-    throw new IpcValidationError('Move to a day or to a list');
-  }
-  return m.day !== undefined
-    ? { day: dayKey(m.day, 'day'), index }
-    : { listId: assertInt(m.listId, 'listId'), index };
-}
-
-/** One to four revision offsets in days, each 1 to 90. */
-function revisionDays(v: unknown): number[] {
-  if (!Array.isArray(v) || v.length < 1 || v.length > MAX_REVISION_DAYS) {
-    throw new IpcValidationError(`Pick 1 to ${MAX_REVISION_DAYS} revision days`);
-  }
-  return v.map((n) => intIn(n, 1, REVISION_DAYS_MAX, 'revision day'));
-}
-
-const subtaskText = (v: unknown): string => trimmedText(v, 'text', 1, SUBTASK_TEXT_MAX);
-
-function subtaskPatch(v: unknown): { text?: string; done?: boolean } {
-  const p = assertRecord(v, 'patch');
-  const out: { text?: string; done?: boolean } = {};
-  if (p.text !== undefined) out.text = subtaskText(p.text);
-  if (p.done !== undefined) out.done = assertBool(p.done, 'done');
-  return out;
-}
-
-const listName = (v: unknown): string => trimmedText(v, 'name', 1, LIST_NAME_MAX);
-
-function listInput(v: unknown): ListInput {
-  const i = assertRecord(v, 'list');
-  const out: ListInput = { name: listName(i.name) };
-  if (i.subjectId !== undefined) out.subjectId = assertIntOrNull(i.subjectId, 'subjectId');
-  return out;
-}
-
-function listPatch(v: unknown): ListPatch {
-  const p = assertRecord(v, 'patch');
-  const out: ListPatch = {};
-  if (p.name !== undefined) out.name = listName(p.name);
-  if (p.subjectId !== undefined) out.subjectId = assertIntOrNull(p.subjectId, 'subjectId');
-  return out;
 }
 
 /** Trimmed, at most INTENTION_MAX characters; blank is null. */
@@ -516,7 +355,7 @@ export function registerIpc(deps: IpcDeps) {
   const { db, timer, dialogs, now } = deps;
   const settings = settingsRepo(db);
   const subjects = subjectsRepo(db);
-  const plannerTasks = plannerTasksRepo(db);
+  const tasks = tasksRepo(db);
   const mixes = mixesRepo(db);
   const notes = notesRepo(db);
   const widgets = widgetsService({
@@ -530,8 +369,6 @@ export function registerIpc(deps: IpcDeps) {
   const statWidgets = statWidgetsService({ db, now });
   const stats = statsService({ db, now, liveTodayMs: () => timer.getState().todayFocusMs });
   const recaps = recapsService({ db, stats });
-  const planner = plannerService({ db, now, liveTodayMs: () => timer.getState().todayFocusMs });
-  const taskWrites = taskWritesService({ db, now, planner });
   const spaces = spacesService({ db, now, assetsDir: deps.paths.assets, exists: deps.exists });
   const sounds = soundsService({ db, assetsDir: deps.paths.assets, exists: deps.exists });
   const images = imagesService({
@@ -588,25 +425,23 @@ export function registerIpc(deps: IpcDeps) {
     }
     return timer.setSubject(subjectId);
   });
-  // The title is snapshotted here, from the planner task, so a row keeps the name it was studied
-  // under (v1.1 spec §3.3). A done task is still a task: the picker hides those, main doesn't refuse.
-  // The task's effective subject (its own, else its list's) rides along so the controller does one
-  // split (v1.2 spec §3.8); none, or an archived one, leaves the timer's subject alone.
-  const plannerTask = (id: unknown) => {
-    const row = plannerTasks.get(assertInt(id, 'taskId'));
+  // The text is snapshotted here, from the sticky, so a row keeps the name it was studied under
+  // (v1.1 spec §3.3). A done task is still a task: the picker hides those, main doesn't refuse.
+  // The subject is never sent or changed with a task (simple-tasks spec §3.2).
+  const heldTask = (id: number) => {
+    const row = tasks.get(id);
     if (!row) throw new IpcValidationError(TASK_GONE);
-    const subject = planner.effectiveSubject(row);
-    const live = subject !== null && subjects.list().some((s) => s.id === subject && !s.archived);
-    return { id: row.id, title: row.title, subjectId: live ? subject : undefined };
+    return row;
   };
   handle(C.timer.setTask, (id) => {
-    if (assertIntOrNull(id, 'taskId') === null) return timer.setTask(null, null);
-    const t = plannerTask(id);
-    return timer.setTask(t.id, t.title, t.subjectId);
+    const taskId = assertIntOrNull(id, 'taskId');
+    if (taskId === null) return timer.setTask(null, null);
+    const row = heldTask(taskId);
+    return timer.setTask(row.id, row.text);
   });
   handle(C.timer.startTask, (id) => {
-    const t = plannerTask(id);
-    return timer.startTask(t.id, t.title, t.subjectId);
+    const row = heldTask(assertInt(id, 'taskId'));
+    return timer.startTask(row.id, row.text);
   });
   handle(C.timer.setIntention, (text) => timer.setIntention(intention(text)));
   handle(C.timer.setOutcome, (pomodoroId, outcome) =>
@@ -668,37 +503,31 @@ export function registerIpc(deps: IpcDeps) {
     return subjects.list();
   });
 
-  // ── Planner and tasks (v1.2 spec §5): reads from `planner`, writes through `taskWrites` ──
-  handle(C.planner.week, (day) => planner.week(dayKey(day, 'weekStart')));
-  handle(C.planner.month, (month) => planner.month(monthKey(month)));
-  handle(C.planner.day, (day) => planner.day(dayKey(day, 'day')));
-  handle(C.planner.lists, () => planner.lists());
-  handle(C.planner.task, (id) => {
-    const n = assertInt(id, 'taskId');
-    if (n < 1) throw new IpcValidationError('taskId must be a positive whole number');
-    return planner.task(n);
+  // ── Tasks (spec §3.10, text max 500; simple-tasks spec §5) ───────────────
+  handle(C.tasks.list, () => tasks.list());
+  handle(C.tasks.create, (input) => {
+    const i = assertRecord(input, 'task');
+    tasks.create(
+      {
+        text: assertStr(i.text, 'text', { nonEmpty: true }),
+        colour: assertEnum(i.colour, TASK_COLOURS, 'colour'),
+      },
+      now(),
+    );
+    return tasks.list();
   });
-  handle(C.tasks.create, (input) => taskWrites.create(taskInput(input)));
-  handle(C.tasks.update, (id, patch) => taskWrites.update(assertInt(id), taskUpdate(patch)));
-  handle(C.tasks.move, (id, to) => taskWrites.move(assertInt(id), taskMove(to)));
-  handle(C.tasks.remove, (id) => taskWrites.remove(assertInt(id)));
-  handle(C.tasks.duplicate, (id) => taskWrites.duplicate(assertInt(id)));
-  handle(C.tasks.scheduleRevision, (id, days) =>
-    taskWrites.scheduleRevision(assertInt(id), revisionDays(days)),
-  );
-  handle(C.subtasks.add, (taskId, text) =>
-    taskWrites.addSubtask(assertInt(taskId, 'taskId'), subtaskText(text)),
-  );
-  handle(C.subtasks.update, (id, patch) => taskWrites.updateSubtask(assertInt(id), subtaskPatch(patch)));
-  handle(C.subtasks.remove, (id) => taskWrites.removeSubtask(assertInt(id)));
-  handle(C.subtasks.reorder, (taskId, ids) =>
-    taskWrites.reorderSubtasks(assertInt(taskId, 'taskId'), idList(ids)),
-  );
-  handle(C.lists.create, (input) => taskWrites.createList(listInput(input)));
-  handle(C.lists.update, (id, patch) => taskWrites.updateList(assertInt(id), listPatch(patch)));
-  handle(C.lists.reorder, (ids) => taskWrites.reorderLists(idList(ids)));
-  handle(C.lists.remove, (id) => taskWrites.removeList(assertInt(id)));
-  handle(C.lists.clearDone, (id) => taskWrites.clearDone(assertInt(id)));
+  handle(C.tasks.update, (id, patch) => {
+    if (!tasks.update(assertInt(id), taskPatch(patch), now())) throw new IpcValidationError('No such task');
+    return tasks.list();
+  });
+  handle(C.tasks.reorder, (ids) => {
+    tasks.reorder(idList(ids));
+    return tasks.list();
+  });
+  handle(C.tasks.clearDone, () => {
+    tasks.clearDone();
+    return tasks.list();
+  });
 
   // ── Spaces (spec §3.8) ────────────────────────────────────────────────────
   handle(C.spaces.list, () => spaces.list());
@@ -906,8 +735,6 @@ export function registerIpc(deps: IpcDeps) {
   return {
     stats,
     recaps,
-    planner,
-    taskWrites,
     spaces,
     sounds,
     images,
