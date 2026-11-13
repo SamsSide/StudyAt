@@ -73,8 +73,8 @@ test('pop-ups over another widget: the timer task picker and the stats menu are 
   await combo.click();
   const list = win.getByRole('listbox', { name: 'Task' });
   await expect(list).toBeVisible();
-  const panel = list.locator('xpath=..');
-  const p1 = await opaque(panel);
+  // The restored v1.1 picker is the listbox itself (the planner's had a wrapper panel).
+  const p1 = await opaque(list);
   test.info().annotations.push({ type: 'picker', description: JSON.stringify(p1) });
   await shot(win, 't35-3-timer-picker-over-stats.png');
   expect(solid(p1.bg), p1.bg).toBe(true);
@@ -123,6 +123,7 @@ test('migration: a v4 database opens at schema 5 with a backup, stickies back an
   await expect(items).toHaveCount(2);
   await expect(items.nth(0)).toContainText('Old sticky');
   await expect(items.nth(1)).toContainText('Planner task');
+  await shot(win, 'migrated.png');
   // Provenance: the migration ran (schema, backup, archive), not just a widget rendering.
   expect(await quitApp(app)).toBe(0);
   expect(await queryDb(dataDir, "SELECT value FROM meta WHERE key = 'schema_version'")).toEqual([{ value: '5' }]);
