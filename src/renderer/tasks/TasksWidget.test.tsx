@@ -416,6 +416,15 @@ describe('TasksWidget', () => {
       expect(screen.queryByRole('status')).toBeNull();
     });
 
+    it('Tab reaches ▶ between the text and the colour button', async () => {
+      setup([task(5, 'Lab 7')]);
+      (await screen.findByRole('button', { name: 'Lab 7' })).focus();
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'Start focus on "Lab 7"' })).toHaveFocus();
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'Change colour of "Lab 7"' })).toHaveFocus();
+    });
+
     it('a done sticky has no ▶', async () => {
       setup([task(1, 'Open'), task(2, 'Old', { done: true, doneAt: 5 })]);
       await userEvent.click(await screen.findByRole('button', { name: /Done \(1\)/ }));

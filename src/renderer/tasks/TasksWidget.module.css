@@ -336,7 +336,10 @@
   background: rgba(27, 30, 39, 0.08);
 }
 
-/* ▶ shows on hover or focus within the note; otherwise clipped (never display:none) so Tab reaches it. */
+/* ▶ always keeps its 22px slot in the row, so the text wraps the same whether it shows or not and
+   nothing moves under the pointer. It fades in on hover or focus within the note; otherwise it is
+   transparent and ignores the pointer, but stays in the tab order (never display:none or
+   visibility:hidden), and focusing it shows it via :focus-within. */
 .start {
   flex: none;
   display: grid;
@@ -350,16 +353,14 @@
   color: var(--note-text);
   font-size: 11px;
   cursor: pointer;
-  transition: background var(--duration) var(--ease);
+  transition:
+    background var(--duration) var(--ease),
+    opacity var(--duration) var(--ease);
 }
 
 .note:not(:hover):not(:focus-within) .start {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .start:hover {
