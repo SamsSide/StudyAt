@@ -1,4 +1,4 @@
-// Spec §9 criterion 13: tasks added, ticked, reordered (Alt+Up, the keyboard reorder) and cleared
+// v1 spec §9 criterion 13 (kept by simple-tasks design §9): tasks added, ticked, reordered (Alt+Up, the keyboard reorder) and cleared
 // persist across a relaunch.
 import { expect, prepare, queryDb, quitApp, shot, sleep, test } from './fixtures';
 
@@ -49,6 +49,7 @@ test('tasks add, tick, reorder and clear done, and persist', async ({ launch }) 
   await expect(items.nth(1)).toContainText(A);
 });
 
+// Simple-tasks design (docs/planning/specs/2026-11-13-simple-tasks-design.md §9 criterion 5):
 // v1.2 keeps one thing from the planner at Sam's request: ▶ on a sticky starts focus on it. The
 // task travels to the session row; the timer's subject is whatever was picked, never the task's.
 test('▶ on a sticky starts focus on it; the session row has the task and the subject is unchanged', async ({ launch, dataDir }) => {
@@ -64,8 +65,7 @@ test('▶ on a sticky starts focus on it; the session row has the task and the s
     return window.studyat.tasks.create({ text: 'Lab 6', colour: 'blue' });
   });
   const lab7 = tasks.find((t) => t.text === 'Lab 7')!;
-  const lab6 = tasks.find((t) => t.text === 'Lab 6')!;
-  await win.locator('nav[aria-label="Dock"]').getByRole('button', { name: /^Tasks/ }).click();
+    await win.locator('nav[aria-label="Dock"]').getByRole('button', { name: /^Tasks/ }).click();
   const items = win.getByRole('list', { name: 'Tasks' }).getByRole('listitem');
   const note = items.filter({ hasText: 'Lab 7' });
   await expect(note).toBeVisible();
@@ -88,11 +88,10 @@ test('▶ on a sticky starts focus on it; the session row has the task and the s
   await expect(win.getByRole('checkbox', { name: 'Mark "Lab 6" as not done' })).toBeChecked();
   await win.getByRole('checkbox', { name: 'Mark "Lab 6" as not done' }).focus();
   await expect(win.getByRole('button', { name: `Start focus on "Lab 6"` })).toHaveCount(0);
-  expect(lab6.id).not.toBe(lab7.id);
 
   // Provenance: the session row on disk is the one this ▶ opened.
   expect(await quitApp(app)).toBe(0);
   const rows = await queryDb(dataDir, 'SELECT task_id, task_text, subject_id FROM sessions');
-  expect(rows.length).toBeGreaterThan(0);
+  expect(rows).toHaveLength(1);
   for (const r of rows) expect(r).toEqual({ task_id: lab7.id, task_text: 'Lab 7', subject_id: subject.id });
 });

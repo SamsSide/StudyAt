@@ -103,10 +103,12 @@ test('migration: a v4 database opens at schema 5 with a backup, stickies back an
   const SQL = await initSqlJs({ locateFile: () => WASM });
   const raw = new SQL.Database();
   const now = Date.now();
-  await migrate(raw, null, now, MIGRATIONS.filter((m) => m.version <= 4));
+  await migrate(raw, null, now, MIGRATIONS.filter((m) => m.version <= 3));
   SEED_SUBJECTS.forEach((s, i) => raw.run('INSERT INTO subjects (name, colour, archived, sort) VALUES (?, ?, 0, ?)', [s.name, s.colour, i]));
-  // v4 left the v1 stickies in tasks_v1_archive: one old sticky, and one planner task.
-  raw.run('INSERT INTO tasks_v1_archive (text, colour, done, sort, created_at) VALUES (?, ?, 0, 0, ?)', ['Old sticky', 'yellow', now]);
+  // Real data: a v3 file with one v1 sticky. v4 alone then archives it and lifts the tasks
+  // sequence, and only after that does a planner task exist, so its id follows the sticky's.
+  raw.run('INSERT INTO tasks (text, colour, done, sort, created_at) VALUES (?, ?, 0, 0, ?)', ['Old sticky', 'yellow', now]);
+  await migrate(raw, null, now, MIGRATIONS.filter((m) => m.version <= 4));
   raw.run("INSERT INTO tasks (title, day, sort, created_at, updated_at) VALUES (?, '2026-11-13', 0, ?, ?)", ['Planner task', now, now]);
   raw.run("INSERT INTO settings (key, value) VALUES ('onboarded', 'true')");
   raw.run("INSERT INTO settings (key, value) VALUES ('idleMinutes', '60')");
@@ -126,15 +128,18 @@ test('migration: a v4 database opens at schema 5 with a backup, stickies back an
   expect(await queryDb(dataDir, "SELECT value FROM meta WHERE key = 'schema_version'")).toEqual([{ value: '5' }]);
   expect(readdirSync(join(dataDir, 'backups')).filter((f) => /^pre-migration-v4-.*\.sqlite$/.test(f))).toHaveLength(1);
   expect(await queryDb(dataDir, 'SELECT count(*) AS n FROM planner_tasks_v4_archive')).toEqual([{ n: 1 }]);
-  expect(await queryDb(dataDir, 'SELECT text FROM tasks ORDER BY sort')).toEqual([{ text: 'Old sticky' }, { text: 'Planner task' }]);
+  // Same ids (spec §9.1): the sticky keeps id 1, the planner task keeps the id v4 gave it.
+  expect(await queryDb(dataDir, 'SELECT id, text FROM tasks ORDER BY sort')).toEqual([
+    { id: 1, text: 'Old sticky' },
+    { id: 2, text: 'Planner task' },
+  ]);
 });
 
 test('B opens nothing, Settings has no Tasks section, the Widgets popover has no Estimates', async ({ launch }) => {
   const { win } = await launch();
   await prepare(win);
   await win.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  const boardKey = 'b'; // the retired board key
-  await win.keyboard.press(boardKey);
+  await win.keyboard.press('b'); // the single intentional B press: the test proves it does nothing
   await sleep(500);
   await expect(win.getByRole('dialog')).toHaveCount(0);
 

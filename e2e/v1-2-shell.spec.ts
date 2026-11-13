@@ -1,8 +1,8 @@
 // v1.2 end to end, part A (spec §9 criteria 1–7, 18, 20; Task 34): the dock and the Widgets
 // popover, note stickies, YouTube quality, background play/pause, deadlines, stats widgets and the
-// two new switches, plus the Tweek-look board shots. Every test launches the BUILT app on a
+// two new switches. Every test launches the BUILT app on a
 // throwaway STUDYAT_USER_DATA (the fixtures); screenshots go to STUDYAT_SHOTS_DIR when it is set.
-// Bridge writes the renderer has no event for (notes, deadlines, planner seeds) are followed by a
+// Bridge writes the renderer has no event for (notes, deadlines) are followed by a
 // renderer reload, so the stores read them back from main.
 import type { Locator, Page } from '@playwright/test';
 import { expect, prepare, quitApp, shot, sleep, test } from './fixtures';
@@ -397,7 +397,7 @@ test('background: V pauses and plays a YouTube space, a space change resets it, 
 // ---------------------------------------------------------------------------------------------
 // 6. Deadlines (AC 18).
 
-test('deadlines: form and bridge adds count down in the right format; Past; chips on the board', async ({ launch }) => {
+test('deadlines: form and bridge adds count down in the right format; Past', async ({ launch }) => {
   const { win } = await launch();
   await prepare(win);
   await setWidget(win, 'Deadlines', true);
