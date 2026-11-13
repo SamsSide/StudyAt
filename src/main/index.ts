@@ -334,7 +334,12 @@ async function boot(): Promise<void> {
     app,
     () =>
       runShutdown(
-        [() => stopDateWatch?.(), () => main?.flush(), () => mini?.flush(), () => hotkey.dispose()],
+        [
+          () => stopDateWatch?.(),
+          () => main?.flush(),
+          () => mini?.flush(),
+          () => hotkey.dispose(),
+        ],
         async () => {
           await renderers.flush().catch((err: unknown) => console.error('StudyAt: window flush failed', err));
           await stopTimerAndDb();

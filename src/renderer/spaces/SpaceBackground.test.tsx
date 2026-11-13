@@ -1,9 +1,11 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { Space } from '../../shared/types';
+import { TopBar } from '../shell/TopBar';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { makeSpace } from './fixtures';
+import { useYouTubeQuality } from './qualityStore';
 import { resetSpacesStore, useSpacesStore } from './spacesStore';
 import { spaceAudio } from './spaceAudio';
 import { SpaceBackground } from './SpaceBackground';
@@ -40,14 +42,19 @@ afterEach(() => {
 
 describe('SpaceBackground', () => {
   it('renders dim overlay with opts.dim opacity', async () => {
-    const s = makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 6 } });
+    const s = makeSpace({
+      id: 1,
+      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.4, blur: 6, quality: 'auto' },
+    });
     await mount([s]);
     const dim = await screen.findByTestId('space-dim');
     expect(dim).toHaveStyle({ opacity: '0.4' });
   });
 
   it('a local video uses the media protocol, muted, looping, at its speed', async () => {
-    await mount([makeSpace({ id: 7, opts: { audio: false, volume: 0.5, speed: 1.5, dim: 0, blur: 0 } })]);
+    await mount([
+      makeSpace({ id: 7, opts: { audio: false, volume: 0.5, speed: 1.5, dim: 0, blur: 0, quality: 'auto' } }),
+    ]);
     const v = (await screen.findByTestId('space-video')) as HTMLVideoElement;
     expect(v.getAttribute('src')).toBe('studyat-media://space/7');
     expect(v.loop).toBe(true);
@@ -90,7 +97,7 @@ describe('SpaceBackground', () => {
         id: 1,
         missing: true,
         thumb,
-        opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6 },
+        opts: { audio: false, volume: 0.5, speed: 1, dim: 0.3, blur: 6, quality: 'auto' },
       }),
     ]);
     const button = screen.getByRole('button', { name: 'File moved — Relocate…' });
@@ -122,6 +129,61 @@ describe('SpaceBackground', () => {
     expect(pause).toHaveBeenCalled();
   });
 
+  describe('background pause (spec §3.4)', () => {
+    it('pausing the background pauses a local video, and playing again resumes it', async () => {
+      await mount([makeSpace({ id: 1 })]);
+      const v = (await screen.findByTestId('space-video')) as HTMLVideoElement;
+      const pause = vi.spyOn(v, 'pause').mockImplementation(() => undefined);
+      const play = vi.spyOn(v, 'play').mockImplementation(() => Promise.resolve());
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(pause).toHaveBeenCalled();
+      act(() => useSpacesStore.getState().setBackgroundPaused(false));
+      expect(play).toHaveBeenCalled();
+    });
+
+    it('an image space is unaffected', async () => {
+      await mount([makeSpace({ id: 2, kind: 'image', source: 'images/a.jpg' })]);
+      const img = await screen.findByTestId('space-image');
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(screen.getByTestId('space-image')).toBe(img);
+    });
+
+    it('a YouTube player is paused and played with it', async () => {
+      const pauseVideo = vi.fn();
+      const playVideo = vi.fn();
+      let opts: YTPlayerOptions | undefined;
+      const player = {
+        playVideo,
+        pauseVideo,
+        mute: vi.fn(),
+        unMute: vi.fn(),
+        setVolume: vi.fn(),
+        setPlaybackRate: vi.fn(),
+        destroy: vi.fn(),
+        unloadModule: vi.fn(),
+        setOption: vi.fn(),
+        getPlaybackQuality: vi.fn(() => 'hd1080'),
+        setPlaybackQuality: vi.fn(),
+      };
+      class FakePlayer {
+        constructor(_el: HTMLElement, o: YTPlayerOptions) {
+          opts = o;
+          return player as unknown as FakePlayer;
+        }
+      }
+      window.YT = { Player: FakePlayer as never };
+      await mount([makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ', thumb: 'data:x' })]);
+      await waitFor(() => expect(opts).toBeDefined());
+      act(() => opts?.events.onReady?.());
+      pauseVideo.mockClear();
+      playVideo.mockClear();
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(pauseVideo).toHaveBeenCalled();
+      act(() => useSpacesStore.getState().setBackgroundPaused(false));
+      expect(playVideo).toHaveBeenCalled();
+    });
+  });
+
   describe('YouTube', () => {
     const yt = (space: Space) => {
       let opts: YTPlayerOptions | undefined;
@@ -135,6 +197,8 @@ describe('SpaceBackground', () => {
         destroy: vi.fn(),
         unloadModule: vi.fn(),
         setOption: vi.fn(),
+        getPlaybackQuality: vi.fn(() => 'hd1080'),
+        setPlaybackQuality: vi.fn(),
       };
       class FakePlayer {
         constructor(_el: HTMLElement, o: YTPlayerOptions) {
@@ -183,6 +247,117 @@ describe('SpaceBackground', () => {
       act(() => h.opts()?.events.onReady?.());
       expect(h.player.unloadModule).toHaveBeenCalledWith('captions');
       expect(h.player.setOption).toHaveBeenCalledWith('captions', 'track', {});
+    });
+
+    describe('quality (spec §3.3)', () => {
+      const q = (quality: 'auto' | '2160') =>
+        makeSpace({
+          id: 3,
+          kind: 'youtube',
+          source: 'dQw4w9WgXcQ',
+          opts: { audio: false, volume: 0.5, speed: 1, dim: 0, blur: 0, quality },
+        });
+      beforeEach(() => {
+        useYouTubeQuality.getState().clear();
+        vi.stubGlobal('devicePixelRatio', 1);
+        vi.stubGlobal('innerWidth', 1920);
+        vi.stubGlobal('innerHeight', 1080);
+      });
+
+      it('4K sizes the player to 3840 x 2160 CSS px, covers the window and asks for hd2160', async () => {
+        const s = q('2160');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        const host = screen.getByTestId('space-youtube');
+        expect(host).toHaveStyle({ width: '3840px', height: '2160px' });
+        expect(host.style.transform).toBe('translate(-50%, -50%) scale(0.6)');
+        act(() => h.opts()?.events.onReady?.());
+        expect(h.player.setPlaybackQuality).toHaveBeenCalledWith('hd2160');
+      });
+
+      it('resizing recomputes the cover scale', async () => {
+        const s = q('2160');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        vi.stubGlobal('innerHeight', 1200);
+        act(() => void window.dispatchEvent(new Event('resize')));
+        expect(screen.getByTestId('space-youtube').style.transform).toBe(
+          `translate(-50%, -50%) scale(${((1.2 * 1200) / 2160).toFixed(6)})`,
+        );
+      });
+
+      it('an unknown stored quality behaves as Auto', async () => {
+        const s = q('2160');
+        s.opts.quality = 'bogus' as never;
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        act(() => h.opts()?.events.onReady?.());
+        expect(screen.getByTestId('space-youtube').style.transform).toBe('');
+        expect(h.player.setPlaybackQuality).not.toHaveBeenCalled();
+      });
+
+      it('a quality change re-creates the player, so the new sizing applies straight away', async () => {
+        const s = q('2160');
+        const h = yt(s);
+        const made = vi.fn();
+        const Real = window.YT?.Player as unknown as new (el: HTMLElement, o: YTPlayerOptions) => object;
+        class Counting {
+          constructor(el: HTMLElement, o: YTPlayerOptions) {
+            made();
+            return new Real(el, o);
+          }
+        }
+        window.YT = { Player: Counting as never };
+        await mount([s]);
+        await waitFor(() => expect(made).toHaveBeenCalledTimes(1));
+        act(() => h.opts()?.events.onReady?.());
+        act(() => h.opts()?.events.onPlaybackQualityChange?.({ data: 'hd2160' }));
+        expect(useYouTubeQuality.getState().level).toBe('hd2160');
+
+        act(() => useSpacesStore.setState({ spaces: [q('auto')] }));
+        await waitFor(() => expect(made).toHaveBeenCalledTimes(2));
+        expect(h.player.destroy).toHaveBeenCalledTimes(1);
+        // The old player's "Playing · 2160p" goes with it.
+        expect(useYouTubeQuality.getState().level).toBeNull();
+        expect(screen.getByTestId('space-youtube').style.width).toBe('');
+      });
+
+      it('Auto sets no size and never asks for a level', async () => {
+        const s = q('auto');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        act(() => h.opts()?.events.onReady?.());
+        const host = screen.getByTestId('space-youtube');
+        expect(host.style.width).toBe('');
+        expect(host.style.transform).toBe('');
+        expect(h.player.setPlaybackQuality).not.toHaveBeenCalled();
+      });
+
+      it('reads the playing level every 5 s and when the player reports a change', async () => {
+        const s = q('auto');
+        const h = yt(s);
+        await mount([s]);
+        await waitFor(() => expect(h.opts()).toBeDefined());
+        vi.useFakeTimers();
+        try {
+          act(() => h.opts()?.events.onReady?.());
+          act(() => h.opts()?.events.onStateChange?.({ data: 1 }));
+          expect(h.player.getPlaybackQuality).not.toHaveBeenCalled();
+          act(() => void vi.advanceTimersByTime(5000));
+          expect(h.player.getPlaybackQuality).toHaveBeenCalledTimes(1);
+          expect(useYouTubeQuality.getState()).toMatchObject({ spaceId: 3, level: 'hd1080', playing: true });
+          act(() => void vi.advanceTimersByTime(5000));
+          expect(h.player.getPlaybackQuality).toHaveBeenCalledTimes(2);
+          act(() => h.opts()?.events.onPlaybackQualityChange?.({ data: 'hd1440' }));
+          expect(useYouTubeQuality.getState().level).toBe('hd1440');
+        } finally {
+          vi.useRealTimers();
+        }
+      });
     });
 
     it('coming back online retries a video that could not play', async () => {
@@ -344,6 +519,22 @@ describe('SpaceBackground', () => {
       expect(screen.getByRole('button', { name: 'Play background' })).toBeInTheDocument();
     });
 
+    it('the footer follows a pause made elsewhere, and playing clears it', async () => {
+      vi.stubGlobal('matchMedia', (q: string) => ({
+        matches: q.includes('reduce'),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+      await mount([makeSpace({ id: 1, thumb: 'data:image/jpeg;base64,AAA' })]);
+      act(() => screen.getByRole('button', { name: 'Play background' }).click());
+      expect(await screen.findByTestId('space-video')).toBeInTheDocument();
+      act(() => useSpacesStore.getState().setBackgroundPaused(true));
+      expect(screen.getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+      act(() => screen.getByRole('button', { name: 'Play background' }).click());
+      expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+      expect(screen.getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+    });
+
     const reducedMotion = () =>
       vi.stubGlobal('matchMedia', (q: string) => ({
         matches: q.includes('reduce'),
@@ -351,6 +542,28 @@ describe('SpaceBackground', () => {
         removeEventListener: vi.fn(),
       }));
     const tube = makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ', thumb: 'data:x' });
+
+    it('the footer and the top bar never disagree, and a space change resets both', async () => {
+      reducedMotion();
+      await mount([tube, makeSpace({ id: 4, kind: 'youtube', source: 'abcdefghijk', thumb: 'data:y' })]);
+      render(<TopBar />);
+      const labels = () =>
+        screen
+          .getAllByRole('button', { name: /background$/ })
+          .map((b) => b.getAttribute('aria-label') ?? b.textContent);
+      expect(labels()).toEqual(['Play background', 'Play background']);
+      act(() => within(screen.getByRole('banner')).getByRole('button', { name: 'Play background' }).click());
+      expect(labels()).toEqual(['Pause background', 'Pause background']);
+      act(() =>
+        within(screen.getByTestId('space-background'))
+          .getByRole('button', { name: 'Pause background' })
+          .click(),
+      );
+      expect(labels()).toEqual(['Play background', 'Play background']);
+      act(() => useSpacesStore.getState().playBackground());
+      act(() => useSpacesStore.setState({ activeId: 4 }));
+      expect(labels()).toEqual(['Play background', 'Play background']);
+    });
 
     it('has no play button while a YouTube space is offline', async () => {
       reducedMotion();

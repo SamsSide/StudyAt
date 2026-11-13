@@ -10,7 +10,9 @@ import {
   type FormEvent,
   type PointerEvent,
 } from 'react';
+import { NEXT_FOCUS_NOTE, TASK_GONE } from '../../shared/limits';
 import type { Task, TaskColour } from '../../shared/types';
+import { logIpcError } from '../lib/ipcError';
 import { ColourSwatches, TaskNote } from './TaskNote';
 import styles from './TasksWidget.module.css';
 import { clampTaskText, DEFAULT_TASK_COLOUR, MAX_TASK_LENGTH } from './taskColours';
@@ -34,6 +36,7 @@ export function TasksWidget() {
   // Loading and saving fail differently: a failed load has nothing to show; a failed save leaves the list up.
   const [loadFailed, setLoadFailed] = useState(false);
   const [saveError, setSaveError] = useState<'refreshed' | 'plain' | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const dragIdRef = useRef<number | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -120,6 +123,7 @@ export function TasksWidget() {
     const clean = clampTaskText(text);
     if (!clean) return;
     setText('');
+    setNotice(null);
     void run(window.studyat.tasks.create({ text: clean, colour })).then((saved) => {
       // Never lose what was typed: it goes back in the box, unless Sam has typed something since.
       if (!saved) setText((now) => (now === '' ? clean : now));
@@ -128,6 +132,22 @@ export function TasksWidget() {
 
   const editText = (task: Task, value: string): Promise<boolean> =>
     run(window.studyat.tasks.update(task.id, { text: value }));
+
+  /** ▶: hold the task and start a focus on it (appplan §4.6); during a break it waits for the next focus. */
+  const start = (task: Task) => {
+    setNotice(null);
+    window.studyat.timer.startTask(task.id).then(
+      (state) => {
+        const onBreak = state.status !== 'idle' && state.mode !== 'focus' && state.mode !== 'countdown';
+        setNotice(onBreak ? NEXT_FOCUS_NOTE : null);
+      },
+      (err: unknown) => {
+        logIpcError('Could not start focus on a task', err);
+        setNotice(TASK_GONE);
+        void load();
+      },
+    );
+  };
 
   const commitOrder = (ids: number[]) => {
     setTasks((prev) => withOrder(prev, ids));
@@ -216,6 +236,12 @@ export function TasksWidget() {
       </form>
       <ColourSwatches label="New note colour" value={colour} onPick={setColour} />
 
+      {notice && (
+        <p className={styles.notice} role="status">
+          {notice}
+        </p>
+      )}
+
       {saveError && (
         <p className={styles.error} role="status">
           {saveError === 'refreshed'
@@ -246,6 +272,7 @@ export function TasksWidget() {
                 dragging={dragId === t.id}
                 dragHandlers={dragHandlers}
                 onMove={move}
+                onStart={start}
                 onToggle={tick}
                 onEditText={editText}
                 onColour={(n, c) => void run(window.studyat.tasks.update(n.id, { colour: c }))}

@@ -603,3 +603,30 @@
 .settings .btn {
   justify-self: start;
 }
+
+/* ---- YouTube quality (spec §3.3) ---- */
+.headerRow,
+.qualityHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.headerRow {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.qualityBadge {
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.hint {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+}

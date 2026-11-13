@@ -19,19 +19,32 @@ Every task was reviewed, `./check.sh` is green (1160 tests) and 29/29 e2e tests 
 The build record is `docs/planning/plans/2026-11-09-v1-1-polish-verification.md`. Released as
 **v1.1.0** on GitHub (2026-11-10, tag `v1.1.0` at ef9030d), with `StudyAt-Setup-1.1.0.exe` attached.
 
+**V1.2 is built on branch `worktree-feat-v1-2`, not merged** (commits `d3782a3..c1d0f0d`, then
+the passes below). It adds pop-out note stickies, YouTube quality with a live badge, a background
+play/pause button and **V**, countdown pips, Deadlines and stats widgets, session intention and
+outcome, and ▶ to start focus on a sticky task.
+
+It first shipped a Tweek-style planner (and a **Tweek board feel** pass, commits
+`c1cc2ad..2341762`). **On 2026-11-13 simple tasks replaced it**: Sam ruled the planner too much, so
+Tweek stays an external app and StudyAt is back to the v1.1 sticky-note Tasks widget, with ▶.
+Migration v5 (schema 5) brings back the old stickies and the planner's tasks as stickies, and keeps
+the planner tables as archives. Built and reviewed (commits `ed78617..4cf4440`); `./check.sh` green
+(1427 tests). On Windows the full e2e run had 38 of 42 pass first time; three e2e defects were
+fixed and pass in targeted re-runs, and the fourth is the global-hotkey test, which fails only
+while Sam's own StudyAt holds Ctrl+Alt+P. Record:
+`docs/planning/plans/2026-11-13-simple-tasks-verification.md`. Waiting for Sam's hand-walks.
+
 ## Up next
 
-1. **Sam's v1.1 hand-walk and look calls** (verification record §5, §6).
-2. The v1.0 hand-walk items below, if not done yet:
-   - pick and add spaces (one of your videos, a YouTube link);
-   - mix rain + brown noise and save it;
-   - run a Pomodoro tagged COMP2261 and listen to both chimes;
-   - lock the PC mid-focus;
-   - close the window (mini timer, Ctrl+Alt+P);
-   - Stats; Spotify; tasks; Calendar (Google iCal secret address); Weather (your town);
-     Notes and Quote; the glass look (`tokens.css`).
-3. Fix what the hand-walk turns up, as new rows here.
-4. Ship fixes as new releases (bump `package.json`, `npm run dist` on Windows, tag `vX.Y.Z`).
+1. Sam's v1.2 hand-walk (v1.2 spec §10, minus the planner steps) and the simple-tasks hand-walk
+   (`docs/planning/plans/2026-11-13-simple-tasks-verification.md`), then push and merge
+   `worktree-feat-v1-2`.
+2. Sam's v1.1 hand-walk and look calls (verification record §5, §6), if not done yet.
+3. The v1.0 hand-walk items, if not done yet: spaces (one of your videos, a YouTube link), a rain
+   and brown-noise mix, a Pomodoro tagged COMP2261 with both chimes, locking the PC mid-focus,
+   closing the window (mini timer, Ctrl+Alt+P), Stats, Spotify, Calendar, Weather, the glass look.
+4. Fix what the hand-walks turn up, as new rows here.
+5. Ship as a new release (bump `package.json`, `npm run dist` on Windows, tag `vX.Y.Z`).
 
 ## Rows
 
@@ -48,3 +61,5 @@ The build record is `docs/planning/plans/2026-11-09-v1-1-polish-verification.md`
 | P8 | Settings + data: all settings, export JSON/CSV, restore from backup, launch at start-up, packaged installer polish | §4.9, §6.4 | done (v1.0.0) | as P1 |
 | W | Widgets addendum: dock Widgets popover, Calendar (read-only, Google iCal secret address, encrypted), Weather (Open-Meteo), Quote (public-domain, one per day), Notes (autosaving sticky notes, migration v2) | §4.10, §6.2, §6.4 | done (v1.0.0) | addendum `docs/planning/specs/2026-11-09-widgets-addendum.md` (Sam's request, 2026-11-09), built in the P1–P8 plan's run; verification as P1; branch `feat/app-v1` |
 | V1.1 | v1.1 polish (Sam, 2026-11-09): away-prompt off switch, Countdown mode, task on the timer + By task stats, focus view (`H`), proportional and resizable widgets, image/GIF widgets (file or link, bare mode), pop-out Spotify widget, YouTube embed fix | §4.1, §4.2, §4.4, §4.6, §4.7, §4.10, §5 | done (v1.1.0) | spec `docs/planning/specs/2026-11-09-v1-1-polish-design.md`, plan `docs/planning/plans/2026-11-09-v1-1-polish.md`, verification `docs/planning/plans/2026-11-09-v1-1-polish-verification.md`; commits f4d8dc6…6aee436 on branch `feat/v1-1-polish` |
+| V1.2 | v1.2 (Sam, 2026-11-11): Tweek-style planner replacing the sticky-note tasks (Day/Week/Month board, lists linked to subjects, tags, estimates, subtasks, repeat, reminders, quick-add, timer link and ▶), notes pop-out stickies with bare paper, YouTube quality + live badge, background play/pause (V), 3-2-1 countdown pips, deadlines widget with live countdowns, stats widgets, spaced revision tasks, session intention and outcome, Spotify moved into the Widgets popover; planner replaced by simple tasks (v1.1 sticky notes with ▶, migration v5) | §2, §4.1, §4.2, §4.4, §4.5, §4.7, §4.9, §4.10, §6.4 | built (on branch, not merged) | spec `docs/planning/specs/2026-11-11-v1-2-design.md`, plan `docs/planning/plans/2026-11-11-v1-2.md`, verification `docs/planning/plans/2026-11-11-v1-2-verification.md`; commits `d3782a3..c1d0f0d` on branch `worktree-feat-v1-2` (worktree `.claude/worktrees/feat-v1-2`); screenshots on Windows under `C:\Users\samue\studyat-shots\`: `v1-2-run1`, `v1-2-run2`, `v1-2-t34`, `v1-2-t34b`, `v1-2-t35`, `v1-2-final`, `v1-2-final2`, `v1-2-final3`, `v1-2-tweek`, `v1-2-tweek-full`; Tweek board feel pass: spec `docs/planning/specs/2026-11-12-tweek-board-feel-design.md`, plan `docs/planning/plans/2026-11-12-tweek-board-feel.md`, commits `c1cc2ad..2341762`; planner replaced by simple tasks (spec `docs/planning/specs/2026-11-13-simple-tasks-design.md` and plan `docs/planning/plans/2026-11-13-simple-tasks.md`, 2026-11-13, commits `ed78617..4cf4440`, verification `docs/planning/plans/2026-11-13-simple-tasks-verification.md`, screenshots `C:\Users\samue\studyat-shots\simple-tasks\`) |
+| V1.3 | Revision extras from the v1.2 research shortlist: daily shutdown review, Anki due counts (AnkiConnect, local only), Recall session type, break suggestions (the "iCal events on the board" item was dropped with the board, 2026-11-13) | — | idea | v1.2 spec §8 |

@@ -13,7 +13,7 @@ test('a v1 database migrates to the latest schema with a pre-migration backup', 
   const backups = readdirSync(join(dataDir, 'backups'));
   expect(backups.filter((f) => /^pre-migration-v1-.*\.sqlite$/.test(f))).toHaveLength(1);
 
-  expect(await queryDb(dataDir, "SELECT value FROM meta WHERE key = 'schema_version'")).toEqual([{ value: '3' }]);
+  expect(await queryDb(dataDir, "SELECT value FROM meta WHERE key = 'schema_version'")).toEqual([{ value: '5' }]);
   expect(await queryDb(dataDir, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'notes'")).toHaveLength(1);
   // The old session survived, and the new table works through the app.
   expect(await win.evaluate(() => window.studyat.stats.sessions())).toHaveLength(1);

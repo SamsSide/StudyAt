@@ -58,6 +58,18 @@ describe('tasksRepo', () => {
     ]);
   });
 
+  it('get returns one task by id, or null', () => {
+    const repo = tasksRepo(db);
+    const a = repo.create({ text: 'Read chapter 3', colour: 'yellow' }, NOW);
+    const b = repo.create({ text: 'Lab sheet', colour: 'pink' }, NOW + 1);
+    expect(repo.get(b.id)).toEqual(b);
+    expect(repo.get(a.id)).toEqual(a);
+    expect(repo.get(9999)).toBeNull();
+    repo.update(b.id, { done: true }, NOW + 2);
+    repo.clearDone();
+    expect(repo.get(b.id)).toBeNull();
+  });
+
   it('tells listeners of the same database when a task is ticked, unticked or cleared', () => {
     const heard = vi.fn();
     const stop = onTasksChanged(db, heard);

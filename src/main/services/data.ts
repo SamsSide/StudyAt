@@ -9,6 +9,7 @@ import { BACKUPS_DIR, DB_FILE, fileStamp, listBackups, localDateKey } from '../d
 import type { Db } from '../db/db';
 import { copyAtomic, nodeFs, type DbFs } from '../db/db-fs';
 import { schemaVersion } from '../db/migrations';
+import { deadlinesRepo } from '../db/repos/deadlines';
 import { mixesRepo } from '../db/repos/mixes';
 import { notesRepo } from '../db/repos/notes';
 import { recapsRepo } from '../db/repos/recaps';
@@ -55,7 +56,10 @@ export function dataService(deps: DataServiceDeps) {
   const { db } = deps;
 
   return {
-    /** Spec §3.11: everything Sam owns, settings without `spotifyTokens`. */
+    /**
+     * Spec §3.11: everything Sam owns, settings without `spotifyTokens`. `tasks` is the sticky-note
+     * tasks (simple tasks spec §3.4); the planner archives stay in the database and every backup.
+     */
     async exportJson(path: string): Promise<void> {
       const data = {
         exportedAt: deps.now(),
@@ -63,6 +67,7 @@ export function dataService(deps: DataServiceDeps) {
         subjects: subjectsRepo(db).list(),
         sessions: sessionsRepo(db).all(),
         tasks: tasksRepo(db).list(),
+        deadlines: deadlinesRepo(db).all(),
         spaces: spacesRepo(db)
           .list()
           .map(({ missing: _missing, ...s }) => s),

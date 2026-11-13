@@ -78,9 +78,26 @@ async function startApp(dir: string, logs: string[]): Promise<ElectronApplicatio
   return app;
 }
 
+/**
+ * Pins Windows idle at 0 s inside this test app's main process. Playwright input is not Windows
+ * input, so on an unattended PC `powerMonitor.getSystemIdleTime()` keeps climbing and the timer
+ * treats a focus run as away time (task-19 F1, task-34 Ruling 1). Main reads it per call through
+ * `systemIdleSeconds(powerMonitor)` (src/main/timer/power.ts), so replacing the method takes
+ * effect at once. Only the throwaway app is touched, never the desktop's input.
+ */
+async function stubIdle(app: ElectronApplication): Promise<number> {
+  return app.evaluate(({ powerMonitor }) => {
+    const real = powerMonitor.getSystemIdleTime();
+    powerMonitor.getSystemIdleTime = () => 0;
+    return real;
+  });
+}
+
 async function launchApp(dir: string, logs: string[]): Promise<Launched> {
   const app = await startApp(dir, logs);
   const tag = `#${logs.length}`;
+  const realIdle = await stubIdle(app);
+  logs.push(`[fixtures ${tag}] idle stubbed to 0 s (Windows idle was ${realIdle} s)`);
   const win = await app.firstWindow({ timeout: 60_000 });
   win.on('console', (m) => logs.push(`[page ${tag} ${m.type()}] ${m.text().slice(0, 300)}`));
   win.on('pageerror', (e) => logs.push(`[page ${tag} error] ${e.message}`));
@@ -154,6 +171,8 @@ export const test = base.extend<AppFixtures>({
     await use(async (dir = dataDir) => {
       const launched = await launchApp(dir, logs);
       started.push(launched.app);
+      const stub = logs.findLast((l) => l.startsWith('[fixtures'));
+      if (stub) testInfo.annotations.push({ type: 'idle stub', description: stub });
       return launched;
     });
     await stopAll(started);
@@ -167,6 +186,8 @@ export const test = base.extend<AppFixtures>({
       const app = await startApp(dir, []);
       started.push(app);
       await early(app);
+      // After `early`, which must win the race against main's first dialogs.
+      await stubIdle(app);
       return app;
     });
     await stopAll(started);

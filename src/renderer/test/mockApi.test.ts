@@ -83,6 +83,16 @@ describe('mockApi', () => {
     expect(cb.mock.calls).toEqual([[next]]);
   });
 
+  it('defaults the task and timer additions', async () => {
+    const api = mockApi();
+    expect(await api.tasks.list()).toEqual([]);
+    expect(await api.tasks.create({ text: 'x', colour: 'yellow' })).toEqual([]);
+    expect(await api.tasks.clearDone()).toEqual([]);
+    expect(await api.timer.startTask(1)).toEqual(idleTimerState());
+    expect(await api.timer.setIntention(null)).toEqual(idleTimerState());
+    expect(await api.timer.setOutcome('p', 'done')).toEqual(idleTimerState());
+  });
+
   it('honours overrides and installs on window', () => {
     const start = vi.fn(() => Promise.resolve({ ...idleTimerState(), status: 'running' as const }));
     const api = mockApi({ timer: { start } });

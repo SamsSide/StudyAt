@@ -117,6 +117,14 @@ describe('SettingsOverlay', () => {
     await waitFor(() => expect(screen.getByLabelText('Away check after')).toBeDisabled());
   });
 
+  it('timer: "Ask what I\'ll do each focus" is on by default and saves sessionIntention off', async () => {
+    const api = setup();
+    const sw = screen.getByRole('switch', { name: "Ask what I'll do each focus" });
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(sw);
+    expect(api.settings.set).toHaveBeenCalledWith({ sessionIntention: false });
+  });
+
   it('timer: Countdown length is a 1 to 240 minute field that saves', async () => {
     const api = setup();
     const field = screen.getByLabelText('Countdown length');
@@ -618,6 +626,16 @@ describe('SettingsOverlay', () => {
     expect(api.settings.set).toHaveBeenCalledWith({ chimeFocusEnd: 'file:3' });
   });
 
+  it('chimes: "Count down the last 3 seconds" is on by default, saves, and has a Preview', async () => {
+    const api = setup();
+    await openSection('Chimes');
+    const sw = screen.getByRole('switch', { name: 'Count down the last 3 seconds' });
+    expect(sw).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
+    await userEvent.click(sw);
+    expect(api.settings.set).toHaveBeenCalledWith({ countdownPips: false });
+  });
+
   it('Home and End jump to the first and last section', async () => {
     setup();
     screen.getByRole('tab', { name: 'Timer' }).focus();
@@ -879,5 +897,10 @@ describe('SettingsOverlay', () => {
       expect(screen.getByRole('button', { name: 'York, England, United Kingdom' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Durham, England, United Kingdom' })).toBeNull();
     });
+  });
+
+  it('has no Tasks section', () => {
+    setup();
+    expect(screen.queryByRole('tab', { name: 'Tasks' })).toBeNull();
   });
 });

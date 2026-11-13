@@ -244,6 +244,8 @@
   position: absolute;
   top: calc(100% + var(--space-1));
   left: 0;
+  /* Above the timer's own later parts (the frame's resize corner). Above other widgets comes from
+     the frame itself, raised while this list is open (WidgetFrame data-raised, E10). */
   z-index: 1;
   width: max-content;
   min-width: 100%;
@@ -256,9 +258,9 @@
   list-style: none;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--glass-sheen), var(--panel-strong);
-  backdrop-filter: var(--glass-filter-strong);
-  -webkit-backdrop-filter: var(--glass-filter-strong);
+  /* Opaque, as the task menu is: the frame around it already holds a backdrop filter, so a glass
+     list inside it shows the cards behind the widget through it. */
+  background: var(--glass-sheen), var(--panel-solid);
   box-shadow: var(--shadow-lg);
   animation: fadeIn var(--duration) var(--ease);
 }
@@ -406,6 +408,159 @@
 
 @media (prefers-reduced-motion: reduce) {
   .preset {
+    transition: none;
+  }
+}
+
+/* Task picker (v1.2 spec §3.8): a filter box over grouped options. The picker takes the widget's
+   full width, and its list stays inside that width, scrolling within itself (P1, D7). */
+.taskPicker {
+  align-self: stretch;
+}
+
+.taskPicker .combo {
+  max-width: none;
+}
+
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  right: 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  max-height: none;
+  /* Room for the find box's focus ring inside the glass. */
+  padding: var(--space-2);
+  overflow: visible;
+}
+
+.taskFilter {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.taskFilter:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.taskOptions {
+  max-height: calc(7 * 34px + 3 * 22px);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.groupLabel {
+  display: block;
+  padding: var(--space-2) var(--space-3) 2px;
+  color: var(--text-faint);
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.taskGone {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Session intention and its outcome question (v1.2 spec §3.11). */
+.intention {
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.intention:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.outcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--glass-fill-thin);
+}
+
+.outcomeIntention {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.outcomeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.outcomeQuestion {
+  margin-right: auto;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.outcomeButton {
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background var(--duration) var(--ease);
+}
+
+.outcomeButton:hover {
+  background: var(--glass-fill-raised);
+}
+
+.linkButton {
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.outcomeButton:focus-visible,
+.linkButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outcomeButton {
     transition: none;
   }
 }

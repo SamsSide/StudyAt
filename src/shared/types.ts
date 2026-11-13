@@ -16,6 +16,8 @@ export interface TimerState {
   todayFocusMs: number;
   taskId: number | null;
   taskText: string | null;
+  intention: string | null;
+  askOutcome: OutcomeAsk | null;
 }
 
 export interface AwayPrompt {
@@ -49,6 +51,15 @@ export interface Session {
   status: 'running' | 'done';
   taskId: number | null;
   taskText: string | null;
+  intention: string | null;
+  outcome: SessionOutcome | null;
+}
+
+export type SessionOutcome = 'done' | 'partly' | 'not';
+/** The focus segment that just ended and its intention, until answered or the next focus starts. */
+export interface OutcomeAsk {
+  pomodoroId: string;
+  intention: string;
 }
 
 export type TaskColour = 'yellow' | 'pink' | 'blue' | 'green' | 'purple' | 'grey';
@@ -61,6 +72,11 @@ export interface Note {
   sort: number;
   createdAt: number;
   updatedAt: number;
+  popped: boolean;
+  x: number | null;
+  y: number | null;
+  scale: number;
+  bare: boolean;
 }
 
 export interface Task {
@@ -73,12 +89,99 @@ export interface Task {
   doneAt: number | null;
 }
 
+export type DeadlineKind = 'exam' | 'coursework';
+export interface Deadline {
+  id: number;
+  title: string;
+  kind: DeadlineKind;
+  subjectId: number | null;
+  /** Local wall clock `YYYY-MM-DDTHH:MM`. */
+  due: string;
+  note: string;
+  done: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface DeadlinesView {
+  upcoming: Deadline[];
+  past: Deadline[];
+}
+export interface DeadlineInput {
+  title: string;
+  kind: DeadlineKind;
+  subjectId: number | null;
+  due: string;
+  note?: string;
+}
+export interface DeadlinePatch {
+  title?: string;
+  kind?: DeadlineKind;
+  subjectId?: number | null;
+  due?: string;
+  note?: string;
+  done?: boolean;
+}
+
+export type StatCard = 'total' | 'subjects' | 'goal';
+export type StatRange = 'today' | 'week' | 'month';
+export interface StatWidget {
+  id: number;
+  card: StatCard;
+  range: StatRange;
+  x: number;
+  y: number;
+  scale: number;
+  bare: boolean;
+}
+export interface StatWidgetPatch {
+  card?: StatCard;
+  range?: StatRange;
+  x?: number;
+  y?: number;
+  scale?: number;
+  bare?: boolean;
+}
+export interface SubjectBar {
+  key: string;
+  name: string;
+  colour: string;
+  ms: number;
+}
+export interface TotalCardData {
+  card: 'total';
+  range: StatRange;
+  totalMs: number;
+  previousMs: number;
+  deltaPct: number | null;
+  todayMs: number;
+}
+export interface SubjectsCardData {
+  card: 'subjects';
+  range: StatRange;
+  bars: SubjectBar[];
+}
+export interface GoalCardData {
+  card: 'goal';
+  range: StatRange;
+  goalMs: number;
+  todayMs: number;
+  days: { dayKey: string; hit: boolean; future: boolean }[];
+  hitDays: number;
+  elapsedDays: number;
+  streak: number;
+}
+export type CardData = TotalCardData | SubjectsCardData | GoalCardData;
+
+/** What a YouTube space asks the player for: Auto leaves it to YouTube (spec §3.3). */
+export type SpaceQuality = 'auto' | '1080' | '1440' | '2160';
+
 export interface SpaceOpts {
   audio: boolean;
   volume: number;
   speed: number;
   dim: number;
   blur: number;
+  quality: SpaceQuality;
 }
 
 export interface Space {
@@ -182,9 +285,12 @@ export interface WidgetPos {
   autoHide: boolean;
   /** 0.5..2, default 1 (spec §3.5). */
   scale: number;
+  /** No glass and no header (v1.2 spec §3.10); only the Deadlines widget reads it. */
+  bare?: boolean;
 }
 
-export type WidgetId = 'timer' | 'tasks' | 'spotify' | 'calendar' | 'weather' | 'quote' | 'notes';
+export type WidgetId =
+  'timer' | 'tasks' | 'spotify' | 'calendar' | 'weather' | 'quote' | 'notes' | 'deadlines';
 
 export type WeatherUnits = 'celsius' | 'fahrenheit';
 
@@ -242,6 +348,8 @@ export interface Settings {
   trayNoticeShown: boolean;
   windowBounds: WindowBounds | null;
   miniPos: { x: number; y: number } | null;
+  countdownPips: boolean;
+  sessionIntention: boolean;
 }
 
 /**

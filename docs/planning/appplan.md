@@ -6,7 +6,8 @@
 > When a spec changes how the app works, its plan's last task updates the section here.
 > Updated on 2026-11-09 for the v1 build (`docs/planning/specs/2026-11-08-app-v1-design.md` and
 > `docs/planning/specs/2026-11-09-widgets-addendum.md`), and again for v1.1 polish
-> (`docs/planning/specs/2026-11-09-v1-1-polish-design.md`).
+> (`docs/planning/specs/2026-11-09-v1-1-polish-design.md`), and for v1.2
+> (`docs/planning/specs/2026-11-11-v1-2-design.md`, with the rulings of its §12).
 
 ## Feature status
 
@@ -27,6 +28,7 @@
 | Quote widget | §4.10 | W | built |
 | Notes widget | §4.10, §6.4 | W | built |
 | v1.1 polish: away switch, Countdown, task on the timer, focus view, scaling and resizable widgets, image/GIF widgets, pop-out Spotify, YouTube fix | §4.1, §4.2, §4.4, §4.6, §4.7, §4.9, §4.10, §5, §6.2, §6.4 | V1.1 | built |
+| v1.2: ▶ start focus on a sticky task (the Tweek-style planner was built, then replaced by the v1.1 sticky tasks before merge), pop-out note stickies, YouTube quality, background play/pause, countdown pips, Deadlines and stats widgets, session intention and outcome | §2, §4.1, §4.2, §4.4, §4.5, §4.7, §4.9, §4.10, §6.4 | V1.2 | built |
 
 ## 1. Intent
 
@@ -53,14 +55,16 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   breakdown, week-over-week trend, a weekly recap.
 - Custom spaces: their own video files, images and YouTube links as the background.
 - Ambient soundboard with per-sound volume, plus their own sound files.
-- Sticky-note tasks.
+- Quick sticky-note tasks, linked to the timer (▶ starts focus on one). Planning on days lives
+  in a dedicated app (Tweek, used on its own), not in StudyAt.
 - Spotify widget (they have Premium): now playing, play/pause/next/previous.
 - Free-floating draggable widgets over the space, like LifeAt.
 
 **Non-goals** (LifeAt features deliberately left out)
 - Rooms, invites, chat, co-working, group timers, accounts, cloud sync.
-- LifeAt's calendar/daily planner, task-to-calendar, Fortune, Breathe. (A read-only calendar
-  view was added later at Sam's request, §4.10; there is still no planning or editing.)
+- Fortune, Breathe, and LifeAt's task-to-calendar link. (A read-only Calendar widget was added
+  at Sam's request, §4.10, and stays read-only. A v1.2 Tweek-style planner was built and then
+  removed at Sam's request (2026-11-13); tasks are sticky notes again, §4.5.)
 - Mobile, macOS, multi-user.
 - Importing LifeAt history (Sam declined; the app starts from zero).
 
@@ -91,11 +95,16 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 
 ### 4.1 Main view (the "space")
 - Full-window background: the active space (video loops muted by default, or a still image).
-- **Left dock** (icons + labels, like LifeAt): Spaces, Sounds, Timer, Tasks, Spotify, Widgets,
-  Stats, Settings. Spaces and Sounds open as a side panel; Timer, Tasks and Spotify toggle floating
-  widgets; Widgets opens a popover of toggles for the other widgets (§4.10); Stats and Settings
-  open full-window overlays.
-- **Top bar**: current streak (🔥 n, click → Stats), today's focus total, fullscreen toggle.
+- **Left dock** (icons + labels, like LifeAt): Spaces, Sounds, Timer, Tasks, Widgets, a divider,
+  then Stats and Settings (v1.2: Spotify moved into the Widgets popover). Spaces and Sounds open
+  as a side panel; Timer and Tasks toggle floating widgets; Widgets opens a popover of toggles
+  for the other widgets (§4.10); Stats and Settings open full-window overlays.
+- **Top bar**: current streak (🔥 n, click → Stats), today's focus total, fullscreen toggle, and
+  (v1.2) a **background play/pause** button for video and YouTube spaces (hidden for images),
+  also on **V**. It is renderer-only state, not remembered, and resets to playing when the space
+  changes. It pauses the space's own audio with it; the soundboard and timer are unaffected. It
+  also shows under reduced motion, where it shares one state with **V** and the still's footer
+  button.
 - **Auto-hide**: after ~5 s without mouse movement the dock, top bar and panels fade out;
   widgets stay (each widget can be pinned or set to auto-hide). Moving the mouse brings it back.
 - Widgets are draggable by their header, clamped to the window, positions/open state persisted
@@ -127,6 +136,15 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   (checked embeddable) and 4 bundled free-licence still images. No bundled video files, to keep
   the installer small.
 - The last-used space is restored on launch.
+- **YouTube quality (v1.2):** a YouTube space has a **Quality** control, `Auto · 1080p · 1440p ·
+  4K`, hint "Asks YouTube for at least this. YouTube still drops lower if your connection can't
+  keep up." A target other than Auto renders the player at the target's size in **device pixels**
+  (CSS size divided by the display scaling), scaled to cover the window with the same chrome crop
+  as Auto, and calls `setPlaybackQuality` too. Changing it remounts the player. A **live badge**
+  ("Playing · 2160p") shows what YouTube actually serves, read every 5 s, in the Spaces panel
+  header and the space's settings. *The spike measured it:* at the 4K target the badge reached
+  `hd2160`; Auto reached only `hd1440` because Sam's display is scaled to 150 %, and `hd1080`
+  in a 1920 × 1080 physical window. Sam ruled to ship the hint as written.
 - **YouTube embeds (v1.1):** the renderer is served as `http://localhost:<port>` because YouTube
   answers error 150 to a bare-IP referrer for rights-managed videos. Videos whose owner blocks
   embedding still show "This video can't be embedded"; player configuration errors 152/153 show
@@ -155,13 +173,30 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   Pomodoro.
 - **Subject picker** on the widget (blank = untagged). Subjects are managed in Settings (name +
   colour). Changing the subject mid-session applies from that point on.
-- **Task picker (v1.1)** under the subject picker, in Pomodoro and Countdown: "No task" plus every
-  not-done task in list order. Changing the task mid-session splits the session like a subject
-  change. A held task that is ticked off or deleted stays while its focus segment runs or is paused
+- **Task picker** under the subject picker, in Pomodoro and Countdown: "No task", then the open
+  sticky tasks in list order; a held task shows by its remembered text even when it is done or
+  gone, and a task deleted between opening the picker and choosing it shows "That task no longer
+  exists.". Changing the task mid-session splits the session like a subject change. A task never
+  changes the subject (stickies have none). A held task that is ticked off or deleted stays while its focus segment runs or is paused
   (no split);
   whenever no focus segment is running — after it ends, on Skip, Reset or a mode change, or if it
   is ticked off while idle or on a break — the timer drops it back to "No task" (cleared in main,
   before any auto-started focus opens its row).
+- **▶ on a task (v1.2)** sets the task (never the subject), then: idle in a focus mode starts focus;
+  idle in a break mode switches to Focus and starts it; focus running or paused only sets the task
+  (one split); a break running or paused sets it for the next focus and shows "Task set for
+  your next focus."
+- **Intention and outcome (v1.2, Settings → Timer "Ask what I'll do each focus", on by default):**
+  in focus modes a one-line field ("By the end I will…", up to 140 characters) sits under the
+  task picker, filled from the task if empty. It is stored on the session rows of the segment and
+  never splits a row. When a focus segment ends with at least a minute logged, the widget asks
+  "Did you do it? Done · Partly · Not" (or Skip), stored as the outcome on every row of that
+  Pomodoro.
+- **Countdown pips (v1.2):** while a segment runs, a short pip plays at 3, 2 and 1 seconds left,
+  then the usual end chime (focus or countdown end, break end), so "break starts" and "back to
+  study" sound different. No pips when paused, on Reset or Skip, or after a jump such as sleep.
+  Settings → Chimes: "Count down the last 3 seconds" with a Preview button; the "1 minute left"
+  tick yields to the pips at 3, 2, 1.
 - **Chimes (Sam asked for these explicitly):** a sound plays at the end of every segment, with
   **separate chimes for "focus done → break" and "break done → back to focus"**. Choose each
   from **five chimes synthesised in code** — Bell, Singing bowl, Wood block, Marimba, Soft
@@ -179,9 +214,24 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   window. Background video is paused while hidden, and the mini timer appears (§4.10).
 
 ### 4.5 Tasks widget (sticky notes)
-- Quick-add box; each task is a small sticky note with text, a tick-off checkbox and one of a
-  few colours. Drag to reorder. Completed tasks collapse into a "Done" section that can be
-  cleared. Persisted locally.
+- Quick-add box ("Add a task…"); each task is a small sticky note with text (click to edit, up to
+  500 characters), a tick-off checkbox and one of six colours (yellow by default). Drag to reorder
+  by the handle (`Drag to reorder: <text>`) or Alt + Up / Down. Completed tasks collapse into a
+  "Done (n)" section that can be cleared ("Clear done"); a sticky has no delete. Persisted locally.
+  Dock Tasks, `T`.
+- **▶ (v1.2):** an open sticky shows ▶ (`Start focus on "<text>"`) on hover and on keyboard focus
+  within the note. Its slot is always reserved, so a long note never reflows when it appears. It
+  follows the timer's ▶ rule (§4.4); done stickies have none. One notice line sits under the add
+  box: "Task set for your next focus." when the returned timer state is a running or paused break,
+  and "That task no longer exists." when the call fails, after which the list reloads. The notice
+  clears on the next ▶ or add.
+- **The v1.2 planner, replaced (2026-11-13):** v1.2 briefly replaced this widget with a Tweek-style
+  planner; Sam went back to sticky notes (`docs/planning/specs/2026-11-13-simple-tasks-design.md`).
+  Migration v5 brought back the v1 stickies (same ids), appended the planner's tasks as stickies
+  (same ids; text from the title, cut to 500; yellow when uncoloured; done kept; old stickies first,
+  then day tasks by date, then list tasks), and archived the planner tables as
+  `planner_tasks_v4_archive`, `task_lists_v4_archive`, `task_tags_v4_archive` and
+  `subtasks_v4_archive`. No session row changed, so By task stats are unchanged.
 
 ### 4.6 Spotify widget
 - One-time setup in Settings: Sam creates a free app at developer.spotify.com, pastes its
@@ -210,7 +260,13 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - **By task (v1.1)**: next to By subject, minutes per task for the same range, largest first,
   top 10, labelled with the task's newest name; sessions without a task aren't listed.
 - **Sessions list**: every focus session (date, start–end, minutes, subject, task), filterable.
-  Sessions can be edited (subject, delete) to fix mistakes; the task isn't editable.
+  Sessions can be edited (subject, delete) to fix mistakes; the task isn't editable. From v1.2 the
+  table also shows each session's **intention** and an outcome mark (done, partly, not).
+- **Stats widgets (v1.2)**: up to 6 floating cards from the Widgets popover, each with a range
+  (Today · Week · Month): **Total time** (with the change against the same elapsed part of the
+  previous period, ticking live for Today), **By subject** (top 6 and Other) and **Goal +
+  streak**. They only read focus time. (A v1.2 Estimates card went with the planner; migration v5
+  removed any Estimates widgets.)
 - **Weekly recaps** list (§4.8).
 - Range picker on the charts: week · month · 12 weeks · year · all.
 
@@ -227,6 +283,11 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   (off by default).
 - Also: daily goal, global hotkey, mini timer when hidden, Calendar addresses, Weather place and
   units (§4.10).
+- **v1.2:** **Chimes:** "Count down the last 3 seconds" with Preview. **Timer:** "Ask what I'll do
+  each focus". (The v1.2 Settings → Tasks section went with the planner; its stored settings are
+  ignored.)
+- **Export:** the JSON export has `tasks` (the sticky tasks, v1 shape) and `deadlines`; CSV is
+  unchanged. The schema is now v5.
 - Timer (v1.1): **"Ask if I've been away"** (on by default; off: away time still counts, while
   locking or sleeping still pauses — the idle-minutes control is disabled while it's off), and
   **Countdown length** (1–240 min).
@@ -241,13 +302,17 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   while the timer runs (setting, on by default), and can be toggled from the tray, the timer
   widget or `M`. Its position is remembered.
 - **In-app shortcuts** (ignored while typing): `Space` start/pause · `R` reset · `N` skip ·
-  `1`/`2`/`3`/`4` Pomodoro/short/long/Countdown · `S` stats · `T` tasks · `K` sounds · `G`
-  spaces · `W` widgets popover · `M` mini timer · `F` fullscreen · `H` hide or show the interface
+  `1`/`2`/`3`/`4` Pomodoro/short/long/Countdown · `S` stats · `T` tasks · `V`
+  background play/pause · `K` sounds · `G` spaces · `W` widgets popover · `M` mini timer · `F` fullscreen · `H` hide or show the interface
   (focus view, §4.1) · `Esc` close the top overlay, leave focus view, or close the panel · `?` help.
 - **Pre-filled subjects**: Sam's six modules (COMP2181, COMP2211, COMP2221, COMP2261, COMP2271,
   COMP2281), each with its own colour, ready on first launch.
-- **Widgets popover**: a dock item after Spotify that lists Calendar, Weather, Quote and Notes
-  with on/off toggles. Each is a free-floating widget like the others, closed by default.
+- **Widgets popover**: a dock item after Tasks that lists **Spotify**, Calendar, Weather, Quote,
+  Notes and Deadlines with on/off toggles, then "Add stats widget…" and "Add image…". Each is a
+  free-floating widget like the others, closed by default.
+- **Deadlines (v1.2)**: exams and coursework with a date and time, shown soonest first with a
+  **live countdown** ("23d 4h", then "31h 12m", then "42m 08s" under an hour). Add, edit, mark done
+  and delete in the widget; a Past toggle lists the last ten.
 - **Calendar** (read-only): today's events and the next few days, from Google Calendar's "Secret
   address in iCal format" (up to 5 calendars), pasted in Settings → Calendar. Recurring and
   all-day events are handled; refreshed every 15 min while open. Offline, it shows the last good
@@ -259,7 +324,10 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - **Quote**: one motivational quote per study day (it changes at the rollover hour) from a
   bundled list of public-domain quotes, with an "Another" button.
 - **Notes**: several sticky notes, one shown at a time, in the six task colours, up to 5,000
-  characters each. They save themselves as you type, on switching note, on hide and on quit.
+  characters each. They save themselves as you type, on switching note, on hide and on quit. From
+  v1.2 a note can be **popped out** into its own floating sticky (up to 12) that is draggable,
+  resizable, never auto-hides, and can hide its background to show bare coloured paper; **Dock
+  back** returns it to the stack and its position is remembered.
 - **Image / GIF widgets (v1.1)**: up to 12, added from the Widgets popover's "Add image…" — a
   GIF, PNG, JPEG or WebP file (checked by its bytes, not its name) or an `https` link (a Giphy
   page link is mapped to its GIF), up to 20 MB. Each is copied once into the data folder's
@@ -371,7 +439,11 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   plus settings.
 - **Daily automatic backup** of the database (keep the last 14) and backup before any schema
   migration. Schema is versioned with migrations from day one (v2 added the Notes table; v3 added
-  `task_id`/`task_text` on sessions and the `images` table). The `images/` folder of image-widget
+  `task_id`/`task_text` on sessions and the `images` table; v4 added the planner tables, `deadlines`,
+  `stat_widgets`, the popped-out note columns and `intention`/`outcome` on sessions; v5 brought
+  back the v1 sticky `tasks` table and archived the planner tables as `planner_tasks_v4_archive`,
+  `task_lists_v4_archive`, `task_tags_v4_archive` and `subtasks_v4_archive`, kept alongside
+  `tasks_v1_archive`). The `images/` folder of image-widget
   copies is not in the backups (their database rows are).
 - The daily backup is taken at launch and again **whenever the date changes while the app keeps
   running** in the tray (checked hourly and on every resume and unlock); finished weeks' recaps

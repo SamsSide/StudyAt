@@ -339,7 +339,7 @@ describe('SoundsPanel', () => {
     const space = makeSpace({
       id: 1,
       kind: 'video',
-      opts: { audio: true, volume: 0.5, speed: 1, dim: 0, blur: 0 },
+      opts: { audio: true, volume: 0.5, speed: 1, dim: 0, blur: 0, quality: 'auto' },
     });
     useSpacesStore.setState({ spaces: [space], activeId: 1, loaded: true });
     setup({ spaceAudio: storeSpaceAudio });

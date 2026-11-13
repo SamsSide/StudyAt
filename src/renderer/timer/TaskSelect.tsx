@@ -3,6 +3,7 @@
 // Tasks widget a moment ago is there. The task the timer holds is shown by its remembered text even
 // once it is ticked off or deleted: the timer keeps it until the segment ends (spec §3.3).
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
+import { TASK_GONE } from '../../shared/limits';
 import type { Task } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import styles from './timer.module.css';
@@ -17,6 +18,7 @@ export function TaskSelect() {
   const taskId = useStudyStore((s) => s.timer.taskId);
   const taskText = useStudyStore((s) => s.timer.taskText);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [failed, setFailed] = useState<'gone' | 'other' | null>(null);
   const listed: Choice[] = tasks.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text }));
   const choices: Choice[] = [NO_TASK, ...listed];
   // The held task stays shown even when it is no longer in the not-done list.
@@ -37,21 +39,31 @@ export function TaskSelect() {
   const listId = `${id}-list`;
   const optionId = (i: number): string => `${id}-option-${i}`;
 
-  const show = (): void => {
-    const rect = box.current?.getBoundingClientRect();
-    setUpwards(rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight);
-    setActive(selected);
-    setOpen(true);
+  const load = (): void => {
     window.studyat.tasks
       .list()
       .then(setTasks)
       .catch(() => undefined); // keep the last list; "No task" still works
   };
+  const show = (): void => {
+    const rect = box.current?.getBoundingClientRect();
+    setUpwards(rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight);
+    setActive(selected);
+    setFailed(null);
+    setOpen(true);
+    load();
+  };
   const close = (): void => setOpen(false);
   const pick = (i: number): void => {
     close();
     const choice = choices[i];
-    if (choice && choice.id !== taskId) void window.studyat.timer.setTask(choice.id);
+    if (!choice || choice.id === taskId) return;
+    setFailed(null);
+    // A task ticked off or removed between opening the picker and choosing it.
+    window.studyat.timer.setTask(choice.id).catch((err: unknown) => {
+      setFailed(err instanceof Error && err.message.includes(TASK_GONE) ? 'gone' : 'other');
+      load();
+    });
   };
   const clamp = (i: number): number => Math.min(choices.length - 1, Math.max(0, i));
 
@@ -109,6 +121,11 @@ export function TaskSelect() {
           />
         </svg>
       </div>
+      {failed !== null && (
+        <p className={styles.taskGone} role="alert">
+          {failed === 'gone' ? TASK_GONE : "Couldn't set that task."}
+        </p>
+      )}
       {open && (
         <ul
           id={listId}

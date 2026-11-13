@@ -1,28 +1,25 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatClock as sharedFormatClock } from '../../shared/clock';
+import { INTENTION_MAX, TASK_GONE } from '../../shared/limits';
 import type { Task, TimerState } from '../../shared/types';
 import { MiniTimer } from '../mini/MiniTimer';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { useShortcuts } from '../shell/useShortcuts';
-import { idleTimerState, installMockApi, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
+import {
+  idleTimerState,
+  installMockApi,
+  mockApi,
+  seedSubjects,
+  type MockApi,
+} from '../test/mockApi';
 import { AwayPrompt } from './AwayPrompt';
 import { formatClock } from './format';
 import { TimerWidget } from './TimerWidget';
 
 let api: MockApi;
-
-const task = (id: number, text: string, done = false): Task => ({
-  id,
-  text,
-  colour: 'yellow',
-  done,
-  sort: id,
-  createdAt: 0,
-  doneAt: done ? 1 : null,
-});
 
 function setup(timer: Partial<TimerState> = {}) {
   api = mockApi();
@@ -198,12 +195,11 @@ describe('Countdown', () => {
   it('adds Countdown to the mode control and picks it', async () => {
     render(<TimerWidget />);
     const bar = screen.getByRole('toolbar', { name: 'Timer mode' });
-    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      'Pomodoro',
-      'Short',
-      'Long',
-      'Countdown',
-    ]);
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Pomodoro', 'Short', 'Long', 'Countdown']);
     await userEvent.click(within(bar).getByRole('button', { name: 'Countdown' }));
     expect(api.timer.setMode).toHaveBeenCalledWith('countdown');
   });
@@ -213,13 +209,11 @@ describe('Countdown', () => {
     setup({ mode: 'countdown', remainingMs: 60 * 60_000 });
     render(<TimerWidget />);
     const bar = presetBar()!;
-    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual([
-      '30',
-      '45',
-      '60',
-      '90',
-      '120',
-    ]);
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['30', '45', '60', '90', '120']);
     await user.click(within(bar).getByRole('button', { name: '90' }));
     expect(api.settings.set).toHaveBeenLastCalledWith({ countdownMinutes: 90 });
     const field = within(bar).getByRole('spinbutton', { name: 'Countdown minutes' });
@@ -243,19 +237,56 @@ describe('Countdown', () => {
 });
 
 describe('TaskSelect', () => {
+  const sticky = (id: number, text: string, done = false): Task => ({
+    id,
+    text,
+    colour: 'yellow',
+    done,
+    sort: id,
+    createdAt: 0,
+    doneAt: done ? 1 : null,
+  });
+  const seedTasks = (): void => {
+    vi.mocked(api.tasks.list).mockResolvedValue([
+      sticky(1, 'Read ch. 3'),
+      sticky(2, 'Old', true),
+      sticky(3, 'Lab report'),
+    ]);
+  };
 
-  it('lists "No task" then the not-done tasks in order, and picks one', async () => {
+  it('lists "No task" then the open tasks in order, and picks one', async () => {
     const user = userEvent.setup();
-    vi.mocked(api.tasks.list).mockResolvedValue([task(1, 'Read ch. 3'), task(2, 'Old', true), task(3, 'Essay plan')]);
+    seedTasks();
     render(<TimerWidget />);
     const box = screen.getByRole('combobox', { name: 'Task' });
     expect(box).toHaveTextContent('No task');
     await user.click(box);
-    await screen.findByRole('option', { name: 'Essay plan' });
-    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Essay plan']);
-    expect(screen.getByRole('option', { name: 'Essay plan' })).toHaveAttribute('title', 'Essay plan');
-    await user.click(screen.getByRole('option', { name: 'Essay plan' }));
+    await screen.findByRole('option', { name: 'Lab report' });
+    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Lab report']);
+    await user.click(screen.getByRole('option', { name: 'Lab report' }));
     expect(api.timer.setTask).toHaveBeenCalledWith(3);
+  });
+
+  it('a pick that main rejects as gone says the task no longer exists and reloads the list', async () => {
+    const user = userEvent.setup();
+    seedTasks();
+    vi.mocked(api.timer.setTask).mockRejectedValue(new Error(TASK_GONE));
+    render(<TimerWidget />);
+    await user.click(screen.getByRole('combobox', { name: 'Task' }));
+    await user.click(await screen.findByRole('option', { name: 'Lab report' }));
+    expect(await screen.findByText('That task no longer exists.')).toBeInTheDocument();
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalledTimes(2));
+  });
+
+  it('any other rejection says the task could not be set', async () => {
+    const user = userEvent.setup();
+    seedTasks();
+    vi.mocked(api.timer.setTask).mockRejectedValue(new Error('boom'));
+    render(<TimerWidget />);
+    await user.click(screen.getByRole('combobox', { name: 'Task' }));
+    await user.click(await screen.findByRole('option', { name: 'Lab report' }));
+    expect(await screen.findByText("Couldn't set that task.")).toBeInTheDocument();
+    expect(screen.queryByText('That task no longer exists.')).toBeNull();
   });
 
   it('is available in Countdown but not in a break', () => {
@@ -270,13 +301,134 @@ describe('TaskSelect', () => {
 
   it('a held task that is now done still shows its text while running', async () => {
     setup({ status: 'running', taskId: 2, taskText: 'Old' });
-    vi.mocked(api.tasks.list).mockResolvedValue([task(2, 'Old', true)]);
+    seedTasks();
     render(<TimerWidget />);
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     await userEvent.click(screen.getByRole('combobox', { name: 'Task' }));
     await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     expect(api.timer.setTask).not.toHaveBeenCalled();
+  });
+});
+
+describe('IntentionField and OutcomeAsk', () => {
+  const field = (): HTMLInputElement => screen.getByPlaceholderText('By the end I will…');
+
+  it('caps the text at 140 code points, so an emoji counts as one', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    expect(INTENTION_MAX).toBe(140);
+    await user.click(field());
+    await user.paste('😀'.repeat(INTENTION_MAX));
+    expect([...field().value]).toHaveLength(INTENTION_MAX);
+    await user.paste('😀');
+    expect(field().value).toBe('😀'.repeat(INTENTION_MAX));
+  });
+
+  it('drops the draft when the field hides, so it shows the text from main on return', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    await user.type(field(), 'Draft text{Enter}');
+    act(() => {
+      useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, mode: 'short' } });
+    });
+    expect(screen.queryByPlaceholderText('By the end I will…')).toBeNull();
+    act(() => {
+      useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, mode: 'focus' } });
+    });
+    expect(field()).toHaveValue('');
+  });
+
+  it('shows a newer intention from main over a draft', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    await user.type(field(), 'Half typed');
+    act(() => {
+      useStudyStore.setState({ timer: { ...useStudyStore.getState().timer, intention: 'From main' } });
+    });
+    expect(field()).toHaveValue('From main');
+  });
+
+  it('cuts only the inserted part past the cap: a paste keeps its start, a middle insert at the cap does nothing', () => {
+    render(<TimerWidget />);
+    fireEvent.change(field(), { target: { value: 'b'.repeat(200) } });
+    expect(field()).toHaveValue('b'.repeat(INTENTION_MAX));
+    const full = 'a'.repeat(INTENTION_MAX - 1) + 'z';
+    fireEvent.change(field(), { target: { value: full } });
+    expect(field()).toHaveValue(full);
+    // One more character in the middle would push the final 'z' off the end: no room, no change.
+    fireEvent.change(field(), { target: { value: 'a'.repeat(10) + 'X' + full.slice(10) } });
+    expect(field()).toHaveValue(full);
+    // With room for two, a five-character insert in the middle keeps two and the end stays.
+    const short = 'a'.repeat(INTENTION_MAX - 2);
+    fireEvent.change(field(), { target: { value: short } });
+    fireEvent.change(field(), { target: { value: 'a'.repeat(10) + 'XXXXX' + short.slice(10) } });
+    expect(field()).toHaveValue('a'.repeat(10) + 'XX' + short.slice(10));
+    // Emoji count as one each.
+    const emoji = '😀'.repeat(INTENTION_MAX + 5);
+    fireEvent.change(field(), { target: { value: emoji } });
+    expect(field()).toHaveValue('😀'.repeat(INTENTION_MAX));
+  });
+
+  it('has the placeholder, and Enter saves the text', async () => {
+    const user = userEvent.setup();
+    render(<TimerWidget />);
+    await user.type(field(), 'Finish Q1–3{Enter}');
+    expect(api.timer.setIntention).toHaveBeenCalledTimes(1);
+    expect(api.timer.setIntention).toHaveBeenCalledWith('Finish Q1–3');
+    await user.tab(); // the blur after Enter sends nothing more
+    expect(api.timer.setIntention).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves on blur, shows the held intention, and clearing it sends null', async () => {
+    const user = userEvent.setup();
+    setup({ intention: 'Finish Q1–3' });
+    render(<TimerWidget />);
+    expect(field()).toHaveValue('Finish Q1–3');
+    await user.clear(field());
+    await user.tab();
+    expect(api.timer.setIntention).toHaveBeenCalledWith(null);
+  });
+
+  it('does not save text that has not changed', async () => {
+    const user = userEvent.setup();
+    setup({ intention: 'Same' });
+    render(<TimerWidget />);
+    await user.click(field());
+    await user.tab();
+    expect(api.timer.setIntention).not.toHaveBeenCalled();
+  });
+
+  it('is hidden in a break', () => {
+    setup({ mode: 'short' });
+    render(<TimerWidget />);
+    expect(screen.queryByPlaceholderText('By the end I will…')).toBeNull();
+  });
+
+  const ask = { pomodoroId: 'p1', intention: 'Finish Q1–3' };
+
+  it('asks "Did you do it?" with the intention, and sends the answer', async () => {
+    const user = userEvent.setup();
+    setup({ mode: 'short', askOutcome: ask });
+    render(<TimerWidget />);
+    const group = screen.getByRole('group', { name: 'Did you do it?' });
+    expect(group).toHaveTextContent('Finish Q1–3');
+    await user.click(within(group).getByRole('button', { name: 'Partly' }));
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'partly');
+    await user.click(within(group).getByRole('button', { name: 'Skip the question' }));
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', null);
+    await user.click(within(group).getByRole('button', { name: 'Done' }));
+    await user.click(within(group).getByRole('button', { name: 'Not' }));
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'done');
+    expect(api.timer.setOutcome).toHaveBeenCalledWith('p1', 'not');
+  });
+
+  it('shows neither the field nor the question when the setting is off', async () => {
+    setup({ askOutcome: ask });
+    useStudyStore.setState({ settings: { ...(await api.settings.get()), sessionIntention: false } });
+    render(<TimerWidget />);
+    expect(screen.queryByPlaceholderText('By the end I will…')).toBeNull();
+    expect(screen.queryByText('Did you do it?')).toBeNull();
   });
 });
 

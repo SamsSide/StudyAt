@@ -1,15 +1,20 @@
 // The Notes widget body (widgets addendum §4b): sticky notes like macOS Stickies, one at a time as a
-// soft coloured sheet. A header row switches notes (‹ › and a dot strip), adds one and deletes one
-// (asked in place); six colours below. Text autosaves 500 ms after typing stops and at once on blur,
-// on switching notes, on hiding the window and on unmount; text whose save failed waits in the
-// module-level queue (noteSaves.ts) and goes again on the next try, even after the widget closes.
-// The shell's WidgetFrame supplies the glass container and title.
+// soft coloured sheet. A header row switches notes (‹ › and a dot strip), adds one, pops one out as
+// a floating sticky (v1.2 spec §3.2) and deletes one (asked in place); six colours below. The stack
+// shows only the notes not popped out; with all of them out it says so and still offers New note.
+// Text autosaves 500 ms after typing stops and at once on blur, on switching notes, on hiding the
+// window and on unmount; text whose save failed waits in the module-level queue (noteSaves.ts) and
+// goes again on the next try, even after the widget closes. The notes themselves live in
+// notesStore.ts, shared with the stickies. The shell's WidgetFrame supplies the glass and title.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { LIMIT_COPY, MAX_POPPED_NOTES } from '../../shared/limits';
 import type { Note } from '../../shared/types';
 import { Icon } from '../shell/icons';
 import { TASK_COLOURS } from '../tasks/taskColours';
 import styles from './NotesWidget.module.css';
 import { attachNotesWidget, editNote, flushNotes, forgetNote, onNotesSaved, useNoteSaves } from './noteSaves';
+import { PopOutIcon } from './noteIcons';
+import { SAVE_FAILED, useNotesStore } from './notesStore';
 
 /** Addendum §4b: a note holds at most 5 000 characters. */
 export const MAX_NOTE_LENGTH = 5000;
@@ -18,37 +23,38 @@ export const AUTOSAVE_MS = 500;
 /** Past this many notes the dot strip becomes a "3 / 15" count. */
 const MAX_DOTS = 12;
 
-const SAVE_FAILED = "Couldn't save this note. It's still here — try again.";
-const ADD_FAILED = "Couldn't add a note. Try again.";
-const DELETE_FAILED = "Couldn't delete this note. Try again.";
-
-const bySort = (list: Note[]): Note[] => [...list].sort((a, b) => a.sort - b.sort || a.id - b.id);
+/** Main's answers to text saves go into the shared copy; mounted by the stack and the stickies. */
+export function useAdoptSavedNotes(): void {
+  useEffect(
+    () =>
+      onNotesSaved((list) => {
+        useNotesStore.getState().adopt(list);
+        useNotesStore.getState().clearError();
+      }),
+    [],
+  );
+}
 
 export function NotesWidget() {
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [currentId, setCurrentId] = useState<number | null>(null);
+  const all = useNotesStore((s) => s.notes);
+  const loaded = useNotesStore((s) => s.loaded);
+  const loadFailed = useNotesStore((s) => s.loadFailed);
+  const storeError = useNotesStore((s) => s.error);
+  // The shown note, and where it sat: when it leaves the stack (deleted, popped out) the note now at
+  // that place shows instead, or the last one.
+  const [shown, setShown] = useState<{ id: number | null; at: number }>({ id: null, at: 0 });
   // Text typed but not yet confirmed by main, per note: the sheet always shows this over main's copy,
   // so a slow or failed save never takes words away.
   const { drafts, failing } = useNoteSaves();
-  const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const timer = useRef<number | null>(null);
-  const live = useRef(true);
   const sheetRef = useRef<HTMLTextAreaElement>(null);
   const deleteRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const newRef = useRef<HTMLButtonElement>(null);
-  const focusNext = useRef<'sheet' | 'delete' | 'cancel' | 'new' | null>(null);
-
-  const adopt = useCallback((list: Note[]) => {
-    if (!live.current) return;
-    setNotes(bySort(list));
-    setLoaded(true);
-    setLoadFailed(false);
-  }, []);
+  const popRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<'sheet' | 'delete' | 'cancel' | 'new' | 'pop' | null>(null);
 
   const clearTimer = (): void => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -61,38 +67,26 @@ export function NotesWidget() {
     flushNotes();
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      adopt(await window.studyat.notes.list());
-    } catch {
-      if (live.current) setLoadFailed(true);
-    }
-  }, [adopt]);
+  const load = (): Promise<void> => useNotesStore.getState().load();
 
+  useAdoptSavedNotes();
   useEffect(() => {
-    live.current = true;
-    void load();
+    void useNotesStore.getState().load();
     const detach = attachNotesWidget();
     // Text left over from a save that failed after the widget last closed goes again now.
     flush();
-    const stopSaved = onNotesSaved((list) => {
-      adopt(list);
-      if (live.current) setError(null);
-    });
     // Hiding the window (visibilitychange, pagehide, main's onVisibility) flushes through the
     // queue's own listener in noteSaves.ts, open or closed.
     return () => {
-      stopSaved();
       detach();
       flush();
-      live.current = false;
     };
-  }, [load, flush, adopt]);
+  }, [flush]);
 
-  const index = Math.max(
-    0,
-    notes.findIndex((n) => n.id === currentId),
-  );
+  const notes = all.filter((n) => !n.popped);
+  const popped = all.length - notes.length;
+  const found = notes.findIndex((n) => n.id === shown.id);
+  const index = found >= 0 ? found : Math.max(0, Math.min(shown.at, notes.length - 1));
   const current = notes[index] ?? null;
   const text = current ? (drafts.get(current.id) ?? current.text) : '';
 
@@ -100,28 +94,10 @@ export function NotesWidget() {
     const target = focusNext.current;
     if (!target) return;
     focusNext.current = null;
-    const refs = { sheet: sheetRef, delete: deleteRef, cancel: cancelRef, new: newRef };
-    refs[target].current?.focus();
+    const refs = { sheet: sheetRef, delete: deleteRef, cancel: cancelRef, new: newRef, pop: popRef };
+    // With the last note popped out the stack's only button is New note.
+    (refs[target].current ?? (target === 'pop' ? newRef.current : null))?.focus();
   });
-
-  /** A mutation other than typing; every call returns the whole list. */
-  const run = async (call: () => Promise<Note[]>, failure: string): Promise<Note[] | null> => {
-    try {
-      const list = await call();
-      adopt(list);
-      setError(null);
-      return bySort(list);
-    } catch {
-      if (!live.current) return null;
-      setError(failure);
-      try {
-        adopt(await window.studyat.notes.list());
-      } catch {
-        // Keep what is on screen; the message already says what happened.
-      }
-      return null;
-    }
-  };
 
   const type = (value: string): void => {
     if (!current) return;
@@ -133,24 +109,34 @@ export function NotesWidget() {
   const show = (id: number): void => {
     flush();
     setConfirming(false);
-    setCurrentId(id);
+    setShown({ id, at: notes.findIndex((n) => n.id === id) });
   };
 
   const add = async (): Promise<void> => {
     flush();
     setConfirming(false);
-    const list = await run(() => window.studyat.notes.create(), ADD_FAILED);
-    const last = list?.[list.length - 1];
+    const list = await useNotesStore.getState().create();
+    const stack = list?.filter((n) => !n.popped) ?? [];
+    const last = stack.at(-1);
     if (!last) return;
-    setCurrentId(last.id);
+    setShown({ id: last.id, at: stack.length - 1 });
     focusNext.current = 'sheet';
   };
 
   const recolour = (colour: Note['colour']): void => {
     if (!current || current.colour === colour) return;
     flush();
-    const id = current.id;
-    void run(() => window.studyat.notes.update(id, { colour }), SAVE_FAILED);
+    void useNotesStore.getState().setColour(current.id, colour);
+  };
+
+  /** Spec §3.2: the shown note floats off as a sticky and the stack moves on to the next one. */
+  const popOut = async (): Promise<void> => {
+    if (!current) return;
+    flush();
+    setConfirming(false);
+    // Set first: the store's answer is what renders next, and focus lands then.
+    focusNext.current = 'pop';
+    await useNotesStore.getState().popOut(current.id);
   };
 
   const askDelete = (): void => {
@@ -174,18 +160,20 @@ export function NotesWidget() {
   const confirmDelete = async (): Promise<void> => {
     if (!current) return;
     const id = current.id;
-    const list = await run(() => window.studyat.notes.remove(id), DELETE_FAILED);
+    await useNotesStore.getState().remove(id);
     setConfirming(false);
     // Kept until main has really deleted the note, so a failed delete loses no words.
-    if (!list) return;
+    if (useNotesStore.getState().notes.some((n) => n.id === id)) return;
     forgetNote(id);
-    const neighbour = list[Math.min(index, list.length - 1)];
-    setCurrentId(neighbour?.id ?? null);
-    focusNext.current = neighbour ? 'sheet' : 'new';
+    const left = useNotesStore.getState().notes.some((n) => !n.popped);
+    focusNext.current = left ? 'sheet' : 'new';
   };
 
+  // A sticky's own failure is said on that sticky.
+  const error = storeError && !all.some((n) => n.id === storeError.id && n.popped) ? storeError.text : null;
   // Another failure's message first; otherwise the save message stays while a failed save waits.
   const shownError = error ?? (failing ? SAVE_FAILED : null);
+  const atLimit = popped >= MAX_POPPED_NOTES;
 
   if (loadFailed && !loaded) {
     return (
@@ -206,7 +194,9 @@ export function NotesWidget() {
     return (
       <div className={styles.widget}>
         <div className={styles.state}>
-          <p className={styles.message}>No notes yet.</p>
+          <p className={styles.message}>
+            {all.length > 0 ? 'All your notes are on the screen.' : 'No notes yet.'}
+          </p>
           <button ref={newRef} type="button" className={styles.primaryButton} onClick={() => void add()}>
             <Icon name="plus" />
             New note
@@ -285,6 +275,17 @@ export function NotesWidget() {
             onClick={() => void add()}
           >
             <Icon name="plus" />
+          </button>
+          <button
+            ref={popRef}
+            type="button"
+            className={styles.tool}
+            aria-label="Pop out note"
+            title={atLimit ? LIMIT_COPY.notes : 'Pop out'}
+            disabled={atLimit}
+            onClick={() => void popOut()}
+          >
+            <PopOutIcon />
           </button>
           <button
             ref={deleteRef}

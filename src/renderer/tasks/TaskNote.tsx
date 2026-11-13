@@ -20,6 +20,8 @@ export interface TaskNoteProps {
   };
   /** Open notes only: Alt+ArrowUp/Down; `control` names the control that had focus so it can be refocused. */
   onMove?(task: Task, delta: -1 | 1, control: string): void;
+  /** Open notes only: the ▶ button, which starts a focus on this task. */
+  onStart?(task: Task): void;
 }
 
 /** Our own six-dot grip (real-app finding F14: big enough to find and to grab). */
@@ -70,6 +72,7 @@ export function TaskNote({
   onColour,
   dragHandlers,
   onMove,
+  onStart,
 }: TaskNoteProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task.text);
@@ -199,6 +202,17 @@ export function TaskNote({
             title="Click to edit"
           >
             {task.text}
+          </button>
+        )}
+        {onStart && !task.done && (
+          <button
+            type="button"
+            className={styles.start}
+            data-control="start"
+            aria-label={`Start focus on "${task.text}"`}
+            onClick={() => onStart(task)}
+          >
+            ▶
           </button>
         )}
         <button

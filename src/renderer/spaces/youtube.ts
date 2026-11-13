@@ -1,5 +1,6 @@
 // Lazy loader and thin typing for the YouTube IFrame API (spec §3.8). The script host is allowed
 // by the CSP; the API is fetched once, on first use.
+import type { SpaceQuality } from '../../shared/types';
 
 export interface YTPlayer {
   playVideo(): void;
@@ -12,6 +13,9 @@ export interface YTPlayer {
   /** Not in every build of the player, so both are optional. Used to switch captions off. */
   unloadModule?(module: string): void;
   setOption?(module: string, option: string, value: unknown): void;
+  /** Quality calls are likewise optional (spec §3.3). */
+  getPlaybackQuality?(): string;
+  setPlaybackQuality?(level: string): void;
 }
 
 export interface YTPlayerOptions {
@@ -21,6 +25,7 @@ export interface YTPlayerOptions {
     onReady?: () => void;
     onError?: (e: { data: number }) => void;
     onStateChange?: (e: { data: number }) => void;
+    onPlaybackQualityChange?: (e: { data: string }) => void;
   };
 }
 
@@ -102,4 +107,72 @@ export function captionsOff(player: YTPlayer): void {
   } catch {
     // A player without the captions module has nothing to switch off.
   }
+}
+
+/** What a quality target asks the player for: device pixels, and the player's quality level. */
+export const QUALITY_TARGETS = {
+  '1080': { w: 1920, h: 1080, level: 'hd1080' },
+  '1440': { w: 2560, h: 1440, level: 'hd1440' },
+  '2160': { w: 3840, h: 2160, level: 'hd2160' },
+} as const;
+
+export const QUALITY_OPTIONS: readonly { value: SpaceQuality; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: '1080', label: '1080p' },
+  { value: '1440', label: '1440p' },
+  { value: '2160', label: '4K' },
+];
+
+export const QUALITY_HINT =
+  "Asks YouTube for at least this. YouTube still drops lower if your connection can't keep up.";
+
+/** How often the playing quality is read, besides when the player reports a change. */
+export const QUALITY_POLL_MS = 5000;
+
+/** The player's quality levels as the badge names them (spec §3.3). */
+export const QUALITY_LABELS: Record<string, string> = {
+  highres: '4K+',
+  hd2160: '2160p',
+  hd1440: '1440p',
+  hd1080: '1080p',
+  hd720: '720p',
+  large: '480p',
+  medium: '360p',
+  small: '240p',
+  tiny: '144p',
+};
+
+export function qualityLabel(level: string | null | undefined): string {
+  if (level === null || level === undefined || !Object.hasOwn(QUALITY_LABELS, level)) return '—';
+  return QUALITY_LABELS[level] ?? '—';
+}
+
+/**
+ * Extra enlargement that pushes the player's own chrome (title bar, logo, "More videos") outside
+ * the window (real-app finding F7). Must equal the `scale(1.2)` in the `.youtube` rule of
+ * spaces.module.css, which a quality target's inline transform replaces.
+ */
+export const YOUTUBE_CHROME_CROP = 1.2;
+
+/** The target a stored quality names, or null for Auto and for any value we don't know. */
+export function qualityTarget(q: string): (typeof QUALITY_TARGETS)[keyof typeof QUALITY_TARGETS] | null {
+  return Object.hasOwn(QUALITY_TARGETS, q) ? QUALITY_TARGETS[q as keyof typeof QUALITY_TARGETS] : null;
+}
+
+/**
+ * CSS size of the player for a target (device pixels over the device pixel ratio, so the player
+ * gets that many real pixels) and the scale that covers the window. Null for Auto, which keeps
+ * the plain sizing, as does any unknown value. The scale is the pure cover scale; callers
+ * multiply it by YOUTUBE_CHROME_CROP.
+ */
+export function playerBox(
+  q: SpaceQuality,
+  win: { w: number; h: number },
+  dpr: number,
+): { width: number; height: number; scale: number } | null {
+  const t = qualityTarget(q);
+  if (!t) return null;
+  const width = t.w / dpr;
+  const height = t.h / dpr;
+  return { width, height, scale: Math.max(win.w / width, win.h / height) };
 }

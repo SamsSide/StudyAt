@@ -1,0 +1,99 @@
+/* Note stickies (v1.2 spec §3.2). The body has an explicit size: the frame's layout box is the
+   unscaled size and it scales that box itself, so a body that shrank near the window edge would
+   scale wrong. Framed, the paper is the stack's sheet; bare, it is a plain square of coloured paper
+   whose padding is the drag handle round the text. */
+.sticky {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 240px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+}
+
+.paper {
+  display: flex;
+  width: 240px;
+  height: 240px;
+}
+
+.text.text {
+  flex: 1;
+  height: auto;
+}
+
+/* Bare: no glass, only the paper. A soft shadow lifts it off the space; the padding round the
+   text is the handle, so it shows the grab cursor (the frame's .bareBody sets it). */
+.bare {
+  padding: var(--space-2);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 8px 22px rgba(0, 0, 0, 0.28);
+  transition: background-color var(--duration-slow) var(--ease);
+}
+
+.bare:focus-within {
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.28),
+    var(--focus-ring);
+}
+
+.bare .text {
+  padding: var(--space-2);
+  cursor: text;
+}
+
+.colourDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+.swatches {
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+  white-space: nowrap;
+}
+
+.confirmText {
+  flex: 1;
+  padding: 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+/* Under bare paper the message needs its own glass to read over the space. */
+.bareError {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bare {
+    transition: none;
+  }
+}

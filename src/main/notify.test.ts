@@ -94,6 +94,11 @@ describe('notifier', () => {
     expect(made[1]?.opts.body).toBe('90 min of focus.');
   });
 
+  it('has no reminder notification (simple-tasks spec §3.3)', () => {
+    const { notifier } = setup();
+    expect(notifier).not.toHaveProperty('notifyReminder');
+  });
+
   it('a countdown end is skipped like any other when notifications are off', () => {
     const { notifier, made, settings } = setup();
     settings.notifications = false;

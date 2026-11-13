@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Task, TaskColour } from '../../shared/types';
-import { installMockApi, mockApi, type MockApi } from '../test/mockApi';
+import { idleTimerState, installMockApi, mockApi, type MockApi } from '../test/mockApi';
 import { TasksWidget } from './TasksWidget';
 
 const task = (id: number, text: string, over: Partial<Task> = {}): Task => ({
@@ -406,5 +406,125 @@ describe('TasksWidget', () => {
     expect(api.tasks.update).toHaveBeenCalledWith(1, { done: false });
     await waitFor(() => expect(api.tasks.reorder).toHaveBeenCalledWith([2, 3, 1]));
     await waitFor(() => expect(noteTexts()[2]).toHaveTextContent('Old'));
+  });
+
+  describe('▶ Start focus', () => {
+    it('an open sticky shows ▶ labelled Start focus on "<text>" and it calls timer.startTask', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      expect(api.timer.startTask).toHaveBeenCalledWith(5);
+      // Let startTask's promise settle before asserting there is no notice.
+      await act(async () => {
+        await vi.mocked(api.timer.startTask).mock.results[0]!.value;
+      });
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('▶ resolving to a running focus shows no notice', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValue({
+        ...idleTimerState(),
+        mode: 'focus',
+        status: 'running',
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      await act(async () => {
+        await vi.mocked(api.timer.startTask).mock.results[0]!.value;
+      });
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('▶ resolving to a paused break shows the notice', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValue({
+        ...idleTimerState(),
+        mode: 'short',
+        status: 'paused',
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('Task set for your next focus.');
+    });
+
+    it('the notice clears on the next ▶ that resolves to a running focus', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValueOnce({
+        ...idleTimerState(),
+        mode: 'short',
+        status: 'running',
+      });
+      vi.mocked(api.timer.startTask).mockResolvedValueOnce({
+        ...idleTimerState(),
+        mode: 'focus',
+        status: 'running',
+      });
+      const play = await screen.findByRole('button', { name: 'Start focus on "Lab 7"' });
+      await userEvent.click(play);
+      await screen.findByText('Task set for your next focus.');
+      await userEvent.click(play);
+      await waitFor(() => expect(api.timer.startTask).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    });
+
+    it('Alt+ArrowDown on a note\'s ▶ moves the note and keeps focus on its ▶', async () => {
+      const api = setup([task(1, 'One'), task(2, 'Two')]);
+      await screen.findByText('Two');
+      const play = within(noteTexts()[0]!).getByRole('button', { name: 'Start focus on "One"' });
+      expect(play).toHaveAttribute('data-control', 'start');
+      play.focus();
+      await userEvent.keyboard('{Alt>}{ArrowDown}{/Alt}');
+      await waitFor(() => expect(noteTexts()[1]).toHaveTextContent('One'));
+      expect(api.tasks.reorder).toHaveBeenCalledWith([2, 1]);
+      expect(within(noteTexts()[1]!).getByRole('button', { name: 'Start focus on "One"' })).toHaveFocus();
+    });
+
+    it('Tab reaches ▶ between the text and the colour button', async () => {
+      setup([task(5, 'Lab 7')]);
+      (await screen.findByRole('button', { name: 'Lab 7' })).focus();
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'Start focus on "Lab 7"' })).toHaveFocus();
+      await userEvent.tab();
+      expect(screen.getByRole('button', { name: 'Change colour of "Lab 7"' })).toHaveFocus();
+    });
+
+    it('a done sticky has no ▶', async () => {
+      setup([task(1, 'Open'), task(2, 'Old', { done: true, doneAt: 5 })]);
+      await userEvent.click(await screen.findByRole('button', { name: /Done \(1\)/ }));
+      const done = within(screen.getByRole('list', { name: 'Done tasks' }));
+      expect(done.queryByRole('button', { name: /^Start focus on/ })).toBeNull();
+      expect(screen.getByRole('button', { name: 'Start focus on "Open"' })).toBeInTheDocument();
+    });
+
+    it('▶ during a running break shows "Task set for your next focus."', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValue({
+        ...idleTimerState(),
+        mode: 'short',
+        status: 'running',
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('Task set for your next focus.');
+    });
+
+    it('the notice clears on the next add', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValue({
+        ...idleTimerState(),
+        mode: 'long',
+        status: 'paused',
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      await screen.findByText('Task set for your next focus.');
+      await userEvent.type(screen.getByPlaceholderText('Add a task…'), 'More{Enter}');
+      expect(screen.queryByText('Task set for your next focus.')).toBeNull();
+    });
+
+    it('▶ on a task that is gone shows "That task no longer exists." and reloads', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockRejectedValue(new Error('That task no longer exists.'));
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('That task no longer exists.');
+      await waitFor(() => expect(api.tasks.list).toHaveBeenCalledTimes(2));
+    });
   });
 });

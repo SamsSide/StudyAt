@@ -8,7 +8,9 @@ import { VIEW, expect, prepare, quitApp, seedHistory, shot, sleep, test } from '
 const SHOTS = process.env.STUDYAT_SHOTS_DIR;
 test.skip(!SHOTS, 'screenshots only: set STUDYAT_SHOTS_DIR');
 
-const ALL = ['Timer', 'Tasks', 'Spotify', 'Calendar', 'Weather', 'Quote', 'Notes'] as const;
+const ALL = ['Timer', 'Tasks', 'Spotify', 'Calendar', 'Weather', 'Quote', 'Notes', 'Deadlines'] as const;
+/** The seven widgets an old (v1.1) profile has; Deadlines came in v1.2 and starts closed. */
+const OLD = ALL.filter((t) => t !== 'Deadlines');
 const widget = (win: Page, title: string) => win.locator(`[role="group"][aria-label="${title}"]`).first();
 const dock = (win: Page, label: string) =>
   win.locator('nav[aria-label="Dock"]').getByRole('button', { name: new RegExp(`^${label}`) }).first();
@@ -28,10 +30,11 @@ async function calm(win: Page): Promise<void> {
 }
 
 async function openAll(win: Page): Promise<void> {
-  for (const t of ['Tasks', 'Spotify']) if (!(await widget(win, t).isVisible())) await dock(win, t).click();
+  // v1.2 spec §3.1: Spotify is toggled from the Widgets popover now, with Deadlines.
+  if (!(await widget(win, 'Tasks').isVisible())) await dock(win, 'Tasks').click();
   await dock(win, 'Widgets').click();
   const pop = win.getByRole('dialog', { name: 'Widgets' });
-  for (const n of ['Calendar', 'Weather', 'Quote', 'Notes']) {
+  for (const n of ['Spotify', 'Calendar', 'Weather', 'Quote', 'Notes', 'Deadlines']) {
     const sw = pop.getByRole('switch', { name: n });
     if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click();
   }
@@ -40,9 +43,9 @@ async function openAll(win: Page): Promise<void> {
 }
 
 /** Every widget rectangle lies inside the window. */
-async function widgetRects(win: Page): Promise<Record<string, { x: number; y: number; width: number; height: number } | null>> {
+async function widgetRects(win: Page, names: readonly string[] = ALL): Promise<Record<string, { x: number; y: number; width: number; height: number } | null>> {
   const out: Record<string, { x: number; y: number; width: number; height: number } | null> = {};
-  for (const t of ALL) out[t] = await widget(win, t).boundingBox();
+  for (const t of names) out[t] = await widget(win, t).boundingBox();
   return out;
 }
 
@@ -71,8 +74,8 @@ test('final screenshots: widgets, settings, help', async ({ launch, dataDir }) =
   await openAll(win);
   await sleep(5_000);
   await calm(win);
-  await shot(win, 'all-seven-widgets.png');
-  for (const t of ['Tasks', 'Spotify', 'Calendar', 'Weather', 'Quote', 'Notes']) {
+  await shot(win, 'all-widgets.png');
+  for (const t of ['Tasks', 'Spotify', 'Calendar', 'Weather', 'Quote', 'Notes', 'Deadlines']) {
     await widget(win, t).screenshot({ path: join(SHOTS ?? '', `widget-${t.toLowerCase()}.png`) });
   }
   const rects = await widgetRects(win);
@@ -120,11 +123,11 @@ test('final screenshots: a profile with old saved widget spots is clamped on scr
   await quitApp(first.app);
 
   const { win } = await launch();
-  for (const t of ALL) await expect(widget(win, t)).toBeVisible();
+  for (const t of OLD) await expect(widget(win, t)).toBeVisible();
   await sleep(2_000);
   await calm(win);
   await shot(win, 'old-widget-spots-clamped.png');
-  const rects = await widgetRects(win);
+  const rects = await widgetRects(win, OLD);
   for (const [t, r] of Object.entries(rects)) {
     expect(r, t).not.toBeNull();
     expect(r!.x + r!.width, t).toBeLessThanOrEqual(VIEW.width + 1);

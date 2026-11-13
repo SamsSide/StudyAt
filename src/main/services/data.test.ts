@@ -2,10 +2,12 @@ import { mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db/db';
+import { deadlinesRepo } from '../db/repos/deadlines';
 import { notesRepo } from '../db/repos/notes';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { subjectsRepo } from '../db/repos/subjects';
+import { tasksRepo } from '../db/repos/tasks';
 import { nodeFs, type DbFs } from '../db/db-fs';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { csvLine, dataService, localStamp } from './data';
@@ -76,6 +78,40 @@ describe('dataService', () => {
     ]);
   });
 
+  // Simple tasks spec §3.4: `tasks` is the v1 sticky shape, as on main; the planner's lists and the
+  // v1 archive leave the export (they stay in the database and every backup).
+  it('JSON export has the sticky tasks and deadlines, and no tasksV1 or taskLists', async () => {
+    const task = tasksRepo(db).create({ text: 'Past papers', colour: 'pink' }, NOW);
+    tasksRepo(db).update(task.id, { done: true }, NOW + 5);
+    deadlinesRepo(db).create(
+      { title: 'Calculus exam', kind: 'exam', subjectId: null, due: '2026-12-01T09:00', note: '' },
+      NOW,
+    );
+    const out = join(dir, 'export.json');
+    await service().svc.exportJson(out);
+    const exported = JSON.parse(readFileSync(out, 'utf8')) as {
+      tasks: unknown[];
+      deadlines: { due: string }[];
+    };
+    expect(exported.tasks).toHaveLength(1);
+    expect(exported.tasks[0]).toEqual({
+      id: task.id,
+      text: 'Past papers',
+      colour: 'pink',
+      done: true,
+      sort: 0,
+      createdAt: NOW,
+      doneAt: NOW + 5,
+    });
+    expect(exported.deadlines[0]!.due).toBe('2026-12-01T09:00');
+    expect('tasksV1' in exported).toBe(false);
+    expect('taskLists' in exported).toBe(false);
+    // The CSV is sessions only and unchanged.
+    const csv = join(dir, 'sessions.csv');
+    await service().svc.exportCsv(csv);
+    expect(readFileSync(csv, 'utf8')).toBe('date,start,end,minutes,subject\r\n');
+  });
+
   it('quotes CSV fields that need it', () => {
     expect(csvLine(['a,b', 'say "hi"', 'plain'])).toBe('"a,b","say ""hi""",plain');
     expect(localStamp(new Date(2026, 0, 2, 3, 4).getTime())).toBe('2026-01-02 03:04');
@@ -100,6 +136,7 @@ describe('dataService', () => {
       'subjects',
       'sessions',
       'tasks',
+      'deadlines',
       'spaces',
       'sounds',
       'mixes',
@@ -108,9 +145,21 @@ describe('dataService', () => {
       'settings',
     ]);
     expect(json.exportedAt).toBe(NOW);
-    expect(json.schemaVersion).toBe(3);
+    expect(json.schemaVersion).toBe(5);
     expect(json.notes).toEqual([
-      { id: note!.id, text: 'Bring calculator', colour: 'blue', sort: 0, createdAt: NOW, updatedAt: NOW + 1 },
+      {
+        id: note!.id,
+        text: 'Bring calculator',
+        colour: 'blue',
+        sort: 0,
+        createdAt: NOW,
+        updatedAt: NOW + 1,
+        popped: false,
+        x: null,
+        y: null,
+        scale: 1,
+        bare: false,
+      },
     ]);
     expect(json.settings).not.toHaveProperty('spotifyTokens');
     for (const key of ['calendarUrls', 'calendarCache', 'weatherCache'])

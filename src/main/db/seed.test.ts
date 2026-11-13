@@ -42,7 +42,7 @@ describe('seedIfEmpty', () => {
       name: 'Rain on the window',
       source: 'WDR-5eFoxuQ',
       thumb: 'https://i.ytimg.com/vi/WDR-5eFoxuQ/hqdefault.jpg',
-      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0 },
+      opts: { audio: false, volume: 0.5, speed: 1, dim: 0.15, blur: 0, quality: 'auto' },
       createdAt: NOW,
     });
     expect(spaces.find((s) => s.kind === 'image')).toMatchObject({

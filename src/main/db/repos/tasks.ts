@@ -7,6 +7,8 @@ import { all, bool, insert, int, intOrNull, one, text, transaction, type Row } f
 export interface TasksRepo {
   /** By `sort` then id. */
   list(): Task[];
+  /** One task by id; null if there is none (the timer and IPC check a task still exists). */
+  get(id: number): Task | null;
   /** Added at the end. */
   create(input: { text: string; colour: TaskColour }, now: number): Task;
   /** Ticking a task off stamps `doneAt = now`; unticking clears it. */
@@ -60,6 +62,7 @@ export function tasksRepo(db: Db): TasksRepo {
 
   return {
     list: () => all(db.raw, 'SELECT * FROM tasks ORDER BY sort, id').map(toTask),
+    get: byId,
     create(input, now) {
       const id = insert(
         db.raw,

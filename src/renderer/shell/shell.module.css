@@ -346,8 +346,13 @@
   transition: background-color var(--duration) var(--ease);
 }
 
-.popoverRow:hover {
+.popoverRow:hover:not([aria-disabled='true']) {
   background: var(--hover);
+}
+
+.popoverRow[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .popoverRow:focus-visible {
@@ -439,6 +444,12 @@
   animation: widgetPopIn var(--duration-slow) var(--ease-spring);
 }
 
+/* A frame with focus or an open pop-up inside (WidgetFrame sets data-raised) sits above the other
+   widgets, so its menu or list isn't painted under a later one; still below --z-chrome. */
+.widget[data-raised] {
+  z-index: calc(var(--z-widget) + 1);
+}
+
 /* The resize corner (spec §3.5): bottom-right, 16 × 16, shown on hover and keyboard focus, and
    faded with the chrome (it always carries .fades). */
 .resize {
@@ -518,6 +529,49 @@
 
 .shell[data-chrome='hidden'] .bareTools {
   opacity: 0;
+}
+
+/* The bare toolbar's own controls sit on a little glass so they read over any space: the move
+   handle of a body that holds controls, and text buttons such as "Show background". */
+.bareHandle,
+.toolText {
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.bareHandle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragging .bareHandle {
+  cursor: grabbing;
+}
+
+.toolText {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease);
+}
+
+.toolText:hover {
+  background: var(--glass-fill-raised);
+}
+
+.toolText:focus-visible,
+.bareHandle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .widgetHeader {
@@ -607,6 +661,19 @@
 
 .dialog:focus-visible {
   box-shadow: var(--shadow-lg);
+}
+
+/* Overlay.tsx's portal host: fills the dialog (its containing block, by the backdrop filter) and
+   lets presses through to the board except where a pop-up panel inside takes them. */
+.portalHost {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.portalHost > * {
+  pointer-events: auto;
 }
 
 .dialogNarrow {
@@ -793,4 +860,14 @@
     opacity: 0;
     transform: translateX(-10px);
   }
+}
+
+/* Text for assistive tech only (the limit hint on a disabled popover row). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

@@ -1,10 +1,12 @@
 // The full-window background (spec §3.8): local video/image through the media protocol, YouTube
 // through the IFrame API, dim overlay and blur. Paused while the window is hidden; under
-// reduced motion it stays on a still until Sam presses play on the footer.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+// reduced motion it stays on a still until Sam presses play on the footer. Sam can also pause it
+// (`backgroundPaused`, spec §3.4), which pauses the video's own audio with it.
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Space } from '../../shared/types';
 import styles from './spaces.module.css';
-import { mediaUrl, useSpacesStore } from './spacesStore';
+import { useYouTubeQuality } from './qualityStore';
+import { isBackgroundPaused, mediaUrl, useSpacesStore } from './spacesStore';
 import { useWindowVisibility } from './windowVisibility';
 import {
   captionsOff,
@@ -12,7 +14,11 @@ import {
   EMBED_BLOCKED,
   loadYouTubeApi,
   PERSISTENT_ERRORS,
+  playerBox,
   playerVars,
+  QUALITY_POLL_MS,
+  qualityTarget,
+  YOUTUBE_CHROME_CROP,
   type YTPlayer,
 } from './youtube';
 
@@ -30,7 +36,7 @@ function useDocumentHidden(): boolean {
   return hidden;
 }
 
-function useOnline(): boolean {
+export function useOnline(): boolean {
   const [online, setOnline] = useState(() => navigator.onLine);
   useEffect(() => {
     const on = (e: Event) => {
@@ -49,10 +55,10 @@ function useOnline(): boolean {
 }
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
-const readReduced = (): boolean =>
+export const readReduced = (): boolean =>
   typeof window.matchMedia === 'function' && window.matchMedia(REDUCED).matches;
 
-function useReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(readReduced);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -62,6 +68,16 @@ function useReducedMotion(): boolean {
     return () => mq.removeEventListener('change', on);
   }, []);
   return reduced;
+}
+
+/**
+ * Whether the background can actually move, so a play control is worth showing: not an image, a
+ * missing file, a YouTube video that can't embed or play, or one that is offline. The footer and the
+ * top bar share it.
+ */
+export function backgroundPlayable(space: Space, embedError: string | undefined, online: boolean): boolean {
+  if (space.kind === 'image' || space.missing) return false;
+  return space.kind === 'video' || (embedError === undefined && online);
 }
 
 function Thumb({ space }: { space: Space }) {
@@ -98,13 +114,27 @@ function LocalVideo({ space, paused }: { space: Space; paused: boolean }) {
   );
 }
 
+/** Size of the window and the device pixel ratio, kept current on resize. */
+function useViewport(): { w: number; h: number; dpr: number } {
+  const read = () => ({ w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio || 1 });
+  const [v, setV] = useState(read);
+  useEffect(() => {
+    const on = () => setV(read());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return v;
+}
+
 function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const player = useRef<YTPlayer | null>(null);
   const [ready, setReady] = useState(false);
   const markEmbedError = useSpacesStore((s) => s.markEmbedError);
   const clearVideoError = useSpacesStore((s) => s.clearVideoError);
-  const { audio, volume, speed } = space.opts;
+  const { audio, volume, speed, quality } = space.opts;
+  const viewport = useViewport();
+  const report = useYouTubeQuality((s) => s.report);
 
   useEffect(() => {
     let dead = false;
@@ -127,12 +157,18 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
               setReady(true);
             },
             onStateChange: (e) => {
-              if (dead || e.data !== YT_PLAYING) return;
+              if (dead) return;
+              report({ spaceId: space.id, playing: e.data === YT_PLAYING });
+              if (e.data !== YT_PLAYING) return;
               played = true;
               // It is playing, so any earlier mark was wrong.
               clearVideoError(space.id);
               // The player can bring captions back when a looped video starts again.
               if (player.current) captionsOff(player.current);
+            },
+            // The player reports the level it actually plays, which may sit below the target.
+            onPlaybackQualityChange: (e) => {
+              if (!dead) report({ spaceId: space.id, level: e.data });
             },
             // 101/150: the owner blocked embedding. 2 bad id, 5 HTML5 player and 100 removed or
             // private still leave a black frame, so they get a message too, but only while the
@@ -160,8 +196,36 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
       player.current?.destroy();
       player.current = null;
       el?.replaceChildren();
+      const q = useYouTubeQuality.getState();
+      if (q.spaceId === space.id) q.clear();
     };
-  }, [space.id, space.source, markEmbedError, clearVideoError]);
+  }, [space.id, space.source, markEmbedError, clearVideoError, report]);
+
+  // Ask for the target level (spec §3.3); Auto leaves the choice to YouTube. The player is re-created
+  // on a quality change (it is keyed on it), so `ready` goes false then true again, and this effect
+  // only needs to run on ready.
+  useEffect(() => {
+    const p = player.current;
+    const target = qualityTarget(quality);
+    if (!p || !ready || !target) return;
+    p.setPlaybackQuality?.(target.level);
+  }, [ready, quality]);
+
+  // The badge: read the playing level every few seconds while it plays, and not while paused.
+  useEffect(() => {
+    const p = player.current;
+    if (!p || !ready) return;
+    if (paused) {
+      report({ spaceId: space.id, playing: false });
+      return;
+    }
+    const read = () => {
+      const level = p.getPlaybackQuality?.();
+      if (level !== undefined) report({ spaceId: space.id, level });
+    };
+    const id = setInterval(read, QUALITY_POLL_MS);
+    return () => clearInterval(id);
+  }, [ready, paused, space.id, report]);
 
   useEffect(() => {
     const p = player.current;
@@ -179,8 +243,17 @@ function YouTubeVideo({ space, paused }: { space: Space; paused: boolean }) {
     else p.playVideo();
   }, [ready, paused]);
 
-  // A 16:9 frame scaled to cover the window.
-  return <div ref={host} data-testid="space-youtube" className={styles.youtube} />;
+  // Auto: a 16:9 frame scaled to cover the window. A target: the player at that many device
+  // pixels (so YouTube picks that rendition), scaled down to cover, centred, with the same chrome crop as the CSS rule.
+  const box = playerBox(quality, { w: viewport.w, h: viewport.h }, viewport.dpr);
+  const style: CSSProperties | undefined = box
+    ? {
+        width: box.width,
+        height: box.height,
+        transform: `translate(-50%, -50%) scale(${box.scale * YOUTUBE_CHROME_CROP})`,
+      }
+    : undefined;
+  return <div ref={host} data-testid="space-youtube" className={styles.youtube} style={style} />;
 }
 
 export function SpaceBackground() {
@@ -189,19 +262,19 @@ export function SpaceBackground() {
   const loaded = useSpacesStore((s) => s.loaded);
   const loadFailed = useSpacesStore((s) => s.loadFailed);
   const embedErrors = useSpacesStore((s) => s.embedErrors);
+  const backgroundPaused = useSpacesStore((s) => s.backgroundPaused);
   // Minimised or in the tray: main says so (document.hidden stays false there, see windowVisibility).
   const windowVisible = useWindowVisibility((s) => s.visible);
   const documentHidden = useDocumentHidden();
   const online = useOnline();
   const reduced = useReducedMotion();
-  const [playId, setPlayId] = useState<number | null>(null);
+  const stillPlayId = useSpacesStore((s) => s.stillPlayId);
 
   useEffect(() => {
     if (!loaded) void useSpacesStore.getState().load();
   }, [loaded]);
 
   const space = spaces.find((s) => s.id === activeId) ?? null;
-  const userPlay = space !== null && playId === space.id;
 
   if (!space)
     return (
@@ -221,8 +294,10 @@ export function SpaceBackground() {
       </div>
     );
 
-  const stillFirst = reduced && !userPlay && space.kind !== 'image';
-  const paused = !windowVisible || documentHidden || stillFirst;
+  // Under reduced motion a space shows its still until Sam plays it, and again once he pauses it.
+  const stillFirst = reduced && space.kind !== 'image' && (stillPlayId !== space.id || backgroundPaused);
+  const paused = !windowVisible || documentHidden || stillFirst || backgroundPaused;
+  const playing = !isBackgroundPaused({ backgroundPaused, stillPlayId, activeId }, reduced);
   const { dim, blur } = space.opts;
   const videoError = embedErrors[space.id];
 
@@ -237,7 +312,7 @@ export function SpaceBackground() {
   let media: ReactNode;
   let notice: ReactNode = null;
   // Only a space that can actually move gets the reduced-motion play button.
-  let playable = space.kind !== 'image' && !space.missing;
+  const playable = backgroundPlayable(space, videoError, online);
   if (space.missing) {
     media = <Thumb space={space} />;
     notice = (
@@ -253,19 +328,18 @@ export function SpaceBackground() {
   } else if (videoError === 'embed') {
     media = <Thumb space={space} />;
     notice = <p>This video can't be embedded.</p>;
-    playable = false;
   } else if (!online) {
     media = <Thumb space={space} />;
     notice = <p data-testid="space-offline">Offline</p>;
-    playable = false;
   } else if (videoError === 'play') {
     media = <Thumb space={space} />;
     notice = <p>This video can't be played.</p>;
-    playable = false;
   } else if (stillFirst) {
     media = <Thumb space={space} />;
   } else {
-    media = <YouTubeVideo space={space} paused={paused} />;
+    // Keyed by quality: a new level re-creates the player at its new size straight away (spec §3.3),
+    // and the old player's level report goes with it, rather than lingering until a restart.
+    media = <YouTubeVideo key={`${space.id}:${space.opts.quality}`} space={space} paused={paused} />;
   }
 
   return (
@@ -284,8 +358,13 @@ export function SpaceBackground() {
       {notice && <div className={styles.notice}>{notice}</div>}
       {reduced && playable && (
         <div className={styles.footer}>
-          <button type="button" className={styles.btn} onClick={() => setPlayId(userPlay ? null : space.id)}>
-            {userPlay ? 'Pause background' : 'Play background'}
+          <button
+            type="button"
+            className={styles.btn}
+            // The footer, the top bar's button and V share one state (isBackgroundPaused).
+            onClick={() => useSpacesStore.getState().toggleBackground(true)}
+          >
+            {playing ? 'Pause background' : 'Play background'}
           </button>
         </div>
       )}

@@ -4,7 +4,7 @@
 import { existsSync } from 'node:fs';
 import { basename, extname, isAbsolute, join } from 'node:path';
 import { parseYouTubeId } from '../../core/youtube';
-import type { Space, SpaceOpts } from '../../shared/types';
+import type { Space, SpaceOpts, SpaceQuality } from '../../shared/types';
 import type { Db } from '../db/db';
 import { settingsRepo } from '../db/repos/settings';
 import { spacesRepo, youTubeThumb, type MainSpacePatch } from '../db/repos/spaces';
@@ -18,7 +18,9 @@ export const MAX_THUMB_CHARS = 300_000;
 const THUMB_PREFIXES = ['data:image/jpeg;base64,', 'https://i.ytimg.com/'];
 
 /** Ranges of the per-space options (spec §3.8). */
-const OPT_RANGES: Record<Exclude<keyof SpaceOpts, 'audio'>, [number, number]> = {
+const QUALITIES: readonly SpaceQuality[] = ['auto', '1080', '1440', '2160'];
+
+const OPT_RANGES: Record<Exclude<keyof SpaceOpts, 'audio' | 'quality'>, [number, number]> = {
   volume: [0, 1],
   speed: [0.5, 1.5],
   dim: [0, 0.6],
@@ -54,6 +56,12 @@ export function sanitiseSpacePatch(v: unknown): MainSpacePatch {
     const o = assertRecord(p.opts, 'opts');
     const opts: Partial<SpaceOpts> = {};
     if (o.audio !== undefined) opts.audio = assertBool(o.audio, 'audio');
+    if (o.quality !== undefined) {
+      const q = assertStr(o.quality, 'quality');
+      if (!(QUALITIES as readonly string[]).includes(q))
+        throw new IpcValidationError('quality must be auto, 1080, 1440 or 2160');
+      opts.quality = q as SpaceQuality;
+    }
     for (const [key, [min, max]] of Object.entries(OPT_RANGES) as [
       keyof typeof OPT_RANGES,
       [number, number],

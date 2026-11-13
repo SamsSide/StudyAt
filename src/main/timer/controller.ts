@@ -4,8 +4,11 @@
 // a minute) when it ends. Suspend and lock pause it; idle time over the threshold becomes an away
 // prompt that is discarded if not answered in 2 minutes, renderer or not, unless the away prompt
 // is switched off (v1.1 spec §3.1). A Countdown is a focus segment like a Pomodoro focus (spec
-// §3.2). A held task that is done or gone is let go whenever no focus segment runs (spec §3.3). No
-// clock inside: time, intervals and idle seconds are injected.
+// §3.2). A held task that is done or gone is let go whenever no focus segment runs (spec §3.3). A
+// task change splits the row and never touches the subject, and ▶ on a task starts focus
+// (simple-tasks spec §3.2). The session intention labels the focus rows and, once the segment
+// stops, asks how it went (v1.2 spec §3.11); neither ever splits, extends or shortens focus time.
+// No clock inside: time, intervals and idle seconds are injected.
 import {
   initialState,
   lengthOf,
@@ -16,7 +19,15 @@ import {
 } from '../../core/timer/machine';
 import { dayKeyOf } from '../../core/time';
 import { isFocusMode } from '../../shared/modes';
-import type { AwayPrompt, Mode, SegmentEnd, TimerState } from '../../shared/types';
+import { INTENTION_MAX } from '../../shared/limits';
+import type {
+  AwayPrompt,
+  Mode,
+  OutcomeAsk,
+  SegmentEnd,
+  SessionOutcome,
+  TimerState,
+} from '../../shared/types';
 import type { Db } from '../db/db';
 import { sessionsRepo, type SessionsRepo } from '../db/repos/sessions';
 import { settingsRepo, type SettingsRepo } from '../db/repos/settings';
@@ -81,6 +92,8 @@ interface Emitted {
   completedFocusCount: number;
   subjectId: number | null;
   taskId: number | null;
+  intention: string | null;
+  askPomodoroId: string | null;
   second: number;
   at: number;
 }
@@ -100,6 +113,8 @@ export class TimerController {
    */
   private awayPromptOnSince = Number.NEGATIVE_INFINITY;
   private rolloverHour = 4;
+  /** Settings → Timer "Ask what I'll do each focus" (v1.2 spec §3.11). */
+  private sessionIntention = true;
   private machine: MachineState;
   private subjectId: number | null = null;
   /**
@@ -108,6 +123,13 @@ export class TimerController {
    */
   private taskId: number | null = null;
   private taskText: string | null = null;
+  /**
+   * What the current or next focus is for (v1.2 spec §3.11), written on its rows. It clears when a
+   * focus of a minute or more stops and becomes the outcome question.
+   */
+  private intention: string | null = null;
+  /** The stopped focus whose outcome is asked, until answered or the next focus starts. */
+  private askOutcome: OutcomeAsk | null = null;
   /** The focus row of the current segment, open from focus start to its end. */
   private open: Row | null = null;
   /** Rows the ledger or a pending prompt can still charge, plus the open one. */
@@ -220,18 +242,22 @@ export class TimerController {
       todayFocusMs,
       taskId: this.taskId,
       taskText: this.taskText,
+      intention: this.intention,
+      askOutcome: this.askOutcome,
     };
   }
 
   start(): TimerState {
-    return this.command((now) => {
-      if (this.machine.status === 'idle') {
-        // Settings are read at each segment start, so a changed length applies to a fresh segment.
-        this.loadSettings();
-        this.resizeIdle();
-      }
-      this.apply({ type: 'start' }, now);
-    });
+    return this.command((now) => this.startNow(now));
+  }
+
+  private startNow(now: number): void {
+    if (this.machine.status === 'idle') {
+      // Settings are read at each segment start, so a changed length applies to a fresh segment.
+      this.loadSettings();
+      this.resizeIdle();
+    }
+    this.apply({ type: 'start' }, now);
   }
 
   pause(): TimerState {
@@ -268,13 +294,62 @@ export class TimerController {
   /**
    * Spec §3.3: a task change splits the row exactly like a subject change. `text` is the task's
    * text now, recorded on the row so Stats keeps its old name. The same id again changes nothing.
+   * The subject is never changed by a task (simple-tasks spec §3.2).
    */
   setTask(id: number | null, text: string | null): TimerState {
+    return this.command((now) => this.changeTask(id, text, now));
+  }
+
+  /**
+   * Simple-tasks spec §3.2 ▶ on a sticky: sets the task, then an idle focus mode starts; an idle
+   * break switches to Focus and starts it. A focus running or paused only takes the task (one
+   * split); a break running or paused goes on, and the task waits for the next focus.
+   */
+  startTask(id: number, text: string): TimerState {
     return this.command((now) => {
-      if (id === this.taskId) return;
-      this.taskId = id;
-      this.taskText = id === null ? null : text;
-      this.split(now);
+      this.changeTask(id, text, now);
+      if (this.machine.status !== 'idle') return;
+      if (!isFocusMode(this.machine.mode)) this.apply({ type: 'setMode', mode: 'focus' }, now);
+      this.startNow(now);
+    });
+  }
+
+  private changeTask(id: number | null, text: string | null, now: number): void {
+    if (id === this.taskId) return;
+    this.taskId = id;
+    this.taskText = id === null ? null : text;
+    // Picking a task fills an empty intention with its text, never overwrites one (v1.2 spec §3.11).
+    if (id !== null && this.intention === null && this.sessionIntention) this.intention = clean(text);
+    this.split(now);
+  }
+
+  /**
+   * v1.2 spec §3.11: trimmed (at most INTENTION_MAX characters) or null. Mid-segment it relabels the
+   * open row, and the rows after it inherit it; it never splits.
+   */
+  setIntention(text: string | null): TimerState {
+    return this.command(() => {
+      const next = clean(text);
+      if (next === this.intention) return;
+      this.intention = next;
+      if (this.open) {
+        this.sessions.setIntention(this.open.id, next);
+        this.dirty = true;
+      }
+    });
+  }
+
+  /**
+   * The answer to the outcome question: stored on every row of `pomodoroId` (null, a Skip, stores
+   * nothing). Either way the question for that pomodoro goes (v1.2 spec §3.11).
+   */
+  setOutcome(pomodoroId: string, outcome: SessionOutcome | null): TimerState {
+    return this.command(() => {
+      if (outcome !== null) {
+        this.sessions.setOutcome(pomodoroId, outcome);
+        this.dirty = true;
+      }
+      if (this.askOutcome?.pomodoroId === pomodoroId) this.askOutcome = null;
     });
   }
 
@@ -291,7 +366,7 @@ export class TimerController {
    */
   private releaseFinishedTask(): void {
     if (this.taskId === null || this.open) return;
-    const task = this.tasks.list().find((t) => t.id === this.taskId);
+    const task = this.tasks.get(this.taskId);
     if (task && !task.done) return;
     this.taskId = null;
     this.taskText = null;
@@ -433,9 +508,14 @@ export class TimerController {
           break;
         }
         case 'focusStopped':
-          if (this.open) this.closeOpen(now);
+          if (this.open) {
+            const { pomodoroId, dayKey } = this.open;
+            this.closeOpen(now);
+            this.askHowItWent(pomodoroId, dayKey);
+          }
           break;
         case 'focusStarted':
+          this.askOutcome = null;
           // Before the row opens, so an auto-started focus never splits a sliver off for it.
           this.releaseFinishedTask();
           this.openRow(this.deps.uuid(), now);
@@ -510,6 +590,8 @@ export class TimerController {
       completedFocusCount: m.completedFocusCount,
       subjectId: this.subjectId,
       taskId: this.taskId,
+      intention: this.intention,
+      askPomodoroId: this.askOutcome?.pomodoroId ?? null,
       second: Math.ceil(Math.max(0, remaining) / 1000),
       at: now,
     };
@@ -522,6 +604,8 @@ export class TimerController {
       last.completedFocusCount !== next.completedFocusCount ||
       last.subjectId !== next.subjectId ||
       last.taskId !== next.taskId ||
+      last.intention !== next.intention ||
+      last.askPomodoroId !== next.askPomodoroId ||
       last.second !== next.second ||
       now - last.at >= EMIT_EVERY_MS;
     if (!always && !changed) return;
@@ -558,6 +642,7 @@ export class TimerController {
       subjectId: this.subjectId,
       taskId: this.taskId,
       taskText: this.taskText,
+      intention: this.intention,
       startedAt: now,
       dayKey,
     });
@@ -596,6 +681,21 @@ export class TimerController {
     row.deleted = this.sessions.deleteIfShort(row.id);
     this.open = null;
     this.dirty = true;
+  }
+
+  /**
+   * v1.2 spec §3.11: a stopped focus (end, Skip, Reset, mode change) whose surviving rows hold a
+   * minute or more, with an intention set, asks how it went; the intention moves into the question.
+   * Under a minute (nothing was recorded) the intention stays for the next focus.
+   */
+  private askHowItWent(pomodoroId: string, dayKey: string): void {
+    if (!this.sessionIntention || this.intention === null) return;
+    let focusMs = 0;
+    for (const s of this.sessions.list({ from: dayKey, to: dayKey }))
+      if (s.pomodoroId === pomodoroId && s.status === 'done') focusMs += s.focusMs;
+    if (focusMs < MINUTE) return;
+    this.askOutcome = { pomodoroId, intention: this.intention };
+    this.intention = null;
   }
 
   private todayFocusMs(now: number, live: number): number {
@@ -783,6 +883,7 @@ export class TimerController {
     this.awayPrompt = s.awayPrompt;
     this.idleThresholdMs = s.idleMinutes * MINUTE;
     this.rolloverHour = s.rolloverHour;
+    this.sessionIntention = s.sessionIntention;
   }
 
   /** A fresh (untouched) idle segment takes the configured length of its mode. */
@@ -792,4 +893,10 @@ export class TimerController {
     const len = lengthOf(m.mode, this.cfg);
     this.machine = { ...m, segmentMs: len, remainingMs: len };
   }
+}
+
+/** An intention as stored: trimmed, at most INTENTION_MAX code points, empty as null (§3.11). */
+function clean(text: string | null): string | null {
+  const t = Array.from(text?.trim() ?? '').slice(0, INTENTION_MAX).join('').trim();
+  return t === '' ? null : t;
 }

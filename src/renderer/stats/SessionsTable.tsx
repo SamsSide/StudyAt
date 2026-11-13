@@ -1,13 +1,16 @@
 // "Sessions" (spec §4): every recorded focus row, newest first. A session's subject can be changed
 // or the session deleted (after a confirm inside the overlay), and nothing else: there is no way
 // to edit its time (spec §3.4 rule 10). A running session belongs to the timer and is left alone.
-// After a change the overlay's revision bumps, so every number reloads from main.
+// After a change the overlay's revision bumps, so every number reloads from main, and the stats
+// widgets on the space refetch too. Each row shows the focus's intention and how it went (v1.2
+// spec §3.11): ✓ Done, ½ Partly, ✗ Not.
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 import { NO_SUBJECT_NAME } from '../../core/stats/totals';
-import type { Session } from '../../shared/types';
+import type { Session, SessionOutcome } from '../../shared/types';
 import { logIpcError } from '../lib/ipcError';
 import { formatHm } from '../shell/format';
 import { useStudyStore } from '../shell/store';
+import { refreshStatCards } from '../statWidgets/statWidgetsStore';
 import { formatClockTime, formatDayLabel } from './format';
 import { LoadError } from './LoadError';
 import { Skeleton } from './Skeleton';
@@ -23,6 +26,13 @@ interface Edit {
   subjectId: number | null;
   saved: boolean;
 }
+
+/** The outcome mark and its spoken name (spec §3.11). */
+const OUTCOME_MARKS: Record<SessionOutcome, { mark: string; label: string }> = {
+  done: { mark: '✓', label: 'Done' },
+  partly: { mark: '½', label: 'Partly' },
+  not: { mark: '✗', label: 'Not' },
+};
 
 const loadSessions = (): Promise<Session[]> => window.studyat.stats.sessions();
 
@@ -116,6 +126,7 @@ export function SessionsTable({
       await window.studyat.stats.updateSession(s.id, { subjectId });
       settle(s.id, subjectId, (e) => ({ ...e, saved: true }));
       onChanged();
+      refreshStatCards();
     } catch (err) {
       logIpcError('Changing a session subject failed', err);
       settle(s.id, subjectId, () => null);
@@ -141,6 +152,7 @@ export function SessionsTable({
       setConfirming(null);
       wrap.current?.focus();
       onChanged();
+      refreshStatCards();
     } catch (err) {
       logIpcError('Deleting a session failed', err);
       setError('Couldn’t delete that session. Please try again.');
@@ -189,6 +201,7 @@ export function SessionsTable({
                 </th>
                 <th scope="col">Subject</th>
                 <th scope="col">Task</th>
+                <th scope="col">Intention</th>
                 <th scope="col">
                   <span className={styles.visuallyHidden}>Actions</span>
                 </th>
@@ -233,6 +246,19 @@ export function SessionsTable({
                     <td className={styles.taskCell} title={s.taskText ?? undefined}>
                       {s.taskText}
                     </td>
+                    <td className={styles.taskCell} title={s.intention ?? undefined}>
+                      {s.outcome && (
+                        <span
+                          role="img"
+                          aria-label={OUTCOME_MARKS[s.outcome].label}
+                          title={OUTCOME_MARKS[s.outcome].label}
+                        >
+                          {OUTCOME_MARKS[s.outcome].mark}
+                        </span>
+                      )}
+                      {s.outcome && s.intention && ' '}
+                      {s.intention}
+                    </td>
                     <td className={styles.numeric}>
                       {running ? (
                         <span className={styles.running}>In progress</span>
@@ -253,7 +279,7 @@ export function SessionsTable({
                   </tr>,
                   confirming === s.id && (
                     <tr key={`${s.id}-confirm`}>
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div
                           className={styles.confirm}
                           role="group"

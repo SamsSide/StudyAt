@@ -3,7 +3,7 @@
 import { type CSSProperties, useEffect, useId, useRef, useState } from 'react';
 import { BUILTIN_CHIME_IDS, CHIME_NAMES } from '../../audio/chimes';
 import { audioEngine } from '../../audio/engine';
-import { chimeUrl } from '../../audio/useChimes';
+import { chimeUrl, playCountdownPreview } from '../../audio/useChimes';
 import { logIpcError } from '../../lib/ipcError';
 import { useStudyStore } from '../../shell/store';
 import type { ChimeId, Sound } from '../../../shared/types';
@@ -114,6 +114,9 @@ function ChimePicker({ label, value, volume, repeat, files, onFilesChanged, onPi
 export function ChimesSection({ settings, update }: SectionProps) {
   const volumeId = useId();
   const [files, setFiles] = useState<Sound[]>([]);
+  // The running countdown preview's cancel: a new preview, or leaving the section, stops it first.
+  const stopPreview = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopPreview.current?.(), []);
   // The slider follows the finger; the save waits until it settles. While a value is waiting or
   // saving, an older answer from main never pulls the slider back; once the last save lands the
   // slider takes main's value, so a failed save shows what is really stored.
@@ -220,6 +223,23 @@ export function ChimesSection({ settings, update }: SectionProps) {
         checked={settings.tickLastMinute}
         onChange={(v) => update({ tickLastMinute: v })}
       />
+      <Toggle
+        label="Count down the last 3 seconds"
+        checked={settings.countdownPips}
+        onChange={(v) => update({ countdownPips: v })}
+      />
+      <Row label="Preview countdown" hint="Three pips, then the focus-end chime">
+        <button
+          type="button"
+          className={styles.button}
+          onClick={() => {
+            stopPreview.current?.();
+            stopPreview.current = playCountdownPreview({ ...settings, chimeVolume: volume });
+          }}
+        >
+          Preview
+        </button>
+      </Row>
       <Toggle
         label="Chime when focus starts"
         checked={settings.chimeOnStart}

@@ -1020,7 +1020,10 @@ describe('TimerController', () => {
 
   // ── v1.1: a task on the timer (spec §3.3) ──
 
-  /** Held tasks are real rows: one that is missing is cleared whenever no focus segment runs. */
+  /**
+   * Held tasks are real sticky rows (simple-tasks spec §3.2): one that is missing is cleared
+   * whenever no focus segment runs.
+   */
   const addTask = (text: string): number => tasksRepo(db).create({ text, colour: 'yellow' }, clock.time).id;
   const tickOff = (id: number) => tasksRepo(db).update(id, { done: true }, clock.time);
 
@@ -1216,5 +1219,167 @@ describe('TimerController', () => {
     c.dispose();
     tickOff(a);
     expect(c.getState()).toMatchObject({ taskId: a });
+  });
+
+  // ── simple tasks: no subject travels with a task, ▶ on a sticky (spec §3.2); intention (v1.2 §3.11) ──
+
+  it('a task change mid-focus splits once on the pomodoro and day key, and keeps the subject', async () => {
+    const c = make();
+    c.setSubject(1);
+    c.start();
+    at(10 * MIN);
+    c.setTask(5, 'Lecture 5 notes');
+    at(25 * MIN);
+    const r = rows();
+    expect(r).toHaveLength(2);
+    expect(r.map((s) => [s.subjectId, s.taskId, s.taskText, s.focusMs])).toEqual([
+      [1, null, null, 10 * MIN],
+      [1, 5, 'Lecture 5 notes', 15 * MIN],
+    ]);
+    expect(new Set(r.map((s) => s.pomodoroId)).size).toBe(1);
+    expect(new Set(r.map((s) => s.dayKey)).size).toBe(1);
+  });
+  it('setTask while idle sets the task without a row; the subject is unchanged', () => {
+    const c = make();
+    c.setSubject(3);
+    expect(c.setTask(5, 'A')).toMatchObject({ taskId: 5, taskText: 'A', subjectId: 3, status: 'idle' });
+    expect(rows()).toHaveLength(0);
+  });
+  // A focus start lets go of a held task that is done or missing, so ▶ needs a real sticky.
+  it('startTask from idle Focus sets the task and starts focus; the subject is unchanged', () => {
+    const t = tasksRepo(db).create({ text: 'Lab 7', colour: 'yellow' }, NOW);
+    expect(t.id).toBeGreaterThan(0);
+    db.raw.run('UPDATE tasks SET id = 9 WHERE id = ?', [t.id]);
+    const c = make();
+    c.setSubject(3);
+    expect(c.startTask(9, 'Lab 7')).toMatchObject({
+      mode: 'focus',
+      status: 'running',
+      taskId: 9,
+      subjectId: 3,
+    });
+    const open = one(db.raw, 'SELECT task_id, task_text, subject_id FROM sessions WHERE ended_at IS NULL');
+    expect(open).toEqual({ task_id: 9, task_text: 'Lab 7', subject_id: 3 });
+  });
+  it('startTask in an idle break switches to Focus and starts', () => {
+    const t = tasksRepo(db).create({ text: 'A', colour: 'yellow' }, NOW);
+    const c = make();
+    c.setMode('short');
+    expect(c.startTask(t.id, 'A')).toMatchObject({ mode: 'focus', status: 'running', taskId: t.id });
+    expect(rows()).toHaveLength(1);
+  });
+  it('startTask while focus runs or is paused only sets the task, one split', async () => {
+    const c = make();
+    c.setSubject(1);
+    c.start();
+    at(5 * MIN);
+    c.pause();
+    expect(c.startTask(5, 'A')).toMatchObject({ status: 'paused', taskId: 5, subjectId: 1 });
+    expect(rows()).toHaveLength(2);
+  });
+  it('startTask during a running break only sets the task', () => {
+    const c = make();
+    c.setMode('short');
+    c.start();
+    at(MIN);
+    expect(c.startTask(5, 'A')).toMatchObject({ mode: 'short', status: 'running', taskId: 5 });
+    expect(rows()).toHaveLength(0);
+  });
+  it('setIntention mid-segment updates the open row and never splits', async () => {
+    const c = make();
+    c.start();
+    at(5 * MIN);
+    c.setIntention('Finish Q1–3');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]!.intention).toBe('Finish Q1–3');
+    c.setTask(5, 'Q sheet');
+    at(10 * MIN);
+    expect(rows().map((s) => s.intention)).toEqual(['Finish Q1–3', 'Finish Q1–3']);
+  });
+  it('cuts an intention by code points, never inside a surrogate pair', () => {
+    const c = make();
+    c.start();
+    c.setIntention('a'.repeat(139) + '😀😀');
+    expect(rows()[0]!.intention).toBe('a'.repeat(139) + '😀');
+  });
+  it('a focus end after a minute with an intention asks for the outcome and clears the field', async () => {
+    const c = make();
+    c.setIntention('Read ch. 4');
+    c.start();
+    at(25 * MIN);
+    const s = c.getState();
+    expect(s.askOutcome).toEqual({ pomodoroId: rows()[0]!.pomodoroId, intention: 'Read ch. 4' });
+    expect(s.intention).toBeNull();
+  });
+  it('Skip or Reset after a minute asks too; under a minute it does not and keeps the intention', async () => {
+    const c = make();
+    c.setIntention('A');
+    c.start();
+    at(2 * MIN);
+    c.skip();
+    expect(c.getState().askOutcome?.intention).toBe('A');
+    c.setMode('focus');
+    c.setIntention('B');
+    c.start();
+    at(4 * MIN);
+    c.reset();
+    expect(c.getState().askOutcome?.intention).toBe('B');
+    c.setIntention('C');
+    c.start();
+    at(4 * MIN + 30_000);
+    c.reset();
+    expect(c.getState()).toMatchObject({ askOutcome: null, intention: 'C' });
+  });
+  it('setOutcome stores on every row of the pomodoro and clears the question', async () => {
+    const c = make();
+    c.setIntention('X');
+    c.start();
+    at(5 * MIN);
+    c.setTask(2, 'B');
+    at(25 * MIN);
+    const pid = c.getState().askOutcome!.pomodoroId;
+    expect(c.setOutcome(pid, 'partly').askOutcome).toBeNull();
+    expect(rows().map((s) => s.outcome)).toEqual(['partly', 'partly']);
+  });
+  it('setOutcome(pid, null) stores nothing and clears the question', async () => {
+    const c = make();
+    c.setIntention('X');
+    c.start();
+    at(25 * MIN);
+    expect(c.setOutcome(c.getState().askOutcome!.pomodoroId, null).askOutcome).toBeNull();
+    expect(rows()[0]!.outcome).toBeNull();
+  });
+  it('the next focus start clears an unanswered question', async () => {
+    const c = make();
+    c.setIntention('X');
+    c.start();
+    at(25 * MIN);
+    c.setMode('focus');
+    expect(c.start().askOutcome).toBeNull();
+  });
+  it('sessionIntention off: no question is asked', async () => {
+    settingsRepo(db).set({ sessionIntention: false });
+    const c = make();
+    c.setIntention('X');
+    c.start();
+    at(25 * MIN);
+    expect(c.getState().askOutcome).toBeNull();
+  });
+  it('picking a task fills an empty intention with its title, never overwrites one', () => {
+    const c = make();
+    expect(c.setTask(5, 'Lecture 5 notes').intention).toBe('Lecture 5 notes');
+    c.setIntention('Mine');
+    expect(c.setTask(6, 'Other').intention).toBe('Mine');
+  });
+  it('a held task ticked off leaves the timer once no focus segment is open', async () => {
+    const t = tasksRepo(db).create({ text: 'A', colour: 'yellow' }, NOW);
+    const c = make();
+    c.setTask(t.id, 'A');
+    c.start();
+    at(5 * MIN);
+    tasksRepo(db).update(t.id, { done: true }, NOW + 5 * MIN);
+    expect(c.getState().taskId).toBe(t.id);
+    at(25 * MIN);
+    expect(c.getState().taskId).toBeNull();
   });
 });

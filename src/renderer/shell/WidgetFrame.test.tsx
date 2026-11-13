@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings } from '../../shared/types';
@@ -175,6 +176,109 @@ describe('WidgetFrame', () => {
     expect(api.settings.set).toHaveBeenCalledWith({
       widgets: { tasks: { open: false, x: 0.5, y: 0.5, autoHide: false, scale: 1 } },
     });
+  });
+});
+
+describe('WidgetFrame raised above other widgets (pop-ups under later widgets)', () => {
+  function Menu() {
+    const [open, setOpen] = useState(false);
+    return (
+      <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        More
+      </button>
+    );
+  }
+
+  it('is not raised by an expanded disclosure (a Week day header starts open)', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <button type="button" aria-expanded="true">
+          Monday
+        </button>
+      </WidgetFrame>,
+    );
+    await act(async () => {});
+    expect(frame()).not.toHaveAttribute('data-raised');
+  });
+
+  it('is raised by an expanded data-popup trigger (a frosted group panel)', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <button type="button" data-popup aria-expanded="true">
+          Filter
+        </button>
+      </WidgetFrame>,
+    );
+    await waitFor(() => expect(frame()).toHaveAttribute('data-raised'));
+  });
+
+  it('drops back when the focused control inside is removed (no blur fires)', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    function Vanishing() {
+      const [shown, setShown] = useState(true);
+      return shown ? (
+        <button type="button" onKeyDown={() => setShown(false)}>
+          Gone
+        </button>
+      ) : (
+        <p>empty</p>
+      );
+    }
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <Vanishing />
+      </WidgetFrame>,
+    );
+    const gone = screen.getByRole('button', { name: 'Gone' });
+    act(() => gone.focus());
+    expect(frame()).toHaveAttribute('data-raised');
+    fireEvent.keyDown(gone, { key: 'Delete' });
+    await waitFor(() => expect(frame()).not.toHaveAttribute('data-raised'));
+  });
+
+  it('is raised while a pop-up trigger inside has aria-expanded="true", and drops back when it closes', async () => {
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <WidgetFrame id="tasks" title="Tasks">
+        <Menu />
+      </WidgetFrame>,
+    );
+    expect(frame()).not.toHaveAttribute('data-raised');
+    const more = screen.getByRole('button', { name: 'More' });
+    fireEvent.click(more);
+    await waitFor(() => expect(frame()).toHaveAttribute('data-raised'));
+    // Opened by a click with no focus move, so only the open pop-up holds it up.
+    fireEvent.click(more);
+    await waitFor(() => expect(frame()).not.toHaveAttribute('data-raised'));
+  });
+
+  it('is raised while focus is inside it, and drops back when focus leaves', async () => {
+    const user = userEvent.setup();
+    installMockApi(mockApi());
+    useStudyStore.setState({ settings: settingsWith(0.5, 0.5) });
+    render(
+      <>
+        <WidgetFrame id="tasks" title="Tasks">
+          <p>body</p>
+        </WidgetFrame>
+        <button type="button">Outside</button>
+      </>,
+    );
+    expect(frame()).not.toHaveAttribute('data-raised');
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Move Tasks' })).toHaveFocus();
+    expect(frame()).toHaveAttribute('data-raised');
+    // Focus moving between the frame's own controls keeps it raised.
+    await user.tab();
+    expect(frame()).toHaveAttribute('data-raised');
+    screen.getByRole('button', { name: 'Outside' }).focus();
+    await waitFor(() => expect(frame()).not.toHaveAttribute('data-raised'));
   });
 });
 
@@ -489,6 +593,134 @@ describe('WidgetFrame outside settings (image widgets, spec §3.6)', () => {
     expect(group.style.left).toBe('956px');
     fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
     expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
+  });
+
+  it('a press on a [data-no-drag] part of a bare body moves nothing, nor do its arrow keys', () => {
+    const onPatch = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Note" chrome="bare" pos={imagePos} onPatch={onPatch}>
+        <textarea aria-label="Note text" data-no-drag />
+      </WidgetFrame>,
+    );
+    const group = screen.getByRole('group', { name: 'Note' });
+    const left = group.style.left;
+    const text = screen.getByRole('textbox', { name: 'Note text' });
+    fireEvent.pointerDown(text, { clientX: 960, clientY: 560, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(group.style.left).toBe(left);
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.keyDown(text, { key: 'ArrowDown' });
+    expect(onPatch).not.toHaveBeenCalled();
+    // The paper round it is still the handle.
+    const body = screen.getByRole('button', { name: 'Move Note' });
+    fireEvent.pointerDown(body, { clientX: 960, clientY: 560, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
+  });
+
+  it('a press on a form label inside a bare body never starts a drag', () => {
+    const onPatch = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Note" chrome="bare" pos={imagePos} onPatch={onPatch}>
+        <label>
+          <span>Pick one</span>
+          <input type="checkbox" />
+        </label>
+      </WidgetFrame>,
+    );
+    const group = screen.getByRole('group', { name: 'Note' });
+    const left = group.style.left;
+    fireEvent.pointerDown(screen.getByText('Pick one'), {
+      clientX: 960,
+      clientY: 560,
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(group.style.left).toBe(left);
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('a bare body with controls is no button: its button clicks, its input types, its arrows stay put', async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    const onClick = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Deadlines" chrome="bare" interactiveBody pos={imagePos} onPatch={onPatch}>
+        <div data-testid="paper">
+          <button type="button" onClick={onClick}>
+            Add
+          </button>
+          <input aria-label="Title" />
+        </div>
+      </WidgetFrame>,
+    );
+    // Nothing wraps the controls as a button; the move handle is its own button in the toolbar.
+    expect(screen.getByRole('button', { name: 'Add' }).closest('[role="button"]')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    const input = screen.getByRole('textbox', { name: 'Title' });
+    await user.click(input);
+    await user.keyboard('Exam{ArrowLeft}{ArrowLeft}');
+    expect(input).toHaveValue('Exam');
+    expect(input).toHaveFocus();
+    expect(onPatch).not.toHaveBeenCalled();
+    // The rest of the body still drags.
+    const paper = screen.getByTestId('paper');
+    fireEvent.pointerDown(paper, { clientX: 960, clientY: 560, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    fireEvent.pointerUp(window, { clientX: 1056, clientY: 668, pointerId: 1 });
+    expect(onPatch).toHaveBeenCalledWith({ x: 0.55, y: 0.6 });
+  });
+
+  it('a bare body with controls moves by keyboard through the toolbar handle', async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Deadlines" chrome="bare" interactiveBody pos={imagePos} onPatch={onPatch}>
+        <input aria-label="Title" />
+      </WidgetFrame>,
+    );
+    screen.getByRole('button', { name: 'Move Deadlines' }).focus();
+    await user.keyboard('{ArrowDown}');
+    expect(onPatch).toHaveBeenCalledWith({ x: 0.5, y: 0.52 });
+  });
+
+  it('an image-style bare body still lets a control inside it work without dragging', async () => {
+    const user = userEvent.setup();
+    const onPatch = vi.fn();
+    const onClick = vi.fn();
+    installMockApi(mockApi());
+    render(
+      <WidgetFrame title="Image 1" chrome="bare" pos={imagePos} onPatch={onPatch}>
+        <button type="button" onClick={onClick}>
+          Remove
+        </button>
+      </WidgetFrame>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Remove' }), { key: 'ArrowLeft' });
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it('a framed close button can carry its own name and icon', () => {
+    installMockApi(mockApi());
+    const onClose = vi.fn();
+    render(
+      <WidgetFrame title="Note" pos={imagePos} onClose={onClose} closeLabel="Delete note" closeIcon="trash">
+        <p>body</p>
+      </WidgetFrame>,
+    );
+    expect(screen.queryByRole('button', { name: 'Close Note' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete note' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('bare moves with the arrow keys on the body', async () => {

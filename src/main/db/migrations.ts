@@ -129,6 +129,140 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v4 (v1.2 spec §5): the planner, deadlines, stats widgets, note stickies and the session
+    // intention and outcome. The old sticky-note tasks are kept, untouched, as `tasks_v1_archive`
+    // (the legacy widget reads it until Task 33; JSON export carries it as `tasksV1`). An "Inbox"
+    // list with no subject comes first (sort 0), then one list per unarchived subject, at most 20
+    // lists in all (the list limit), so at most 19 subject lists. Existing sessions and notes keep every value;
+    // the new columns are NULL or their defaults. `"range"` is quoted: RANGE is an SQL keyword.
+    version: 4,
+    up(db) {
+      db.exec(`
+        ALTER TABLE tasks RENAME TO tasks_v1_archive;
+        CREATE TABLE task_lists (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, subject_id INTEGER NULL,
+          sort INTEGER NOT NULL, created_at INTEGER NOT NULL);
+        -- 'Inbox' must equal INBOX_LIST_NAME in shared/planner.ts; this body is frozen, so it stays a literal.
+        INSERT INTO task_lists (name, subject_id, sort, created_at)
+          VALUES ('Inbox', NULL, 0, CAST(strftime('%s', 'now') AS INTEGER) * 1000);
+        INSERT INTO task_lists (name, subject_id, sort, created_at)
+          SELECT substr(name, 1, 60), id, row_number() OVER (ORDER BY sort, id),
+                 CAST(strftime('%s', 'now') AS INTEGER) * 1000
+          FROM subjects WHERE archived = 0 ORDER BY sort, id LIMIT 19;
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL, note TEXT NOT NULL DEFAULT '',
+          done INTEGER NOT NULL DEFAULT 0, done_at INTEGER NULL,
+          colour TEXT NULL CHECK (colour IS NULL OR colour IN ('yellow', 'pink', 'blue', 'green', 'purple', 'grey')),
+          day TEXT NULL, list_id INTEGER NULL, subject_id INTEGER NULL, estimate_min INTEGER NULL,
+          repeat TEXT NULL, reminder TEXT NULL, reminded_day TEXT NULL,
+          kind TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('task', 'revision')),
+          origin_task_id INTEGER NULL, rolled_from TEXT NULL,
+          sort INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+          CHECK ((day IS NULL) <> (list_id IS NULL)));
+        CREATE INDEX tasks_day ON tasks (day);
+        CREATE INDEX tasks_list ON tasks (list_id);
+        CREATE TABLE task_tags (task_id INTEGER NOT NULL, tag TEXT NOT NULL, PRIMARY KEY (task_id, tag));
+        CREATE TABLE subtasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL, text TEXT NOT NULL,
+          done INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL);
+        CREATE INDEX subtasks_task ON subtasks (task_id);
+        ALTER TABLE notes ADD COLUMN popped INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE notes ADD COLUMN x REAL NULL;
+        ALTER TABLE notes ADD COLUMN y REAL NULL;
+        ALTER TABLE notes ADD COLUMN scale REAL NOT NULL DEFAULT 1;
+        ALTER TABLE notes ADD COLUMN bare INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE deadlines (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+          kind TEXT NOT NULL CHECK (kind IN ('exam', 'coursework')), subject_id INTEGER NULL,
+          due TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+        CREATE TABLE stat_widgets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          card TEXT NOT NULL CHECK (card IN ('total', 'subjects', 'goal', 'estimates')),
+          "range" TEXT NOT NULL CHECK ("range" IN ('today', 'week', 'month')),
+          x REAL NOT NULL, y REAL NOT NULL, scale REAL NOT NULL DEFAULT 1, bare INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL);
+        ALTER TABLE sessions ADD COLUMN intention TEXT NULL;
+        ALTER TABLE sessions ADD COLUMN outcome TEXT NULL CHECK (outcome IN ('done', 'partly', 'not'));
+      `);
+      // The new tasks' ids start above every id an old task ever had (the archive's highest id and
+      // its AUTOINCREMENT counter, which the rename carried over to `tasks_v1_archive`) and every
+      // `sessions.task_id`, so no session row's old focus time is ever read as a new task's
+      // "actual" (spec §5, Plan notes 3).
+      const seq = Number(
+        one(
+          db,
+          `SELECT max(
+             coalesce((SELECT max(id) FROM tasks_v1_archive), 0),
+             coalesce((SELECT max(seq) FROM sqlite_sequence WHERE name = 'tasks_v1_archive'), 0),
+             coalesce((SELECT max(task_id) FROM sessions), 0),
+             0) AS seq`,
+        )!.seq,
+      );
+      db.run("DELETE FROM sqlite_sequence WHERE name = 'tasks'");
+      db.run("INSERT INTO sqlite_sequence (name, seq) VALUES ('tasks', ?)", [seq]);
+    },
+  },
+  {
+    // v5 (simple tasks spec §3.4): the planner goes and the v1.1 sticky-note tasks come back. The
+    // planner's tables are archived untouched as `*_v4_archive` (each rename carries its indexes and
+    // its `sqlite_sequence` row); `tasks` is made again exactly as v1 made it. The v1 stickies come
+    // back first with their own ids, then every planner task as a sticky with its own id: day tasks
+    // in date order, then list tasks. Notes, tags, subtasks and estimates stay in the archives only;
+    // `tasks_v1_archive` stays as it is. The Estimates stats card goes with the planner, so its
+    // `stat_widgets` row is deleted (step 6). Sessions are not touched (appplan §5).
+    version: 5,
+    up(db) {
+      db.exec(`
+        ALTER TABLE tasks RENAME TO planner_tasks_v4_archive;
+        ALTER TABLE task_lists RENAME TO task_lists_v4_archive;
+        ALTER TABLE task_tags RENAME TO task_tags_v4_archive;
+        ALTER TABLE subtasks RENAME TO subtasks_v4_archive;
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL,
+          colour TEXT NOT NULL,
+          done INTEGER NOT NULL DEFAULT 0,
+          sort INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          done_at INTEGER NULL
+        );
+        INSERT INTO tasks (id, text, colour, done, sort, created_at, done_at)
+          SELECT id, text, colour, done, sort, created_at, done_at FROM tasks_v1_archive;
+      `);
+      // The planner tasks follow the stickies just copied back (spec §3.4 step 4).
+      const base = Number(one(db, 'SELECT coalesce(max(sort) + 1, 0) AS base FROM tasks')!.base);
+      db.run(
+        `INSERT INTO tasks (id, text, colour, done, sort, created_at, done_at)
+           SELECT id, substr(title, 1, 500), coalesce(colour, 'yellow'), done,
+                  ? + ROW_NUMBER() OVER (ORDER BY day IS NULL, day, sort, id) - 1,
+                  created_at,
+                  CASE WHEN done = 1 THEN coalesce(done_at, updated_at) ELSE NULL END
+           FROM planner_tasks_v4_archive`,
+        [base],
+      );
+      // A new sticky's id starts above every id either archive ever gave out (their AUTOINCREMENT
+      // counters, carried over by the renames) and every `sessions.task_id`, so By-task stats never
+      // merge a new sticky with unrelated history. The copies above left a `tasks` row in
+      // `sqlite_sequence` only if they inserted anything, so it is replaced, never assumed.
+      const seq = Number(
+        one(
+          db,
+          `SELECT max(
+             coalesce((SELECT max(id) FROM tasks), 0),
+             coalesce((SELECT max(seq) FROM sqlite_sequence WHERE name = 'planner_tasks_v4_archive'), 0),
+             coalesce((SELECT max(seq) FROM sqlite_sequence WHERE name = 'tasks_v1_archive'), 0),
+             coalesce((SELECT max(task_id) FROM sessions), 0),
+             0) AS seq`,
+        )!.seq,
+      );
+      db.run("DELETE FROM sqlite_sequence WHERE name = 'tasks'");
+      db.run("INSERT INTO sqlite_sequence (name, seq) VALUES ('tasks', ?)", [seq]);
+      db.run("DELETE FROM stat_widgets WHERE card = 'estimates'");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

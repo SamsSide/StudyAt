@@ -1,0 +1,339 @@
+/* Stats widgets (v1.2 spec §3.12): calm cards on the glass, or on their own over the space when
+   bare. Motion uses the token durations, which drop to 0 under prefers-reduced-motion. */
+
+/* A fixed width, so the frame measures the same box whichever card or range is showing. */
+.card {
+  width: 248px;
+  min-height: 84px;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  box-sizing: border-box;
+  color: var(--text);
+  font-size: var(--text-md);
+}
+
+/* Bare: the card sits straight on the space, so it gets a soft glass of its own to stay readable. */
+.bareCard {
+  padding-top: var(--space-3);
+  border-radius: 12px;
+  background: var(--glass-sheen), var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+.card p {
+  margin: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-2) 0;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.textButton {
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 4px var(--space-3);
+  background: var(--glass-fill-thin);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--duration) var(--ease);
+}
+
+.textButton:hover {
+  background: var(--hover);
+}
+
+.textButton:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Total time */
+.total {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.big {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-display);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* By subject */
+.bars,
+.lines,
+.dots {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bars {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.barName {
+  display: flex;
+  gap: 0.3em;
+  min-width: 0;
+}
+
+/* The module code never shrinks; the rest of the name takes the ellipsis (E15). */
+.barCode {
+  flex: none;
+}
+
+.barRest {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barValue {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.barTrack {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: var(--radius-pill);
+  transition: width var(--duration-slow) var(--ease);
+}
+
+/* Goal + streak */
+.goalToday {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* The top bar's ring, drawn larger. */
+.bigRing > span,
+.bigRing svg {
+  width: 64px;
+  height: 64px;
+  margin: 0;
+}
+
+.goalToday > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.goalRange {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.goalLine {
+  font-weight: 600;
+}
+
+.streak {
+  font-size: var(--text-sm);
+}
+
+.dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dots[data-range='month'] {
+  gap: 4px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1.5px solid var(--accent);
+}
+
+.dots[data-range='month'] .dot {
+  width: 9px;
+  height: 9px;
+}
+
+.dot[data-state='hit'] {
+  background: var(--accent);
+}
+
+.dot[data-state='missed'] {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.dot[data-state='future'] {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* The range switch: a small segmented control, as in the Stats overlay. */
+.segmented {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.segment {
+  position: relative;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  display: block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.segment input:checked + span {
+  background: var(--glass-fill-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+}
+
+.segment input:focus-visible + span {
+  box-shadow: var(--focus-ring);
+}
+
+/* In the bare toolbar the controls float over the space, so each sits on a little glass. */
+.onSpace {
+  background: var(--panel-strong);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+}
+
+/* The ⋯ menu */
+.menuWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.moreIcon {
+  width: 16px;
+  height: 16px;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 2;
+  min-width: 168px;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  /* Opaque, as the task menu is: the frame around it already holds a backdrop filter, so a glass
+     list inside it shows the cards behind the widget through it. */
+  background: var(--glass-sheen), var(--panel-solid);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  transform-origin: top right;
+  animation: pop var(--duration) var(--ease);
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.menu button {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  color: var(--text);
+  font-size: var(--text-md);
+  white-space: nowrap;
+}
+
+.menu button[aria-checked='true']::after {
+  /* Empty alt text: aria-checked already says it to a screen reader. */
+  content: ' ✓' / '';
+  color: var(--text-muted);
+}
+
+.menu button:hover,
+.menu button:focus-visible {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+
+.menu button[aria-checked='true']:hover::after,
+.menu button[aria-checked='true']:focus-visible::after {
+  color: inherit;
+}
+
+.separator {
+  height: 1px;
+  margin: 4px var(--space-2);
+  background: var(--separator);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
+}

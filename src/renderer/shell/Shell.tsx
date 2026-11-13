@@ -4,16 +4,18 @@
 import { type ComponentType, useEffect, useState } from 'react';
 import type { WidgetId } from '../../shared/types';
 import { AddImageDialog } from '../images/AddImageDialog';
-import { ImageWidgets } from '../images/ImageWidget';
 import { useImagesStore } from '../images/imagesStore';
+import { useNotesStore } from '../notes/notesStore';
 import '../styles/tokens.css';
 import { Dock } from './Dock';
+import { FloatingInstances } from './FloatingInstances';
+import { Icon } from './icons';
 import { LoadFailed } from './LoadFailed';
 import { Overlay } from './Overlay';
 import styles from './shell.module.css';
 import { ShortcutsHelp } from './ShortcutsHelp';
 import { SidePanel } from './SidePanel';
-import { initStudyStore, type PanelId, useStudyStore } from './store';
+import { initStudyStore, type OverlayId, type PanelId, useStudyStore } from './store';
 import { TopBar } from './TopBar';
 import { useAutoHide } from './useAutoHide';
 import { useShortcuts } from './useShortcuts';
@@ -23,7 +25,7 @@ import { WidgetFrame } from './WidgetFrame';
 export interface Registry {
   panels: Record<PanelId, ComponentType>;
   widgets: Record<WidgetId, ComponentType>;
-  overlays: Record<'stats' | 'settings', ComponentType>;
+  overlays: Record<Exclude<OverlayId, 'help'>, ComponentType>;
   background: ComponentType;
 }
 
@@ -36,6 +38,7 @@ export const WIDGET_TITLES: Record<WidgetId, string> = {
   weather: 'Weather',
   quote: 'Quote',
   notes: 'Notes',
+  deadlines: 'Deadlines',
 };
 const WIDGET_ORDER: readonly WidgetId[] = [
   'timer',
@@ -45,8 +48,13 @@ const WIDGET_ORDER: readonly WidgetId[] = [
   'weather',
   'quote',
   'notes',
+  'deadlines',
 ];
-const OVERLAY_TITLES = { stats: 'Stats', settings: 'Settings', help: 'Keyboard shortcuts' } as const;
+const OVERLAY_TITLES: Record<OverlayId, string> = {
+  stats: 'Stats',
+  settings: 'Settings',
+  help: 'Keyboard shortcuts',
+};
 
 const DEFAULT_AUTO_HIDE_SECONDS = 5;
 /** The top-left corner, in px, where the pointer brings up "Show interface" in focus view (spec §3.4). */
@@ -78,6 +86,40 @@ function ShowInterface({ onShow }: { onShow: () => void }) {
   );
 }
 
+/**
+ * The Deadlines widget's bare mode (v1.2 spec §3.10): an icon in the header, as on an image
+ * widget; when bare, a "Show background" text button in the floating toolbar.
+ */
+function BackgroundToggle({ bare }: { bare: boolean }) {
+  const patchWidget = useStudyStore((s) => s.patchWidget);
+  const toggle = (): void => void patchWidget('deadlines', { bare: !bare });
+  if (bare) {
+    return (
+      <button type="button" className={styles.toolText} onClick={toggle}>
+        Show background
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`${styles.iconButton} ${styles.small}`}
+      aria-label="Hide background"
+      title="Hide background"
+      onClick={toggle}
+    >
+      <Icon name="eyeOff" />
+    </button>
+  );
+}
+
+// Its body is a list with fields and buttons, so bare it is no drag-button (interactiveBody).
+const deadlinesFrame = (bare: boolean) => ({
+  chrome: bare ? ('bare' as const) : ('framed' as const),
+  interactiveBody: true,
+  headerExtra: <BackgroundToggle bare={bare} />,
+});
+
 export function Shell({ registry }: { registry: Registry }) {
   const settings = useStudyStore((s) => s.settings);
   const settingsFailed = useStudyStore((s) => s.settingsFailed);
@@ -89,6 +131,8 @@ export function Shell({ registry }: { registry: Registry }) {
 
   useEffect(() => initStudyStore(), []);
   useEffect(() => void useImagesStore.getState().load(), []);
+  // Popped-out notes float whether or not the Notes widget is open (v1.2 spec §3.2).
+  useEffect(() => void useNotesStore.getState().load(), []);
   useShortcuts();
   const visible = useAutoHide(settings?.autoHideSeconds ?? DEFAULT_AUTO_HIDE_SECONDS);
   // An overlay always shows over everything; focus view keeps the chrome hidden whatever the mouse
@@ -116,13 +160,18 @@ export function Shell({ registry }: { registry: Registry }) {
         WIDGET_ORDER.filter((id) => settings.widgets[id].open).map((id) => {
           const Widget = registry.widgets[id];
           return (
-            <WidgetFrame key={id} id={id} title={WIDGET_TITLES[id]}>
+            <WidgetFrame
+              key={id}
+              id={id}
+              title={WIDGET_TITLES[id]}
+              {...(id === 'deadlines' ? deadlinesFrame(settings.widgets.deadlines.bare === true) : {})}
+            >
               <Widget />
             </WidgetFrame>
           );
         })}
-      {/* Image widgets float after the fixed ones (v1.1 spec §3.6). */}
-      {settings && <ImageWidgets />}
+      {/* Images, note stickies and the rest of the many-of-a-kind widgets float after the fixed ones. */}
+      {settings && <FloatingInstances />}
 
       <TopBar />
       <Dock />

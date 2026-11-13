@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChimeId, Sound } from '../../shared/types';
-import { BUILTIN_CHIME_IDS, CHIMES } from './chimes';
+import { BUILTIN_CHIME_IDS, CHIMES, pipVoice } from './chimes';
 import { AudioEngine } from './engine';
 import { makeNoise } from './noise';
 import { asAudioContext, FakeAudioContext } from './testing/fakeAudio';
@@ -25,6 +25,30 @@ const noiseSound = (id: number, colour: string): Sound => ({
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('pipVoice', () => {
+  it('schedules one 1000 Hz oscillator that stops by 0.17 s', () => {
+    const fake = new FakeAudioContext();
+    const made: { frequency: { valueAt: (t: number) => number }; stop: (when?: number) => void }[] = [];
+    const create = fake.createOscillator.bind(fake);
+    const stops: number[] = [];
+    fake.createOscillator = () => {
+      const osc = create();
+      const stop = osc.stop.bind(osc);
+      osc.stop = (when?: number) => {
+        stops.push(when ?? 0);
+        stop(when);
+      };
+      made.push(osc);
+      return osc;
+    };
+    pipVoice(asBase(fake), 0, fake.createGain() as unknown as AudioNode);
+    expect(made).toHaveLength(1);
+    expect(made[0]?.frequency.valueAt(0.05)).toBe(1000);
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toBeLessThanOrEqual(0.17 + 1e-9);
+  });
+});
 
 describe('makeNoise', () => {
   it('white noise RMS is within 0.2-0.4', () => {
@@ -137,6 +161,14 @@ describe('AudioEngine', () => {
     expect(chimeVoice?.gain.value).toBe(0.9);
     const chimeBus = fake.gains[1];
     expect(fake.gains.some((g) => g.gain.value === 0.2 && g.outputs.includes(chimeBus as never))).toBe(true);
+  });
+
+  it('a pip is skipped while the context is suspended', () => {
+    const fake = new FakeAudioContext();
+    fake.state = 'suspended';
+    const engine = new AudioEngine(() => asAudioContext(fake));
+    engine.pip(0.5);
+    expect(fake.gains).toHaveLength(2); // master and chime bus only: no voice gain was made
   });
 
   it.each([

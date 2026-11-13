@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import { parseYouTubeId } from '../../core/youtube';
 import type { Space } from '../../shared/types';
 import { SpaceCard } from './SpaceCard';
-import { SpaceSettings } from './SpaceSettings';
+import { QualityBadge, SpaceSettings } from './SpaceSettings';
 import styles from './spaces.module.css';
 import { mediaUrl, useSpacesStore } from './spacesStore';
 import { captureThumbnail } from './thumbnail';
@@ -143,11 +143,18 @@ export function SpacesPanel() {
     setTabStop(TABS[next]!);
   };
 
+  const activeSpace = spaces.find((s) => s.id === activeId);
   const settingsSpace = spaces.find((s) => s.id === settingsId);
   if (settingsSpace) return <SpaceSettings space={settingsSpace} onClose={() => setSettingsId(null)} />;
 
   return (
     <div className={styles.panel}>
+      {activeSpace?.kind === 'youtube' && (
+        <div className={styles.headerRow}>
+          <span>YouTube quality</span>
+          <QualityBadge spaceId={activeSpace.id} />
+        </div>
+      )}
       <div role="toolbar" aria-label="Space kinds" className={styles.tabs} onKeyDown={onTabKey}>
         {TABS.map((t, i) => (
           <button

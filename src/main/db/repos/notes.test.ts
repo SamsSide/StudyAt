@@ -22,7 +22,19 @@ describe('notesRepo', () => {
     expect(repo.list()).toEqual([]);
     const first = repo.create({}, NOW);
     expect(first).toEqual([
-      { id: first[0]!.id, text: '', colour: 'yellow', sort: 0, createdAt: NOW, updatedAt: NOW },
+      {
+        id: first[0]!.id,
+        text: '',
+        colour: 'yellow',
+        sort: 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+        popped: false,
+        x: null,
+        y: null,
+        scale: 1,
+        bare: false,
+      },
     ]);
     const second = repo.create({ colour: 'purple' }, NOW + 1);
     expect(second.map((n) => [n.colour, n.sort, n.createdAt])).toEqual([
@@ -36,7 +48,19 @@ describe('notesRepo', () => {
     const repo = notesRepo(db);
     const id = repo.create({}, NOW)[0]!.id;
     expect(repo.update(id, { text: 'Ask about lab 4' }, NOW + 10)).toEqual([
-      { id, text: 'Ask about lab 4', colour: 'yellow', sort: 0, createdAt: NOW, updatedAt: NOW + 10 },
+      {
+        id,
+        text: 'Ask about lab 4',
+        colour: 'yellow',
+        sort: 0,
+        createdAt: NOW,
+        updatedAt: NOW + 10,
+        popped: false,
+        x: null,
+        y: null,
+        scale: 1,
+        bare: false,
+      },
     ]);
     expect(repo.update(id, { colour: 'green' }, NOW + 20)![0]).toMatchObject({
       text: 'Ask about lab 4',
@@ -80,6 +104,61 @@ describe('notesRepo', () => {
       [c!.id, 0, 'blue'],
       [b!.id, 1, 'pink'],
     ]);
+  });
+
+  // v1.2 spec §3.2: a popped note is a sticky on the canvas; docking it back keeps its stack place.
+  it('popOut places a note, dockBack returns it at its old sort', async () => {
+    const repo = notesRepo(db);
+    repo.create({}, NOW);
+    repo.create({ colour: 'pink' }, NOW + 1);
+    const [, n2] = repo.create({ colour: 'blue' }, NOW + 2);
+    const id2 = n2!.id;
+    expect(repo.poppedCount()).toBe(0);
+
+    const popped = repo.popOut(id2, { x: 0.53, y: 0.34 })!;
+    expect(popped.find((n) => n.id === id2)).toMatchObject({ popped: true, x: 0.53, y: 0.34, sort: 1 });
+    expect(popped.filter((n) => n.popped)).toHaveLength(1);
+    expect(repo.poppedCount()).toBe(1);
+
+    const moved = repo.update(id2, { x: 2, y: -1, scale: 9, bare: true }, NOW + 10)!;
+    expect(moved.find((n) => n.id === id2)).toMatchObject({
+      x: 1,
+      y: 0,
+      scale: 2,
+      bare: true,
+      popped: true,
+      colour: 'pink',
+      updatedAt: NOW + 10,
+    });
+    expect(repo.update(id2, { scale: 0.1 }, NOW + 11)!.find((n) => n.id === id2)).toMatchObject({
+      scale: 0.5,
+      x: 1,
+      y: 0,
+      bare: true,
+    });
+    expect(repo.update(id2, { scale: 1.25, bare: false }, NOW + 12)!.find((n) => n.id === id2)).toMatchObject(
+      { scale: 1.25, bare: false },
+    );
+
+    await db.close();
+    db = await openTestDb(dir);
+    const reopened = notesRepo(db);
+    expect(reopened.list().find((n) => n.id === id2)).toMatchObject({
+      popped: true,
+      x: 1,
+      y: 0,
+      scale: 1.25,
+      bare: false,
+    });
+    expect(reopened.poppedCount()).toBe(1);
+
+    const docked = reopened.dockBack(id2)!;
+    expect(docked.find((n) => n.id === id2)).toMatchObject({ popped: false, sort: 1 });
+    expect(docked.map((n) => n.sort)).toEqual([0, 1, 2]);
+    expect(reopened.poppedCount()).toBe(0);
+
+    expect(reopened.popOut(9999, { x: 0.5, y: 0.3 })).toBeNull();
+    expect(reopened.dockBack(9999)).toBeNull();
   });
 
   it('marks the database dirty after every write', () => {

@@ -7,6 +7,7 @@ import { subjectsRepo } from '../db/repos/subjects';
 import { openTestDb, tempDir } from '../db/test-helpers';
 import { recapsService } from './recaps';
 import { statsService } from './stats';
+import { STAT_CARDS } from './statWidgets';
 import { IpcValidationError } from './validate';
 
 const MIN = 60_000;
@@ -197,5 +198,34 @@ describe('recapsService', () => {
   it('computes nothing without any sessions', () => {
     const stats = statsService({ db, now: () => WED, liveTodayMs: () => 0 });
     expect(recapsService({ db, stats }).computePending(WED)).toBeNull();
+  });
+
+  it('card total today adds the live running row', () => {
+    const running = sessionsRepo(db).insertRunning({
+      pomodoroId: 'live',
+      subjectId: null,
+      taskId: null,
+      taskText: null,
+      startedAt: WED - 12 * MIN,
+      dayKey: dayKeyOf(WED, 4),
+    });
+    sessionsRepo(db).checkpoint(running.id, 5 * MIN, WED - 7 * MIN);
+    const stats = statsService({ db, now: () => WED, liveTodayMs: () => 12 * MIN });
+    const card = stats.card('total', 'today');
+    expect(card.card).toBe('total');
+    if (card.card === 'total') expect(card.totalMs).toBe(12 * MIN);
+  });
+
+  it('offers no estimates card (simple-tasks spec §3.3)', () => {
+    expect(STAT_CARDS).not.toContain('estimates');
+    expect(STAT_CARDS).toEqual(['total', 'subjects', 'goal']);
+  });
+
+  it('card subjects and goal run over the same rows', () => {
+    addSession(WED - 3 * 3_600_000, 30);
+    const stats = statsService({ db, now: () => WED, liveTodayMs: () => 30 * MIN });
+    expect(stats.card('subjects', 'today').card).toBe('subjects');
+    const goal = stats.card('goal', 'week');
+    expect(goal.card).toBe('goal');
   });
 });

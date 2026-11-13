@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Space } from '../../shared/types';
 import { installMockApi, mockApi } from '../test/mockApi';
 import { makeSpace } from './fixtures';
-import { resetSpacesStore, useSpacesStore } from './spacesStore';
+import { isBackgroundPaused, resetSpacesStore, useSpacesStore } from './spacesStore';
 
 const deferred = <T>() => {
   let resolve!: (v: T) => void;
@@ -13,7 +13,7 @@ const deferred = <T>() => {
 };
 
 const withDim = (dim: number): Space =>
-  makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim, blur: 0 } });
+  makeSpace({ id: 1, opts: { audio: false, volume: 0.5, speed: 1, dim, blur: 0, quality: 'auto' } });
 
 beforeEach(() => resetSpacesStore());
 
@@ -83,5 +83,93 @@ describe('spacesStore.load', () => {
     expect(useSpacesStore.getState()).toMatchObject({ loaded: true, loadFailed: false });
     expect(useSpacesStore.getState().spaces).toHaveLength(1);
     warn.mockRestore();
+  });
+});
+
+describe('spacesStore.backgroundPaused (spec §3.4)', () => {
+  const youtube = makeSpace({ id: 3, kind: 'youtube', source: 'dQw4w9WgXcQ' });
+  const image = makeSpace({ id: 2, kind: 'image', source: 'images/a.jpg' });
+  const seed = (activeId: number) =>
+    useSpacesStore.setState({ spaces: [makeSpace({ id: 1 }), image, youtube], activeId, loaded: true });
+
+  it('starts playing', () => {
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('toggleBackground flips it for a YouTube or video space', () => {
+    seed(3);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    seed(1);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+  });
+
+  it('toggleBackground does nothing for an image space or with no active space', () => {
+    seed(2);
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    useSpacesStore.setState({ activeId: null });
+    useSpacesStore.getState().toggleBackground();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('playBackground records the still as started for the active space and clears a pause', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.getState().playBackground();
+    expect(useSpacesStore.getState().stillPlayId).toBe(3);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('under reduced motion toggleBackground plays the still first, then pauses', () => {
+    seed(3);
+    const s = useSpacesStore.getState();
+    expect(isBackgroundPaused(useSpacesStore.getState(), true)).toBe(true);
+    expect(isBackgroundPaused(useSpacesStore.getState(), false)).toBe(false);
+    s.toggleBackground(true);
+    expect(isBackgroundPaused(useSpacesStore.getState(), true)).toBe(false);
+    s.toggleBackground(true);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+  });
+
+  it('a space change forgets that the still was started', () => {
+    seed(3);
+    useSpacesStore.getState().playBackground();
+    useSpacesStore.setState({ activeId: 1 });
+    expect(useSpacesStore.getState().stillPlayId).toBeNull();
+    useSpacesStore.setState({ activeId: 3 });
+    expect(isBackgroundPaused(useSpacesStore.getState(), true)).toBe(true);
+  });
+
+  it('setActive to another space resets it to playing', async () => {
+    installMockApi(mockApi());
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    await useSpacesStore.getState().setActive(1);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('any change of the active id resets it, e.g. a load that finds another space', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.setState({ activeId: 1 });
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('apply keeps the pause while the active space is unchanged', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.getState().apply([makeSpace({ id: 1 }), image, youtube]);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+  });
+
+  it('apply resets it when the active space is no longer in the list', () => {
+    seed(3);
+    useSpacesStore.getState().setBackgroundPaused(true);
+    useSpacesStore.getState().apply([makeSpace({ id: 1 }), image]);
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
   });
 });

@@ -23,6 +23,7 @@ describe('sessionsRepo', () => {
       subjectId: number | null;
       taskId: number | null;
       taskText: string | null;
+      intention: string | null;
       startedAt: number;
       dayKey: string;
     }> = {},
@@ -46,6 +47,41 @@ describe('sessionsRepo', () => {
     ]);
   });
 
+  // v1.2 spec §3.11: the intention is stored at the row's start and can be edited on one row only.
+  it('stores the intention at insert and updates it on one row', () => {
+    const repo = sessionsRepo(db);
+    const a = start({ intention: 'Finish lab 7 Q1–3' });
+    const b = start({ pomodoroId: 'p-2' });
+    expect(a.intention).toBe('Finish lab 7 Q1–3');
+    expect(b.intention).toBeNull();
+    const markDirty = vi.spyOn(db, 'markDirty');
+    repo.setIntention(b.id, 'Read chapter 4');
+    expect(markDirty).toHaveBeenCalled();
+    repo.close(a.id, NOW + 600_000, 600_000, 0);
+    repo.setIntention(a.id, null);
+    expect(repo.all().map((s) => [s.id, s.intention])).toEqual([
+      [a.id, null],
+      [b.id, 'Read chapter 4'],
+    ]);
+  });
+
+  it('setOutcome writes every row of the pomodoro and nothing else', () => {
+    const repo = sessionsRepo(db);
+    const a = start({ pomodoroId: 'p1' });
+    const b = start({ pomodoroId: 'p1', subjectId: 2 });
+    const c = start({ pomodoroId: 'p2' });
+    const markDirty = vi.spyOn(db, 'markDirty');
+    expect(repo.setOutcome('p1', 'partly')).toBe(2);
+    expect(markDirty).toHaveBeenCalled();
+    expect(repo.all().map((s) => [s.id, s.outcome])).toEqual([
+      [a.id, 'partly'],
+      [b.id, 'partly'],
+      [c.id, null],
+    ]);
+    expect(repo.setOutcome('p-none', 'done')).toBe(0);
+    expect(repo.get(c.id)!.outcome).toBeNull();
+  });
+
   it('inserts a running row, checkpoints and closes it', () => {
     const repo = sessionsRepo(db);
     const markDirty = vi.spyOn(db, 'markDirty');
@@ -63,6 +99,8 @@ describe('sessionsRepo', () => {
       status: 'running',
       taskId: null,
       taskText: null,
+      intention: null,
+      outcome: null,
     });
     expect(markDirty).toHaveBeenCalled();
     repo.checkpoint(s.id, 15_000, NOW + 15_000);

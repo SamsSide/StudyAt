@@ -6,6 +6,7 @@ import type { Note, TaskColour } from '../../shared/types';
 import { installMockApi, mockApi, type MockApi } from '../test/mockApi';
 import { NotesWidget } from './NotesWidget';
 import { editNote, resetNoteSaves } from './noteSaves';
+import { resetNotesStore } from './notesStore';
 
 const note = (id: number, text: string, over: Partial<Note> = {}): Note => ({
   id,
@@ -14,6 +15,11 @@ const note = (id: number, text: string, over: Partial<Note> = {}): Note => ({
   sort: id,
   createdAt: id,
   updatedAt: id,
+  popped: false,
+  x: null,
+  y: null,
+  scale: 1,
+  bare: false,
   ...over,
 });
 
@@ -51,6 +57,7 @@ const sheet = () => screen.getByRole('textbox', { name: /^Note/ });
 beforeEach(() => {
   vi.clearAllMocks();
   resetNoteSaves();
+  resetNotesStore();
 });
 afterEach(() => vi.useRealTimers());
 
@@ -451,5 +458,84 @@ describe('NotesWidget', () => {
       await flushed;
     });
     expect(done).toBe(true);
+  });
+});
+
+describe('NotesWidget pop out (v1.2 spec §3.2)', () => {
+  /** The in-memory store, with popOut flipping `popped`. */
+  function setupPopping(initial: Note[]) {
+    let rows = initial.map((n) => ({ ...n }));
+    const snap = () => Promise.resolve(rows.map((n) => ({ ...n })));
+    return setup(initial, {
+      list: vi.fn(snap),
+      popOut: vi.fn((id: number) => {
+        rows = rows.map((n) => (n.id === id ? { ...n, popped: true } : n));
+        return snap();
+      }),
+    });
+  }
+
+  it('"Pop out note" pops the shown note out and the stack shows the next one', async () => {
+    const user = userEvent.setup();
+    const { api } = setupPopping([note(1, 'One'), note(2, 'Two'), note(3, 'Three')]);
+    await screen.findByDisplayValue('One');
+    await user.click(screen.getByRole('button', { name: 'Pop out note' }));
+    expect(api.notes.popOut).toHaveBeenCalledWith(1);
+    expect(await screen.findByDisplayValue('Two')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('One')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Note 1 of 2' })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('popping out the last note in the stack shows the one before it', async () => {
+    const user = userEvent.setup();
+    setupPopping([note(1, 'One'), note(2, 'Two')]);
+    await screen.findByDisplayValue('One');
+    await user.click(screen.getByRole('button', { name: 'Next note' }));
+    await user.click(screen.getByRole('button', { name: 'Pop out note' }));
+    expect(await screen.findByDisplayValue('One')).toBeInTheDocument();
+  });
+
+  it('at 12 popped out the button is disabled and says why', async () => {
+    const popped = Array.from({ length: 12 }, (_, i) => note(i + 1, `P${i + 1}`, { popped: true }));
+    setupPopping([...popped, note(20, 'Docked')]);
+    await screen.findByDisplayValue('Docked');
+    const button = screen.getByRole('button', { name: 'Pop out note' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', 'Up to 12 notes on the screen');
+  });
+
+  it('under 12 popped out the button is enabled', async () => {
+    const popped = Array.from({ length: 11 }, (_, i) => note(i + 1, `P${i + 1}`, { popped: true }));
+    setupPopping([...popped, note(20, 'Docked')]);
+    await screen.findByDisplayValue('Docked');
+    expect(screen.getByRole('button', { name: 'Pop out note' })).toBeEnabled();
+  });
+
+  it('with every note popped out it says so and offers New note', async () => {
+    const user = userEvent.setup();
+    const { api } = setupPopping([note(1, 'Only')]);
+    await screen.findByDisplayValue('Only');
+    await user.click(screen.getByRole('button', { name: 'Pop out note' }));
+    expect(await screen.findByText('All your notes are on the screen.')).toBeInTheDocument();
+    expect(screen.queryByText('No notes yet.')).not.toBeInTheDocument();
+    const add = screen.getByRole('button', { name: 'New note' });
+    expect(add).toHaveFocus();
+    await user.click(add);
+    expect(api.notes.create).toHaveBeenCalled();
+  });
+
+  it("main's limit refusal is shown in its own words", async () => {
+    const user = userEvent.setup();
+    setup([note(1, 'One')], {
+      popOut: vi.fn(() =>
+        Promise.reject(
+          new Error("Error invoking remote method 'notes:popOut': Error: Up to 12 notes on the screen"),
+        ),
+      ),
+    });
+    await screen.findByDisplayValue('One');
+    await user.click(screen.getByRole('button', { name: 'Pop out note' }));
+    expect(await screen.findByText('Up to 12 notes on the screen')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('One')).toBeInTheDocument();
   });
 });

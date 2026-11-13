@@ -14,6 +14,7 @@ import type {
 import { NO_SUBJECT_KEY } from '../../core/stats/totals';
 import { addDays } from '../../core/time';
 import { useWindowVisibility } from '../spaces/windowVisibility';
+import * as statWidgetsStore from '../statWidgets/statWidgetsStore';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { installMockApi, mockApi, seedSubjects, type MockApi } from '../test/mockApi';
 import { formatDayMonth, formatDelta, recapTitle } from './format';
@@ -90,6 +91,8 @@ const session = (s: Partial<Session> = {}): Session => ({
   status: 'done',
   taskId: null,
   taskText: null,
+  intention: null,
+  outcome: null,
   ...s,
 });
 
@@ -360,7 +363,7 @@ describe('SubjectBreakdown', () => {
 
   it('says so kindly when the range is empty', async () => {
     render(<SubjectBreakdown revision={0} />);
-    expect(await screen.findByText('No focus time in this range yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No focus time in this range yet')).toBeInTheDocument();
   });
 });
 
@@ -413,6 +416,40 @@ describe('SessionsTable', () => {
     const blank = screen.getByText('0h 20m').closest('tr') as HTMLElement;
     const cells = within(blank).getAllByRole('cell');
     expect(cells[4]).toBeEmptyDOMElement();
+  });
+
+  it('shows each session’s intention and its outcome mark', async () => {
+    setupSessions([
+      session({ id: 1, intention: 'Finish question 3', outcome: 'partly' }),
+      session({ id: 2, startedAt: new Date(2026, 10, 2, 9, 0).getTime(), focusMs: 20 * MINUTE }),
+    ]);
+    expect(await screen.findByRole('columnheader', { name: 'Intention' })).toBeInTheDocument();
+    const row = (await screen.findByText('1h 05m')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Finish question 3')).toBeInTheDocument();
+    expect(within(row).getByRole('img', { name: 'Partly' })).toHaveTextContent('½');
+    const blank = screen.getByText('0h 20m').closest('tr') as HTMLElement;
+    expect(within(blank).getAllByRole('cell')[5]).toBeEmptyDOMElement();
+  });
+
+  it('marks Done and Not too', async () => {
+    setupSessions([
+      session({ id: 1, intention: 'Read chapter 4', outcome: 'done' }),
+      session({ id: 2, intention: 'Flashcards', outcome: 'not', focusMs: 20 * MINUTE }),
+    ]);
+    expect(await screen.findByRole('img', { name: 'Done' })).toHaveTextContent('✓');
+    expect(screen.getByRole('img', { name: 'Not' })).toHaveTextContent('✗');
+  });
+
+  it('editing or deleting a row refreshes the stats widgets', async () => {
+    const refresh = vi.spyOn(statWidgetsStore, 'refreshStatCards');
+    setupSessions([session({ id: 7 })]);
+    const row = (await screen.findByText('1h 05m')).closest('tr') as HTMLElement;
+    await userEvent.selectOptions(within(row).getByRole('combobox', { name: 'Subject' }), SUBJECT_2);
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete session' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    refresh.mockRestore();
   });
 
   it('sessions table changes subject via updateSession and deletes after confirm', async () => {

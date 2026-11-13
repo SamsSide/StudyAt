@@ -1,9 +1,13 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import type { PublicSettings } from '../../shared/types';
 import { idleTimerState, installMockApi, mockApi, type MockApi } from '../test/mockApi';
+import { makeSpace, sampleSpaces } from '../spaces/fixtures';
+import { resetSpacesStore, useSpacesStore } from '../spaces/spacesStore';
+import { useImagesStore } from '../images/imagesStore';
+import { useStatWidgetsStore } from '../statWidgets/statWidgetsStore';
 import { Shell } from './Shell';
 import { resetStudyStore, useStudyStore } from './store';
 import { testRegistry } from './testRegistry';
@@ -23,18 +27,30 @@ async function renderShell(api: MockApi = onboardedApi()) {
   return api;
 }
 
-beforeEach(() => resetStudyStore());
-afterEach(() => vi.useRealTimers());
+beforeEach(() => {
+  resetStudyStore();
+  resetSpacesStore();
+});
+
+/** Unmounts the shell and empties the store, for a second render in the same test. */
+function cleanupShell(): void {
+  cleanup();
+  resetStudyStore();
+}
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('Shell', () => {
-  it('renders the background, the eight dock items and the timer widget open by default', async () => {
+  it('renders the background, the seven dock items and the timer widget open by default', async () => {
     await renderShell();
     expect(screen.getByTestId('background')).toBeInTheDocument();
     const dock = screen.getByRole('navigation', { name: 'Dock' });
     const labels = within(dock)
       .getAllByRole('button')
       .map((b) => b.textContent);
-    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Spotify', 'Widgets', 'Stats', 'Settings']);
+    expect(labels).toEqual(['Spaces', 'Sounds', 'Timer', 'Tasks', 'Widgets', 'Stats', 'Settings']);
     expect(screen.getByTestId('timer-widget')).toBeInTheDocument();
     expect(screen.queryByTestId('tasks-widget')).not.toBeInTheDocument();
   });
@@ -42,13 +58,84 @@ describe('Shell', () => {
   it('loads the image widgets on init and shows them after the fixed widgets', async () => {
     const api = onboardedApi();
     vi.mocked(api.images.list).mockResolvedValue([
-      { id: 2, url: 'studyat-media://image/2', width: 100, height: 100, x: 0.5, y: 0.5, scale: 1, bare: false },
+      {
+        id: 2,
+        url: 'studyat-media://image/2',
+        width: 100,
+        height: 100,
+        x: 0.5,
+        y: 0.5,
+        scale: 1,
+        bare: false,
+      },
     ]);
     await renderShell(api);
     const img = await screen.findByRole('img', { name: 'Image 1' });
     expect(api.images.list).toHaveBeenCalledTimes(1);
     const timer = screen.getByTestId('timer-widget');
     expect(timer.compareDocumentPosition(img) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('loads the notes on init and floats popped-out ones after the images (v1.2 spec §3.2)', async () => {
+    const api = onboardedApi();
+    vi.mocked(api.images.list).mockResolvedValue([
+      {
+        id: 2,
+        url: 'studyat-media://image/2',
+        width: 100,
+        height: 100,
+        x: 0.5,
+        y: 0.5,
+        scale: 1,
+        bare: false,
+      },
+    ]);
+    const base = {
+      colour: 'yellow' as const,
+      createdAt: 1,
+      updatedAt: 1,
+      x: 0.5,
+      y: 0.3,
+      scale: 1,
+      bare: false,
+    };
+    vi.mocked(api.notes.list).mockResolvedValue([
+      { ...base, id: 1, text: 'Shopping\nmilk', sort: 1, popped: true },
+      { ...base, id: 2, text: 'Docked', sort: 2, popped: false },
+    ]);
+    await renderShell(api);
+    const sticky = await screen.findByRole('group', { name: 'Shopping' });
+    expect(api.notes.list).toHaveBeenCalled();
+    expect(screen.queryByDisplayValue('Docked')).not.toBeInTheDocument();
+    const img = await screen.findByRole('img', { name: 'Image 1' });
+    expect(img.compareDocumentPosition(sticky) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  describe('Deadlines background toggle', () => {
+    const withDeadlines = (bare: boolean): MockApi => {
+      const s = onboarded();
+      s.widgets.deadlines = { ...s.widgets.deadlines, open: true, bare };
+      return mockApi({ settings: { get: vi.fn(() => Promise.resolve(s)) } });
+    };
+
+    it('framed, it is an icon named "Hide background"; bare, a "Show background" text button', async () => {
+      await renderShell(withDeadlines(false));
+      const hide = screen.getByRole('button', { name: 'Hide background' });
+      expect(hide.textContent).toBe('');
+      expect(hide).toHaveAttribute('title', 'Hide background');
+      cleanupShell();
+      await renderShell(withDeadlines(true));
+      const show = screen.getByRole('button', { name: 'Show background' });
+      expect(show.className).toMatch(/toolText/);
+      expect(show.className).not.toMatch(/small/);
+    });
+
+    it('bare, the body holding the list is no drag-button; a toolbar handle moves it', async () => {
+      await renderShell(withDeadlines(true));
+      const body = screen.getByTestId('deadlines-widget');
+      expect(body.closest('[role="button"]')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Move Deadlines' })).toBeInTheDocument();
+    });
   });
 
   it('dock opens sounds panel and closing it via Esc', async () => {
@@ -203,6 +290,82 @@ describe('Shell', () => {
     expect(await screen.findByTestId('tasks-widget')).toBeInTheDocument();
   });
 
+  it('V pauses and plays the background, but not while typing or behind an overlay', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    act(() => useSpacesStore.setState({ spaces: sampleSpaces(), activeId: 3, loaded: true }));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    const box = document.createElement('input');
+    document.body.appendChild(box);
+    box.focus();
+    await user.keyboard('v');
+    box.remove();
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    act(() => useStudyStore.getState().setOverlay('settings'));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('V does nothing for a missing file, a blocked embed or an offline YouTube space', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    act(() =>
+      useSpacesStore.setState({
+        spaces: [...sampleSpaces(), makeSpace({ id: 9, kind: 'video', missing: true })],
+        activeId: 9,
+        loaded: true,
+      }),
+    );
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    act(() => useSpacesStore.setState({ activeId: 3, embedErrors: { 3: 'embed' } }));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    act(() => useSpacesStore.setState({ embedErrors: {} }));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+    vi.restoreAllMocks();
+  });
+
+  it('under reduced motion V plays the still first, then pauses', async () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('reduce'),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    const user = userEvent.setup();
+    await renderShell();
+    act(() => useSpacesStore.setState({ spaces: sampleSpaces(), activeId: 3, loaded: true }));
+    const bar = () => within(screen.getByRole('banner'));
+    expect(bar().getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().stillPlayId).toBe(3);
+    expect(bar().getByRole('button', { name: 'Pause background' })).toBeInTheDocument();
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(true);
+    expect(bar().getByRole('button', { name: 'Play background' })).toBeInTheDocument();
+  });
+
+  it('V does nothing for an image space', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    act(() => useSpacesStore.setState({ spaces: sampleSpaces(), activeId: 2, loaded: true }));
+    await user.keyboard('v');
+    expect(useSpacesStore.getState().backgroundPaused).toBe(false);
+  });
+
+  it('B opens nothing', async () => {
+    const user = userEvent.setup();
+    await renderShell();
+    await user.keyboard('b');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('[data-overlay]')).toHaveAttribute('data-overlay', 'none');
+  });
+
   it('? shows shortcut help listing every key of spec §3.7', async () => {
     const user = userEvent.setup();
     await renderShell();
@@ -225,10 +388,13 @@ describe('Shell', () => {
       'M',
       'F',
       'H',
+      'V',
       'Esc',
       '?',
     ]);
-    expect(SHORTCUTS).toHaveLength(15);
+    expect(SHORTCUTS).toHaveLength(16);
+    expect(SHORTCUTS.find((k) => k.keys === 'B')).toBeUndefined();
+    expect(SHORTCUTS.find((k) => k.keys === 'V')?.action).toBe('Pause or play the background');
     expect(SHORTCUTS.find((k) => k.keys === 'H')?.action).toBe('Hide or show the interface');
     expect(SHORTCUTS.find((k) => k.keys === '4')?.action).toBe('Countdown');
     expect(SHORTCUTS.find((k) => k.keys === 'W')?.action).toBe('Widgets');
@@ -300,7 +466,7 @@ describe('Shell', () => {
   describe('Widgets popover', () => {
     const popover = () => screen.getByRole('dialog', { name: 'Widgets' });
 
-    it('the dock Widgets item opens a popover of four switches, focusing the first', async () => {
+    it('the dock Widgets item opens a popover of six switches, focusing the first', async () => {
       const user = userEvent.setup();
       await renderShell();
       const trigger = screen.getByRole('button', { name: 'Widgets' });
@@ -308,7 +474,14 @@ describe('Shell', () => {
       await user.click(trigger);
       expect(trigger).toHaveAttribute('aria-expanded', 'true');
       const switches = within(popover()).getAllByRole('switch');
-      expect(switches.map((s) => s.textContent)).toEqual(['Calendar', 'Weather', 'Quote', 'Notes']);
+      expect(switches.map((s) => s.textContent)).toEqual([
+        'Spotify',
+        'Calendar',
+        'Weather',
+        'Quote',
+        'Notes',
+        'Deadlines',
+      ]);
       for (const s of switches) expect(s).toHaveAttribute('aria-checked', 'false');
       expect(switches[0]).toHaveFocus();
     });
@@ -328,6 +501,70 @@ describe('Shell', () => {
       );
       await user.click(within(popover()).getByRole('switch', { name: 'Notes' }));
       await waitFor(() => expect(screen.queryByTestId('notes-widget')).not.toBeInTheDocument());
+    });
+
+    it('the Spotify switch toggles widgets.spotify.open through settings.set', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('switch', { name: 'Spotify' }));
+      expect(api.settings.set).toHaveBeenCalledWith({
+        widgets: { spotify: { ...DEFAULT_SETTINGS.widgets.spotify, open: true } },
+      });
+    });
+
+    it('has no Spotify button in the dock and a divider before Stats', async () => {
+      await renderShell();
+      const dock = screen.getByRole('navigation', { name: 'Dock' });
+      expect(within(dock).queryByRole('button', { name: 'Spotify' })).not.toBeInTheDocument();
+      const stats = within(dock).getByRole('button', { name: /^Stats/ });
+      expect(stats.closest('li')?.querySelector('[aria-hidden="true"]:not(span)')).not.toBeNull();
+      expect(stats.previousElementSibling).not.toBeNull();
+    });
+
+    it('"Add stats widget…" adds one through statWidgets.add and closes the popover', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('button', { name: 'Add stats widget…' }));
+      expect(api.statWidgets.add).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+    });
+
+    it('"Add stats widget…" is disabled at six, saying why', async () => {
+      const user = userEvent.setup();
+      const api = await renderShell();
+      const w = (id: number) => ({
+        id,
+        card: 'total' as const,
+        range: 'week' as const,
+        x: 0.5,
+        y: 0.3,
+        scale: 1,
+        bare: false,
+      });
+      useStatWidgetsStore.setState({ widgets: [1, 2, 3, 4, 5, 6].map(w) });
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      const add = within(popover()).getByRole('button', { name: 'Add stats widget…' });
+      expect(add).toHaveAttribute('aria-disabled', 'true');
+      expect(add).toHaveAttribute('title', 'Up to 6 stats widgets');
+      expect(add).toHaveAccessibleDescription('Up to 6 stats widgets');
+      add.focus();
+      expect(add).toHaveFocus();
+      await user.click(add);
+      expect(popover()).toBeInTheDocument();
+      expect(api.statWidgets.add).not.toHaveBeenCalled();
+      useStatWidgetsStore.setState({ widgets: [] });
+    });
+
+    it('"Add image…" still opens the image dialog', async () => {
+      const user = userEvent.setup();
+      await renderShell();
+      await user.click(screen.getByRole('button', { name: 'Widgets' }));
+      await user.click(within(popover()).getByRole('button', { name: 'Add image…' }));
+      expect(screen.queryByRole('dialog', { name: 'Widgets' })).not.toBeInTheDocument();
+      expect(useImagesStore.getState().adding).toBe(true);
+      useImagesStore.getState().setAdding(false);
     });
 
     it('Esc closes only the popover and gives focus back to the dock item', async () => {

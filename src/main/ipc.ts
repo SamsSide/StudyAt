@@ -4,14 +4,20 @@
 // injected (`ipc`, dialogs, window, app, shell) so every handler runs under a unit test.
 import { join } from 'node:path';
 import type { FileFilter, IpcMainInvokeEvent } from 'electron';
-import { CHANNELS } from '../shared/ipc';
+import { CHANNELS, type NotePatch, type TaskPatch } from '../shared/ipc';
+import { INTENTION_MAX, LIMIT_COPY, MAX_POPPED_NOTES, TASK_GONE } from '../shared/limits';
+import { cascadeAt } from '../core/cascade';
 import { sanitisePlace, sanitiseSettingsPatch } from '../shared/settings';
 import type {
+  DeadlineInput,
+  DeadlinePatch,
   ImagePatch,
   Mode,
   PublicSettings,
+  SessionOutcome,
   Settings,
   SettingsPatch,
+  StatWidgetPatch,
   SubjectRange,
   TaskColour,
 } from '../shared/types';
@@ -19,12 +25,13 @@ import { localDateKey } from './db/backup';
 import type { Db } from './db/db';
 import { IMAGE_SCALE_MAX, IMAGE_SCALE_MIN } from './db/repos/images';
 import { mixesRepo } from './db/repos/mixes';
-import { NOTE_MAX_CHARS, notesRepo } from './db/repos/notes';
+import { NOTE_MAX_CHARS, NOTE_SCALE_MAX, NOTE_SCALE_MIN, notesRepo } from './db/repos/notes';
 import { type MainSettingsPatch, settingsRepo } from './db/repos/settings';
 import { subjectsRepo } from './db/repos/subjects';
 import { tasksRepo } from './db/repos/tasks';
 import type { MediaKind, MediaResolver } from './protocol';
 import { dataService } from './services/data';
+import { deadlinesService } from './services/deadlines';
 import type { CalendarService } from './services/calendar';
 import { imagesService, type ImagesService } from './services/images';
 import { recapsService } from './services/recaps';
@@ -32,6 +39,7 @@ import { publicSettings } from './services/settings';
 import { AUDIO_EXTS, soundsService, type SoundsService } from './services/sounds';
 import { IMAGE_EXTS, spacesService, VIDEO_EXTS, type SpacesService } from './services/spaces';
 import { spotifyCall, type SafeStorageLike } from './services/spotify';
+import { STAT_CARDS, STAT_RANGES, statWidgetsService } from './services/statWidgets';
 import { sanitiseSessionFilter, statsService } from './services/stats';
 import {
   assertBool,
@@ -57,6 +65,11 @@ export { IpcValidationError, assertEnum, assertInt, assertStr } from './services
 const MODES: readonly Mode[] = ['focus', 'short', 'long', 'countdown'];
 const RANGES: readonly SubjectRange[] = ['week', 'month', 'all'];
 const TASK_COLOURS: readonly TaskColour[] = ['yellow', 'pink', 'blue', 'green', 'purple', 'grey'];
+const OUTCOMES: readonly SessionOutcome[] = ['done', 'partly', 'not'];
+/** The most raw text read before trimming; the real limit applies after trimming. */
+const RAW_TEXT = 10_000;
+/** The id a pomodoro row carries (a uuid). */
+const POMODORO_ID_MAX = 64;
 /** Bounds on list payloads, far above anything Sam will have. */
 const MAX_IDS = 10_000;
 const MAX_LEVELS = 500;
@@ -100,6 +113,9 @@ export type TimerLike = Pick<
   | 'setMode'
   | 'setSubject'
   | 'setTask'
+  | 'startTask'
+  | 'setIntention'
+  | 'setOutcome'
   | 'answerAway'
   | 'applySettings'
 >;
@@ -216,9 +232,9 @@ function subjectPatch(v: unknown): { name?: string; colour?: string; sort?: numb
   return out;
 }
 
-function taskPatch(v: unknown): { text?: string; colour?: TaskColour; done?: boolean } {
+function taskPatch(v: unknown): TaskPatch {
   const p = assertRecord(v, 'patch');
-  const out: { text?: string; colour?: TaskColour; done?: boolean } = {};
+  const out: TaskPatch = {};
   if (p.text !== undefined) out.text = assertStr(p.text, 'text', { nonEmpty: true });
   if (p.colour !== undefined) out.colour = assertEnum(p.colour, TASK_COLOURS, 'colour');
   if (p.done !== undefined) out.done = assertBool(p.done, 'done');
@@ -239,12 +255,48 @@ function imagePatch(v: unknown): ImagePatch {
   return out;
 }
 
-function notePatch(v: unknown): { text?: string; colour?: TaskColour } {
+/** Text at most 5000 chars; x, y and scale finite numbers (the repo clamps them); bare a boolean. */
+function notePatch(v: unknown): NotePatch {
   const p = assertRecord(v, 'patch');
-  const out: { text?: string; colour?: TaskColour } = {};
+  const out: NotePatch = {};
   if (p.text !== undefined) out.text = assertStr(p.text, 'text', { max: NOTE_MAX_CHARS });
   if (p.colour !== undefined) out.colour = assertEnum(p.colour, TASK_COLOURS, 'colour');
+  if (p.x !== undefined) out.x = clampNum(p.x, 0, 1, 'x');
+  if (p.y !== undefined) out.y = clampNum(p.y, 0, 1, 'y');
+  if (p.scale !== undefined) out.scale = clampNum(p.scale, NOTE_SCALE_MIN, NOTE_SCALE_MAX, 'scale');
+  if (p.bare !== undefined) out.bare = assertBool(p.bare, 'bare');
   return out;
+}
+
+/** The card, range and placement fields of a stats widget; `card` and `range` are enums. */
+function statWidgetPatch(v: unknown): StatWidgetPatch {
+  const p = assertRecord(v, 'patch');
+  const out: StatWidgetPatch = {};
+  if (p.card !== undefined) out.card = assertEnum(p.card, STAT_CARDS, 'card');
+  if (p.range !== undefined) out.range = assertEnum(p.range, STAT_RANGES, 'range');
+  if (p.x !== undefined) out.x = clampNum(p.x, 0, 1, 'x');
+  if (p.y !== undefined) out.y = clampNum(p.y, 0, 1, 'y');
+  if (p.scale !== undefined) out.scale = clampNum(p.scale, IMAGE_SCALE_MIN, IMAGE_SCALE_MAX, 'scale');
+  if (p.bare !== undefined) out.bare = assertBool(p.bare, 'bare');
+  return out;
+}
+
+/** Trimmed text of `min`..`max` code points. */
+function trimmedText(v: unknown, what: string, min: number, max: number): string {
+  const t = assertStr(v, what, { max: RAW_TEXT }).trim();
+  const n = [...t].length;
+  if (n < min || n > max) throw new IpcValidationError(`${what} is ${min} to ${max} characters`);
+  return t;
+}
+
+/** Trimmed, at most INTENTION_MAX characters; blank is null. */
+function intention(v: unknown): string | null {
+  if (v === null) return null;
+  const t = assertStr(v, 'intention', { max: RAW_TEXT }).trim();
+  if ([...t].length > INTENTION_MAX) {
+    throw new IpcValidationError(`intention is longer than ${INTENTION_MAX} characters`);
+  }
+  return t === '' ? null : t;
 }
 
 function placeQuery(v: unknown): string {
@@ -313,6 +365,8 @@ export function registerIpc(deps: IpcDeps) {
     safe: deps.safeStorage,
     now,
   });
+  const deadlines = deadlinesService({ db, now });
+  const statWidgets = statWidgetsService({ db, now });
   const stats = statsService({ db, now, liveTodayMs: () => timer.getState().todayFocusMs });
   const recaps = recapsService({ db, stats });
   const spaces = spacesService({ db, now, assetsDir: deps.paths.assets, exists: deps.exists });
@@ -371,15 +425,31 @@ export function registerIpc(deps: IpcDeps) {
     }
     return timer.setSubject(subjectId);
   });
-  // The text is snapshotted here, from the list, so a row keeps the name it was studied under
+  // The text is snapshotted here, from the sticky, so a row keeps the name it was studied under
   // (v1.1 spec §3.3). A done task is still a task: the picker hides those, main doesn't refuse.
+  // The subject is never sent or changed with a task (simple-tasks spec §3.2).
+  const heldTask = (id: number) => {
+    const row = tasks.get(id);
+    if (!row) throw new IpcValidationError(TASK_GONE);
+    return row;
+  };
   handle(C.timer.setTask, (id) => {
     const taskId = assertIntOrNull(id, 'taskId');
     if (taskId === null) return timer.setTask(null, null);
-    const task = tasks.list().find((t) => t.id === taskId);
-    if (!task) throw new IpcValidationError('No such task');
-    return timer.setTask(task.id, task.text);
+    const row = heldTask(taskId);
+    return timer.setTask(row.id, row.text);
   });
+  handle(C.timer.startTask, (id) => {
+    const row = heldTask(assertInt(id, 'taskId'));
+    return timer.startTask(row.id, row.text);
+  });
+  handle(C.timer.setIntention, (text) => timer.setIntention(intention(text)));
+  handle(C.timer.setOutcome, (pomodoroId, outcome) =>
+    timer.setOutcome(
+      trimmedText(pomodoroId, 'pomodoroId', 1, POMODORO_ID_MAX),
+      outcome === null ? null : assertEnum(outcome, OUTCOMES, 'outcome'),
+    ),
+  );
   handle(C.timer.answerAway, (answer) =>
     timer.answerAway(assertEnum(answer, ['keep', 'discard'] as const, 'answer')),
   );
@@ -393,6 +463,9 @@ export function registerIpc(deps: IpcDeps) {
   handle(C.stats.trend, () => stats.trend());
   handle(C.stats.bySubject, (range) => stats.bySubject(assertEnum(range, RANGES, 'range')));
   handle(C.stats.byTask, (range) => stats.byTask(assertEnum(range, RANGES, 'range')));
+  handle(C.stats.card, (card, range) =>
+    stats.card(assertEnum(card, STAT_CARDS, 'card'), assertEnum(range, STAT_RANGES, 'range')),
+  );
   handle(C.stats.sessions, (filter) => stats.sessions(sanitiseSessionFilter(filter)));
   handle(C.stats.updateSession, (id, patch) => {
     const p = assertRecord(patch, 'patch');
@@ -430,7 +503,7 @@ export function registerIpc(deps: IpcDeps) {
     return subjects.list();
   });
 
-  // ── Tasks (spec §3.10, text max 500) ──────────────────────────────────────
+  // ── Tasks (spec §3.10, text max 500; simple-tasks spec §5) ───────────────
   handle(C.tasks.list, () => tasks.list());
   handle(C.tasks.create, (input) => {
     const i = assertRecord(input, 'task');
@@ -602,6 +675,48 @@ export function registerIpc(deps: IpcDeps) {
     return list;
   });
   handle(C.notes.remove, (id) => notes.remove(assertInt(id)));
+  // v1.2 spec §3.2: a popped note lands at the next cascade step; the limit is enforced here.
+  handle(C.notes.popOut, (id) => {
+    const noteId = assertInt(id);
+    if (!notes.list().some((n) => n.id === noteId)) throw new IpcValidationError('No such note');
+    // Already popped: idempotent, the note keeps its place and doesn't count against the limit.
+    if (notes.list().some((n) => n.id === noteId && n.popped)) return notes.list();
+    const count = notes.poppedCount();
+    if (count >= MAX_POPPED_NOTES) throw new IpcValidationError(LIMIT_COPY.notes);
+    const list = notes.popOut(noteId, cascadeAt(count));
+    if (list === null) throw new IpcValidationError('No such note');
+    return list;
+  });
+  handle(C.notes.dockBack, (id) => {
+    const list = notes.dockBack(assertInt(id));
+    if (list === null) throw new IpcValidationError('No such note');
+    return list;
+  });
+
+  // ── Deadlines (v1.2 spec §3.10); the service validates every field ─────────
+  handle(C.deadlines.list, (opts) => deadlines.list(assertBool(assertRecord(opts, 'opts').past, 'past')));
+  handle(C.deadlines.create, (input) =>
+    deadlines.create(assertRecord(input, 'deadline') as unknown as DeadlineInput),
+  );
+  handle(C.deadlines.update, (id, patch) =>
+    deadlines.update(assertInt(id), assertRecord(patch, 'patch') as DeadlinePatch),
+  );
+  handle(C.deadlines.remove, (id) => deadlines.remove(assertInt(id)));
+
+  // ── Stats widgets (v1.2 spec §3.12) ───────────────────────────────────────
+  handle(C.statWidgets.list, () => statWidgets.list());
+  handle(C.statWidgets.add, () => statWidgets.add());
+  handle(C.statWidgets.update, (id, patch) => {
+    const widget = statWidgets.update(assertInt(id), statWidgetPatch(patch));
+    if (widget === null) throw new IpcValidationError('No such stats widget');
+    return widget;
+  });
+  handle(C.statWidgets.remove, (id) => {
+    const widgetId = assertInt(id);
+    if (!statWidgets.list().some((w) => w.id === widgetId))
+      throw new IpcValidationError('No such stats widget');
+    statWidgets.remove(widgetId);
+  });
 
   // ── App ───────────────────────────────────────────────────────────────────
   handle(C.app.toggleFullscreen, () => {
@@ -623,6 +738,8 @@ export function registerIpc(deps: IpcDeps) {
     spaces,
     sounds,
     images,
+    deadlines,
+    statWidgets,
     data,
     resolveMedia: createMediaResolver(spaces, sounds, images),
   };

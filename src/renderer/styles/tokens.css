@@ -40,6 +40,9 @@
   --bg: #0b0d12;
   --panel: var(--glass-fill);
   --panel-strong: var(--glass-fill-strong);
+  /* Opaque: for surfaces that sit over other text or inside a backdrop filter (menus, the drag card,
+     native select options), where glass would let what is behind show through. */
+  --panel-solid: #1b1e26;
   --scrim: rgba(6, 7, 10, 0.3);
   --blur: var(--glass-filter);
   --hover: rgba(255, 255, 255, 0.09);

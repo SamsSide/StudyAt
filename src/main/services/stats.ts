@@ -2,6 +2,7 @@
 // full session history, read from settings each call. The running row is included with its live
 // accrual for today: the database copy lags by up to one 15 s checkpoint, so today's total is
 // topped up to the controller's `todayFocusMs`, the same figure the timer widget and top bar show.
+import { goalCard, subjectsCard, totalCard } from '../../core/stats/cards';
 import { heatmap } from '../../core/stats/heatmap';
 import { overview } from '../../core/stats/overview';
 import {
@@ -16,8 +17,11 @@ import {
 import { weekStartOf } from '../../core/time';
 import type { SessionFilter } from '../../shared/ipc';
 import type {
+  CardData,
   HeatmapCell,
   Session,
+  StatCard,
+  StatRange,
   StatsOverview,
   SubjectRange,
   SubjectTotal,
@@ -129,6 +133,19 @@ export function statsService(deps: StatsServiceDeps) {
     bySubject(range: SubjectRange): SubjectTotal[] {
       const { ctx, rows } = current();
       return bySubject(rows, subjects.list(), range, ctx);
+    },
+
+    /** Data for one stats widget card over `range` (v1.2 spec §3.12), from the same live rows as the rest. */
+    card(card: StatCard, range: StatRange): CardData {
+      const { ctx, rows } = current();
+      switch (card) {
+        case 'total':
+          return totalCard(rows, range, ctx);
+        case 'subjects':
+          return subjectsCard(rows, subjects.list(), range, ctx);
+        case 'goal':
+          return goalCard(rows, range, ctx);
+      }
     },
 
     /** Top 10 tasks for `range`, largest first; the running row counts live (v1.1 spec §3.3). */

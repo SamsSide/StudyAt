@@ -1,6 +1,6 @@
 import type { TaskColour } from '../../shared/types';
 
-/** The six note colours in picker order; yellow is the default (spec §3.10). */
+/** The six colours in picker order; yellow is the default (spec §3.10). They serve tasks and notes. */
 export const TASK_COLOURS: readonly { id: TaskColour; label: string }[] = [
   { id: 'yellow', label: 'Yellow' },
   { id: 'pink', label: 'Pink' },

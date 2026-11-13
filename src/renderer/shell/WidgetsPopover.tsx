@@ -1,19 +1,24 @@
-// The dock's Widgets popover (widgets addendum §1): a small glass sheet beside the dock listing the
-// Calendar, Weather, Quote and Notes widgets, each with a macOS-style switch bound to toggleWidget.
-// Timer, Tasks and Spotify keep their own dock items. Below the switches, "Add image…" opens the
-// image dialog (v1.1 spec §3.6) in the popover's place. Focus moves to the first switch on open and
+// The dock's Widgets popover (widgets addendum §1, v1.2 spec §3.1): a small glass sheet beside the dock
+// listing the Spotify, Calendar, Weather, Quote, Notes and Deadlines widgets, each with a macOS-style
+// switch bound to toggleWidget. Timer and Tasks keep their own dock items. Below the switches,
+// "Add stats widget…" adds a stats card (aria-disabled at six, the UI half of the limit main also
+// enforces) and "Add image…" opens the image dialog (v1.1 spec §3.6), each in the popover's place. Focus moves to the first switch on open and
 // back to the dock item on close; Esc (useShortcuts), W, a click outside or tabbing away closes it.
-import { useEffect, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
 import type { WidgetId } from '../../shared/types';
+import { LIMIT_COPY, MAX_STAT_WIDGETS } from '../../shared/limits';
 import { useImagesStore } from '../images/imagesStore';
+import { useStatWidgetsStore } from '../statWidgets/statWidgetsStore';
 import styles from './shell.module.css';
 import { useStudyStore } from './store';
 
 export const POPOVER_WIDGETS: readonly { id: WidgetId; label: string }[] = [
+  { id: 'spotify', label: 'Spotify' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'weather', label: 'Weather' },
   { id: 'quote', label: 'Quote' },
   { id: 'notes', label: 'Notes' },
+  { id: 'deadlines', label: 'Deadlines' },
 ];
 
 /** Gap between the dock item and the popover, and the least gap to the window's edge. */
@@ -34,6 +39,9 @@ export function WidgetsPopover({
   const widgets = useStudyStore((s) => s.settings?.widgets);
   const toggleWidget = useStudyStore((s) => s.toggleWidget);
   const setAdding = useImagesStore((s) => s.setAdding);
+  const statCount = useStatWidgetsStore((s) => s.widgets.length);
+  const full = statCount >= MAX_STAT_WIDGETS;
+  const hintId = useId();
   const ref = useRef<HTMLDivElement>(null);
 
   // Beside the dock item, vertically centred on it, kept inside the window (and again on resize).
@@ -117,6 +125,26 @@ export function WidgetsPopover({
           </li>
         ))}
       </ul>
+      <button
+        type="button"
+        data-popover-item
+        className={styles.popoverRow}
+        aria-disabled={full}
+        aria-describedby={full ? hintId : undefined}
+        title={full ? LIMIT_COPY.statWidgets : undefined}
+        onClick={() => {
+          if (full) return;
+          onClose();
+          void useStatWidgetsStore.getState().add();
+        }}
+      >
+        Add stats widget…
+      </button>
+      {full && (
+        <span id={hintId} className={styles.srOnly}>
+          {LIMIT_COPY.statWidgets}
+        </span>
+      )}
       <button
         type="button"
         data-popover-item

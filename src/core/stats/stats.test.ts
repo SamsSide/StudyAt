@@ -57,6 +57,8 @@ function sessionAt(
     status: 'done',
     taskId: null,
     taskText: null,
+    intention: null,
+    outcome: null,
   };
 }
 
