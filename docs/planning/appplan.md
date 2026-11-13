@@ -28,7 +28,7 @@
 | Quote widget | §4.10 | W | built |
 | Notes widget | §4.10, §6.4 | W | built |
 | v1.1 polish: away switch, Countdown, task on the timer, focus view, scaling and resizable widgets, image/GIF widgets, pop-out Spotify, YouTube fix | §4.1, §4.2, §4.4, §4.6, §4.7, §4.9, §4.10, §5, §6.2, §6.4 | V1.1 | built |
-| v1.2: Tweek-style planner (board, lists, quick add, repeat, reminders, revision), pop-out note stickies, YouTube quality, background play/pause, countdown pips, Deadlines and stats widgets, session intention and outcome | §2, §4.1, §4.2, §4.4, §4.5, §4.7, §4.9, §4.10, §6.4 | V1.2 | built |
+| v1.2: ▶ start focus on a sticky task (the Tweek-style planner was built, then replaced by the v1.1 sticky tasks before merge), pop-out note stickies, YouTube quality, background play/pause, countdown pips, Deadlines and stats widgets, session intention and outcome | §2, §4.1, §4.2, §4.4, §4.5, §4.7, §4.9, §4.10, §6.4 | V1.2 | built |
 
 ## 1. Intent
 
@@ -55,16 +55,16 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   breakdown, week-over-week trend, a weekly recap.
 - Custom spaces: their own video files, images and YouTube links as the background.
 - Ambient soundboard with per-sound volume, plus their own sound files.
-- A Tweek-style planner: tasks placed on days or in lists, a week/month board, estimates,
-  subtasks, repeat, reminders and spaced revision, linked to the timer and to subjects.
+- Quick sticky-note tasks, linked to the timer (▶ starts focus on one). Planning on days lives
+  in a dedicated app (Tweek, used on its own), not in StudyAt.
 - Spotify widget (they have Premium): now playing, play/pause/next/previous.
 - Free-floating draggable widgets over the space, like LifeAt.
 
 **Non-goals** (LifeAt features deliberately left out)
 - Rooms, invites, chat, co-working, group timers, accounts, cloud sync.
 - Fortune, Breathe, and LifeAt's task-to-calendar link. (A read-only Calendar widget was added
-  at Sam's request, §4.10, and stays read-only. Planning tasks on days is now a goal: the planner,
-  §4.5, is Tweek-style and local-only, with no sharing, attachments or sync.)
+  at Sam's request, §4.10, and stays read-only. A v1.2 Tweek-style planner was built and then
+  removed at Sam's request (2026-11-13); tasks are sticky notes again, §4.5.)
 - Mobile, macOS, multi-user.
 - Importing LifeAt history (Sam declined; the app starts from zero).
 
@@ -98,9 +98,7 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - **Left dock** (icons + labels, like LifeAt): Spaces, Sounds, Timer, Tasks, Widgets, a divider,
   then Stats and Settings (v1.2: Spotify moved into the Widgets popover). Spaces and Sounds open
   as a side panel; Timer and Tasks toggle floating widgets; Widgets opens a popover of toggles
-  for the other widgets (§4.10); Stats and Settings open full-window overlays; the task board
-  (§4.5) is a third overlay, opened with **B** or the Tasks widget's Expand button, and fills the
-  window (24 px inset) where Stats and Settings keep their size.
+  for the other widgets (§4.10); Stats and Settings open full-window overlays.
 - **Top bar**: current streak (🔥 n, click → Stats), today's focus total, fullscreen toggle, and
   (v1.2) a **background play/pause** button for video and YouTube spaces (hidden for images),
   also on **V**. It is renderer-only state, not remembered, and resets to playing when the space
@@ -176,18 +174,18 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
 - **Subject picker** on the widget (blank = untagged). Subjects are managed in Settings (name +
   colour). Changing the subject mid-session applies from that point on.
 - **Task picker** under the subject picker, in Pomodoro and Countdown: "No task", then the open
-  tasks grouped **Today · This week · Lists** (the Inbox among them), with a type-to-filter box.
-  Changing the task mid-session splits the session like a subject change. **Auto subject
-  (v1.2):** picking a task whose effective subject differs also sets the subject, and task and
-  subject change in **one** split (one closed row, one new row). A held task that is ticked off or deleted stays while its focus segment runs or is paused
+  sticky tasks in list order; a held task shows by its remembered text even when it is done or
+  gone, and a task deleted between opening the picker and choosing it shows "That task no longer
+  exists.". Changing the task mid-session splits the session like a subject change. A task never
+  changes the subject (stickies have none). A held task that is ticked off or deleted stays while its focus segment runs or is paused
   (no split);
   whenever no focus segment is running — after it ends, on Skip, Reset or a mode change, or if it
   is ticked off while idle or on a break — the timer drops it back to "No task" (cleared in main,
   before any auto-started focus opens its row).
-- **▶ on a task (v1.2)** sets the task and its subject, then: idle in a focus mode starts focus;
+- **▶ on a task (v1.2)** sets the task (never the subject), then: idle in a focus mode starts focus;
   idle in a break mode switches to Focus and starts it; focus running or paused only sets the task
-  (one split); a break running sets it for the next focus and shows "Task set for your next
-  focus."
+  (one split); a break running or paused sets it for the next focus and shows "Task set for
+  your next focus."
 - **Intention and outcome (v1.2, Settings → Timer "Ask what I'll do each focus", on by default):**
   in focus modes a one-line field ("By the end I will…", up to 140 characters) sits under the
   task picker, filled from the task if empty. It is stored on the session rows of the segment and
@@ -215,79 +213,25 @@ e.g. COMP2261), a Spotify widget, and stats they don't have to pay for.
   session at that moment and saves it). Single-instance: launching again focuses the existing
   window. Background video is paused while hidden, and the mini timer appears (§4.10).
 
-### 4.5 Planner (tasks)
-Replaces the v1.0 sticky-note tasks (v1.2). Existing sticky tasks are not shown again: migration
-v4 keeps them in `tasks_v1_archive` (and in backups and the JSON export as `tasksV1`), and By task
-stats keep showing their old snapshot text.
-
-**Placement and lists.** A task lives in exactly one place: a **day** (a study-day key, using the
-rollover hour, so the planner's today matches the stats' today) or a **list**. New tasks default to
-today. Lists are named columns (1–60 characters, up to 20), each with an optional linked subject.
-An **Inbox** list (no subject) is seeded first, ahead of one list per subject. A task's effective
-subject is its own, else its list's; moving a task from a linked list to a day copies the subject
-over. List menu: Rename, Link subject, Clear done, Delete (confirmed in place). A list linked to a
-subject with an upcoming exam shows "Exam in N days".
-
-**Fields:** title (1–500), note (up to 5,000), done, colour, estimate (5–600 min), up to 8 tags
-(`a-z 0-9 -`), up to 30 subtasks, repeat (daily, weekdays, weekly, every N days; dated tasks
-only), reminder (`HH:MM`; dated tasks only), and a kind (task or revision).
-
-**Quick add.** Any add row parses `#tag`, `~45m` / `~1h30m` (estimate) and `@text` (the first
-subject whose name contains it): `Lecture 5 notes #lecture ~1h @2221` gives a titled task with
-tag, 60 min and COMP2221. On the board the add lines show no text: a click on any blank ruled
-line of a day column, a list column (the Inbox included) or the board Day sheet focuses that
-column's add line, which fills in when focused. Enter adds the task and keeps typing on the next
-line; Esc clears the line without closing the board.
-
-**Done and repeat.** Ticking strikes a task through and sinks it below the open ones; done tasks
-stay put and clear per list. Ticking a repeating task creates the next copy on the next matching
-day (never in the past, and not if an identical one already exists there); unticking never deletes
-the copy.
-
-**Roll forward** (Settings → Tasks, off by default): at launch and at each new study day, open
-tasks on earlier days move to today with a "from Tue 10 Nov" marker.
-
-**Reminders.** A dated, open task with a reminder fires a Windows notification at that time on its
-study day (a time before the rollover hour falls on the next calendar date), once per task-day,
-following the `notifications` setting. If missed while the app was closed it fires at launch when
-under 60 minutes late. Clicking it opens the task. At the start of a study day reminders are
-checked **before** roll forward, so a late reminder isn't lost.
-
-**Spaced revision.** Ticking a task with a revision tag (default `lecture`) offers "Schedule
-revision? 1 · 3 · 7 · 21 days" (days are toggleable; the task menu offers it for any task). Add
-creates "Revise: <title>" tasks on each day. If the subject has an upcoming exam, reviews after the
-exam are dropped and one is added the day before. Revision tasks never offer revision again.
-
-**Widget** (dock Tasks, `T`): tabs **Day · Week · Lists**, a subject/tag filter and Expand (**B**).
-Rows show a checkbox, title, then chips (subject dot, estimate against actual "32m / 45m", amber
-once over, subtasks "2/5", tags, repeat, reminder), with ▶ on hover. A task is dragged by its
-whole line (on the board and in the widget); from the keyboard, Tab to its `Move "<title>"` grip,
-which shows only on keyboard focus, then Space, arrows, Space. A click within 250 ms of a drag
-ending is ignored, so a drop never opens the task.
-
-One click on a task opens the **quick card**, Tweek-style: top centre over a dimmed backdrop, with
-placement, Expand and close; the title with a round done check; a note ("Add some extra notes
-here…"); a chip row (subject, estimate, tags, "Focused 32m"); subtasks; and an icon bar (Add
-subtask, Repeat, Colour, Reminder, Start focus, and the task menu). Repeat and Reminder are off
-for a list task. **Expand** switches the same dialog to the full **detail popover**: placement,
-title, note, subtasks, subject, estimate (with custom), tags, colour, repeat (with every N days),
-reminder, "Focused: 32m", and a menu (Start focus, Schedule revision…, Duplicate, Delete, confirmed
-in place). Both save as you edit; Esc or a press on the backdrop closes either and keeps what was
-typed.
-
-**Board** (overlay, **B**, closed with Esc), styled like Tweek, with drag and drop between any
-day and list (insertion marker, and a solid drag card held at the grab point; the detail
-popover's placement picker is the keyboard route). The board scrolls as one page. Header: month
-and week, view switch **Day · Week · Month**, ‹ Today ›, filter, "+ New task".
-- **Week:** Mon–Fri columns plus Sat and Sun stacked, each a ruled column headed "planned · studied"
-  (focus-only), with deadline chips. Rows are **compact one-line Tweek rows**: the subject dot and
-  estimate against actual only; tags, subtasks, repeat and the bell show in the board's Day view,
-  the widget and the detail popover. Under the week the **lists sit in one horizontal row of
-  columns**, each a day column's width, scrolling sideways, with "+ New list" at the end. A list
-  named after its subject shows a colour dot instead of a repeated chip.
-- **Day:** the day's tasks large, with notes, subtasks and estimate against actual, lists beside.
-- **Month:** a Monday-start grid with up to three titles per cell, "+n more", deadline chips and
-  studied time; click a cell for its Day view, drop a task on it to move it.
+### 4.5 Tasks widget (sticky notes)
+- Quick-add box ("Add a task…"); each task is a small sticky note with text (click to edit, up to
+  500 characters), a tick-off checkbox and one of six colours (yellow by default). Drag to reorder
+  by the handle (`Drag to reorder: <text>`) or Alt + Up / Down. Completed tasks collapse into a
+  "Done (n)" section that can be cleared ("Clear done"); a sticky has no delete. Persisted locally.
+  Dock Tasks, `T`.
+- **▶ (v1.2):** an open sticky shows ▶ (`Start focus on "<text>"`) on hover and on keyboard focus
+  within the note. Its slot is always reserved, so a long note never reflows when it appears. It
+  follows the timer's ▶ rule (§4.4); done stickies have none. One notice line sits under the add
+  box: "Task set for your next focus." when the returned timer state is a running or paused break,
+  and "That task no longer exists." when the call fails, after which the list reloads. The notice
+  clears on the next ▶ or add.
+- **The v1.2 planner, replaced (2026-11-13):** v1.2 briefly replaced this widget with a Tweek-style
+  planner; Sam went back to sticky notes (`docs/planning/specs/2026-11-13-simple-tasks-design.md`).
+  Migration v5 brought back the v1 stickies (same ids), appended the planner's tasks as stickies
+  (same ids; text from the title, cut to 500; yellow when uncoloured; done kept; old stickies first,
+  then day tasks by date, then list tasks), and archived the planner tables as
+  `planner_tasks_v4_archive`, `task_lists_v4_archive`, `task_tags_v4_archive` and
+  `subtasks_v4_archive`. No session row changed, so By task stats are unchanged.
 
 ### 4.6 Spotify widget
 - One-time setup in Settings: Sam creates a free app at developer.spotify.com, pastes its
@@ -320,9 +264,9 @@ and week, view switch **Day · Week · Month**, ‹ Today ›, filter, "+ New ta
   table also shows each session's **intention** and an outcome mark (done, partly, not).
 - **Stats widgets (v1.2)**: up to 6 floating cards from the Widgets popover, each with a range
   (Today · Week · Month): **Total time** (with the change against the same elapsed part of the
-  previous period, ticking live for Today), **By subject** (top 6 and Other), **Goal + streak**
-  and **Estimates** (planned against focused for done, estimated tasks, the biggest over-runs).
-  They only read focus time.
+  previous period, ticking live for Today), **By subject** (top 6 and Other) and **Goal +
+  streak**. They only read focus time. (A v1.2 Estimates card went with the planner; migration v5
+  removed any Estimates widgets.)
 - **Weekly recaps** list (§4.8).
 - Range picker on the charts: week · month · 12 weeks · year · all.
 
@@ -339,11 +283,11 @@ and week, view switch **Day · Week · Month**, ‹ Today ›, filter, "+ New ta
   (off by default).
 - Also: daily goal, global hotkey, mini timer when hidden, Calendar addresses, Weather place and
   units (§4.10).
-- **Tasks (v1.2):** "Move unfinished tasks to today", the revision tags (default `lecture`; the
-  list wraps) and the revision days (default 1, 3, 7, 21). **Chimes:** "Count down the last 3
-  seconds" with Preview. **Timer:** "Ask what I'll do each focus".
-- **Export:** the JSON export adds `taskLists`, `tasks`, `deadlines` and `tasksV1` (the archived
-  sticky tasks); CSV is unchanged. The schema is now v4.
+- **v1.2:** **Chimes:** "Count down the last 3 seconds" with Preview. **Timer:** "Ask what I'll do
+  each focus". (The v1.2 Settings → Tasks section went with the planner; its stored settings are
+  ignored.)
+- **Export:** the JSON export has `tasks` (the sticky tasks, v1 shape) and `deadlines`; CSV is
+  unchanged. The schema is now v5.
 - Timer (v1.1): **"Ask if I've been away"** (on by default; off: away time still counts, while
   locking or sleeping still pauses — the idle-minutes control is disabled while it's off), and
   **Countdown length** (1–240 min).
@@ -358,7 +302,7 @@ and week, view switch **Day · Week · Month**, ‹ Today ›, filter, "+ New ta
   while the timer runs (setting, on by default), and can be toggled from the tray, the timer
   widget or `M`. Its position is remembered.
 - **In-app shortcuts** (ignored while typing): `Space` start/pause · `R` reset · `N` skip ·
-  `1`/`2`/`3`/`4` Pomodoro/short/long/Countdown · `S` stats · `T` tasks · `B` task board · `V`
+  `1`/`2`/`3`/`4` Pomodoro/short/long/Countdown · `S` stats · `T` tasks · `V`
   background play/pause · `K` sounds · `G` spaces · `W` widgets popover · `M` mini timer · `F` fullscreen · `H` hide or show the interface
   (focus view, §4.1) · `Esc` close the top overlay, leave focus view, or close the panel · `?` help.
 - **Pre-filled subjects**: Sam's six modules (COMP2181, COMP2211, COMP2221, COMP2261, COMP2271,
@@ -368,9 +312,7 @@ and week, view switch **Day · Week · Month**, ‹ Today ›, filter, "+ New ta
   free-floating widget like the others, closed by default.
 - **Deadlines (v1.2)**: exams and coursework with a date and time, shown soonest first with a
   **live countdown** ("23d 4h", then "31h 12m", then "42m 08s" under an hour). Add, edit, mark done
-  and delete in the widget; a Past toggle lists the last ten. Deadlines also show as chips on
-  their day in the board and the planner widget, cap spaced revision, and feed a list's "Exam in N
-  days".
+  and delete in the widget; a Past toggle lists the last ten.
 - **Calendar** (read-only): today's events and the next few days, from Google Calendar's "Secret
   address in iCal format" (up to 5 calendars), pasted in Settings → Calendar. Recurring and
   all-day events are handled; refreshed every 15 min while open. Offline, it shows the last good
@@ -498,7 +440,10 @@ and week, view switch **Day · Week · Month**, ‹ Today ›, filter, "+ New ta
 - **Daily automatic backup** of the database (keep the last 14) and backup before any schema
   migration. Schema is versioned with migrations from day one (v2 added the Notes table; v3 added
   `task_id`/`task_text` on sessions and the `images` table; v4 added the planner tables, `deadlines`,
-  `stat_widgets`, the popped-out note columns and `intention`/`outcome` on sessions). The `images/` folder of image-widget
+  `stat_widgets`, the popped-out note columns and `intention`/`outcome` on sessions; v5 brought
+  back the v1 sticky `tasks` table and archived the planner tables as `planner_tasks_v4_archive`,
+  `task_lists_v4_archive`, `task_tags_v4_archive` and `subtasks_v4_archive`, kept alongside
+  `tasks_v1_archive`). The `images/` folder of image-widget
   copies is not in the backups (their database rows are).
 - The daily backup is taken at launch and again **whenever the date changes while the app keeps
   running** in the tray (checked hourly and on every resume and unlock); finished weeks' recaps
