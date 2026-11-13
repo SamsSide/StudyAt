@@ -8,7 +8,7 @@
 // logged, except the pop-out limit, which is designed copy (ruling R38).
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import type { Note, TaskColour } from '../../shared/types';
-import { LIMIT_COPY } from '../../shared/planner';
+import { LIMIT_COPY } from '../../shared/limits';
 import { ipcErrorMessage, logIpcError } from '../lib/ipcError';
 
 export const SAVE_FAILED = "Couldn't save this note. It's still here — try again.";

@@ -22,7 +22,6 @@ export const testRegistry = (): Registry => ({
   overlays: {
     stats: stub('stats-overlay'),
     settings: stub('settings-overlay'),
-    tasks: stub('tasks-overlay'),
   },
   background: stub('background'),
 });

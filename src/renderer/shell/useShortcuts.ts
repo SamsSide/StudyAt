@@ -1,7 +1,7 @@
 // In-app shortcuts (spec §3.7, plus W for the Widgets popover from widgets addendum §1, and H for
 // focus view and 4 for Countdown from the v1.1 polish spec §3.2 and §3.4). Ignored while typing in
 // an input, textarea, select or contenteditable, and when a modifier is held. While an overlay is
-// open only Esc, ?, S and B act (v1.2 spec §4; V, the background pause, waits for the overlay to
+// open only Esc, ? and S act (v1.2 spec §4; V, the background pause, waits for the overlay to
 // close). In focus view W, K, G (and T on an auto-hide Tasks widget) leave it, so what they open
 // is visible. Space is also left alone on buttons and other controls, where it already means
 // "press this".
@@ -19,7 +19,6 @@ export const SHORTCUTS: readonly { keys: string; action: string }[] = [
   { keys: '1 / 2 / 3', action: 'Pomodoro, short break, long break' },
   { keys: '4', action: 'Countdown' },
   { keys: 'S', action: 'Stats' },
-  { keys: 'B', action: 'Tasks board' },
   { keys: 'T', action: 'Show or hide tasks' },
   { keys: 'W', action: 'Widgets' },
   { keys: 'K', action: 'Sounds' },
@@ -85,9 +84,9 @@ export function useShortcuts(): void {
       if (isTyping(target)) return;
 
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      // Behind a modal overlay only the overlay keys act: ?, S and B swap what is on top, and
+      // Behind a modal overlay only the overlay keys act: ? and S swap what is on top, and
       // nothing reaches the timer or the panels unseen.
-      if (store.overlay && key !== '?' && key !== 's' && key !== 'b') return;
+      if (store.overlay && key !== '?' && key !== 's') return;
       const mode = MODE_KEYS[key];
       if (mode) {
         void studyat.timer.setMode(mode);
@@ -100,7 +99,6 @@ export function useShortcuts(): void {
       } else if (key === 'r') void studyat.timer.reset();
       else if (key === 'n') void studyat.timer.skip();
       else if (key === 's') store.toggleOverlay('stats');
-      else if (key === 'b') store.toggleOverlay('tasks');
       else if (key === 'v') {
         // Only when the top bar would show its button: not an image, a missing file, a blocked
         // embed or an offline YouTube space.

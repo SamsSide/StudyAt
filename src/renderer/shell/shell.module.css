@@ -681,17 +681,6 @@
   height: auto;
 }
 
-/* The Tasks board (v1.2 spec §3.7): the whole window less a 24 px inset. Its body scrolls inside
-   itself, so the sheet never grows past the window. */
-.scrimFull {
-  padding: 24px;
-}
-
-.dialogFull {
-  width: 100%;
-  height: 100%;
-}
-
 /* The overlay body is a column, so a child (Settings) can fill it and scroll inside itself. */
 .dialog > .body {
   display: flex;

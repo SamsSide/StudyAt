@@ -9,10 +9,7 @@ import type {
   AwayPrompt,
   CardData,
   DeadlinesView,
-  ListsView,
   NowPlaying,
-  PlannerRange,
-  PlannerTask,
   PublicSettings,
   SegmentEnd,
   Settings,
@@ -36,10 +33,6 @@ export type MockApi = StudyAtApi & {
   emitSettings(settings: PublicSettings): void;
   /** As the preload does on `app:flush`: runs every `app.onFlush` callback and awaits them. */
   emitFlush(): Promise<void>;
-  /** As main does when a reminder is clicked: runs every `planner.onOpenTask` callback. */
-  emitOpenTask(taskId: number): void;
-  /** As main does when it changes tasks itself: runs every `planner.onChanged` callback. */
-  emitPlannerChanged(): void;
 };
 
 const MINUTE = 60_000;
@@ -71,8 +64,6 @@ const emptyCard = (card: StatCard, range: StatRange): CardData => {
       return { card, range, bars: [] };
     case 'goal':
       return { card, range, goalMs: 0, todayMs: 0, days: [], hitDays: 0, elapsedDays: 0, streak: 0 };
-    case 'estimates':
-      return { card, range, tasks: 0, plannedMs: 0, focusedMs: 0, ratio: null, overruns: [], bySubject: [] };
   }
 };
 
@@ -123,42 +114,6 @@ function publicSettings(s: Settings): PublicSettings {
   return rest;
 }
 
-const emptyRange = (from: string, to: string): PlannerRange => ({
-  from,
-  to,
-  tasks: [],
-  deadlines: [],
-  studiedMs: {},
-});
-const emptyLists = (): ListsView => ({ lists: [], tasks: [], deadlines: [] });
-
-/** The smallest valid planner task, a day task with nothing set. */
-export const minimalPlannerTask = (over: Partial<PlannerTask> = {}): PlannerTask => ({
-  id: 1,
-  title: 'Task',
-  note: '',
-  done: false,
-  doneAt: null,
-  colour: null,
-  day: '1970-01-05',
-  listId: null,
-  subjectId: null,
-  effectiveSubjectId: null,
-  estimateMin: null,
-  tags: [],
-  subtasks: [],
-  repeat: null,
-  reminder: null,
-  kind: 'task',
-  originTaskId: null,
-  rolledFrom: null,
-  sort: 0,
-  createdAt: 0,
-  updatedAt: 0,
-  actualMs: 0,
-  ...over,
-});
-
 const emptyPlaying = (): NowPlaying => ({ state: 'unconfigured' });
 const noWeather = (): WeatherReport => ({ state: 'unconfigured', place: null, fetchedAt: null });
 const noCalendar = (): CalendarStatus => ({ configured: false, calendars: [] });
@@ -190,8 +145,6 @@ export function mockApi(overrides: Overrides = {}): MockApi {
   const mini = channel<boolean>();
   const visibility = channel<boolean>();
   const settingsChanged = channel<PublicSettings>();
-  const openTask = channel<number>();
-  const plannerChanged = channel<undefined>();
   const flushers = new Set<() => Promise<void> | void>();
   const timer = (): Promise<TimerState> => Promise.resolve(idleTimerState());
   const resolves = <T>(value: T) => vi.fn(() => Promise.resolve(value));
@@ -238,35 +191,12 @@ export function mockApi(overrides: Overrides = {}): MockApi {
       update: vi.fn(() => Promise.resolve(seedSubjects())),
       archive: vi.fn(() => Promise.resolve(seedSubjects())),
     },
-    planner: {
-      week: vi.fn((day: string) => Promise.resolve(emptyRange(day, day))),
-      month: vi.fn((month: string) => Promise.resolve(emptyRange(`${month}-01`, `${month}-01`))),
-      day: vi.fn((day: string) => Promise.resolve(emptyRange(day, day))),
-      lists: vi.fn(() => Promise.resolve(emptyLists())),
-      task: vi.fn(() => Promise.resolve(null)),
-      onOpenTask: vi.fn(openTask.subscribe),
-      onChanged: vi.fn((cb: () => void) => plannerChanged.subscribe(() => cb())),
-    },
     tasks: {
-      create: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
-      update: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
-      move: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
-      remove: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
-      duplicate: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
-      scheduleRevision: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
-    },
-    subtasks: {
-      add: vi.fn(() => Promise.resolve(minimalPlannerTask())),
-      update: vi.fn(() => Promise.resolve(minimalPlannerTask())),
-      remove: vi.fn(() => Promise.resolve(minimalPlannerTask())),
-      reorder: vi.fn(() => Promise.resolve(minimalPlannerTask())),
-    },
-    lists: {
+      list: resolves([]),
       create: resolves([]),
       update: resolves([]),
       reorder: resolves([]),
-      remove: vi.fn(() => Promise.resolve({ lists: [], removed: [] })),
-      clearDone: vi.fn(() => Promise.resolve({ tasks: [], removed: [] })),
+      clearDone: resolves([]),
     },
     spaces: {
       list: resolves([]),
@@ -372,10 +302,7 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     stats: { ...base.stats, ...overrides.stats },
     recaps: { ...base.recaps, ...overrides.recaps },
     subjects: { ...base.subjects, ...overrides.subjects },
-    planner: { ...base.planner, ...overrides.planner },
     tasks: { ...base.tasks, ...overrides.tasks },
-    subtasks: { ...base.subtasks, ...overrides.subtasks },
-    lists: { ...base.lists, ...overrides.lists },
     spaces: { ...base.spaces, ...overrides.spaces },
     images: { ...base.images, ...overrides.images },
     sounds: { ...base.sounds, ...overrides.sounds },
@@ -399,8 +326,6 @@ export function mockApi(overrides: Overrides = {}): MockApi {
     emitMini: mini.emit,
     emitVisibility: visibility.emit,
     emitSettings: settingsChanged.emit,
-    emitOpenTask: openTask.emit,
-    emitPlannerChanged: (): void => plannerChanged.emit(undefined),
     emitFlush: async (): Promise<void> => {
       await Promise.allSettled([...flushers].map((cb) => Promise.resolve().then(cb)));
     },

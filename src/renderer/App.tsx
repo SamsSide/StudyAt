@@ -8,14 +8,12 @@ import { registry } from './registry';
 import { Shell } from './shell/Shell';
 import { restoreSoundscape } from './sounds/soundscape';
 import { useAppBridge } from './appBridge';
-import { usePlannerEvents } from './planner/usePlannerEvents';
 import { useRecapPopup } from './stats/useRecapPopup';
 import { AwayPrompt } from './timer/AwayPrompt';
 
 export function App() {
   useChimes();
   useAppBridge();
-  usePlannerEvents();
   const recap = useRecapPopup();
 
   useEffect(() => {

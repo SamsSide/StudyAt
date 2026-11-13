@@ -3,17 +3,14 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { formatClock as sharedFormatClock } from '../../shared/clock';
-import { addDays, dayKeyOf } from '../../core/time';
-import { INTENTION_MAX, TASK_GONE } from '../../shared/planner';
-import { DEFAULT_SETTINGS } from '../../shared/settings';
-import type { TimerState } from '../../shared/types';
+import { INTENTION_MAX, TASK_GONE } from '../../shared/limits';
+import type { Task, TimerState } from '../../shared/types';
 import { MiniTimer } from '../mini/MiniTimer';
 import { resetStudyStore, useStudyStore } from '../shell/store';
 import { useShortcuts } from '../shell/useShortcuts';
 import {
   idleTimerState,
   installMockApi,
-  minimalPlannerTask,
   mockApi,
   seedSubjects,
   type MockApi,
@@ -240,139 +237,54 @@ describe('Countdown', () => {
 });
 
 describe('TaskSelect', () => {
-  const NOW = new Date(2026, 10, 11, 12, 0).getTime();
-  // Only Date is faked, so userEvent and the promises keep running normally.
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+  const sticky = (id: number, text: string, done = false): Task => ({
+    id,
+    text,
+    colour: 'yellow',
+    done,
+    sort: id,
+    createdAt: 0,
+    doneAt: done ? 1 : null,
   });
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-  const todayKey = dayKeyOf(NOW, DEFAULT_SETTINGS.rolloverHour);
-  const tomorrow = addDays(todayKey, 1);
-  const seedPlanner = (): void => {
-    vi.mocked(api.planner.week).mockResolvedValue({
-      from: todayKey,
-      to: todayKey,
-      deadlines: [],
-      studiedMs: {},
-      tasks: [
-        minimalPlannerTask({ id: 1, title: 'Read ch. 3', day: todayKey }),
-        minimalPlannerTask({ id: 2, title: 'Old', day: todayKey, done: true }),
-        minimalPlannerTask({ id: 3, title: 'Lab report', day: tomorrow }),
-      ],
-    });
-    vi.mocked(api.planner.lists).mockResolvedValue({
-      lists: [],
-      deadlines: [],
-      tasks: [
-        minimalPlannerTask({ id: 4, title: 'Essay plan', day: null, listId: 9 }),
-        minimalPlannerTask({ id: 5, title: 'Lab safety quiz', day: null, listId: 9 }),
-        minimalPlannerTask({ id: 6, title: 'Finished', day: null, listId: 9, done: true }),
-      ],
-    });
+  const seedTasks = (): void => {
+    vi.mocked(api.tasks.list).mockResolvedValue([
+      sticky(1, 'Read ch. 3'),
+      sticky(2, 'Old', true),
+      sticky(3, 'Lab report'),
+    ]);
   };
 
-  it('groups open tasks Today, This week, Lists after "No task", and picks one', async () => {
+  it('lists "No task" then the open tasks in order, and picks one', async () => {
     const user = userEvent.setup();
-    seedPlanner();
+    seedTasks();
     render(<TimerWidget />);
     const box = screen.getByRole('combobox', { name: 'Task' });
     expect(box).toHaveTextContent('No task');
     await user.click(box);
-    await screen.findByRole('option', { name: 'Essay plan' });
-    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Lab report', 'Essay plan', 'Lab safety quiz']);
-    const headings = ['Today', 'This week', 'Lists'].map((h) => screen.getByText(h));
-    headings.forEach((h, i) => {
-      const next = headings[i + 1];
-      if (next) expect(h.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    });
-    expect(screen.getByRole('option', { name: 'Essay plan' })).toHaveAttribute('title', 'Essay plan');
-    await user.click(screen.getByRole('option', { name: 'Essay plan' }));
-    expect(api.timer.setTask).toHaveBeenCalledWith(4);
+    await screen.findByRole('option', { name: 'Lab report' });
+    expect(optionNames()).toEqual(['No task', 'Read ch. 3', 'Lab report']);
+    await user.click(screen.getByRole('option', { name: 'Lab report' }));
+    expect(api.timer.setTask).toHaveBeenCalledWith(3);
   });
 
-  /** Opens the task list for a box drawn at half size (so CSS px are twice window px). */
-  const openAt = async (top: number, innerHeight: number) => {
+  it('a pick that main rejects as gone says the task no longer exists and reloads the list', async () => {
     const user = userEvent.setup();
-    seedPlanner();
-    render(<TimerWidget />);
-    const box = screen.getByRole('combobox', { name: 'Task' });
-    Object.defineProperty(box, 'offsetHeight', { configurable: true, value: 32 });
-    vi.spyOn(box, 'getBoundingClientRect').mockReturnValue(
-      DOMRect.fromRect({ x: 0, y: top, width: 100, height: 16 }),
-    );
-    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(innerHeight);
-    await user.click(box);
-    return screen.getByRole('listbox', { name: 'Task' });
-  };
-
-  it('the open task list scrolls within the room the window has, measured at the widget scale', async () => {
-    // Below: (300 - 196) / 0.5 = 208 CSS px, short of the 376 the list wants; above: 180 / 0.5 = 360.
-    // So it opens upwards into 360 - 72 = 288 CSS px.
-    const list = await openAt(180, 300);
-    expect(list).toHaveStyle({ maxHeight: '288px' });
-    expect(list.parentElement?.className).toMatch(/upwards/i);
-  });
-
-  it('opens downwards when the room below fits the whole list, even with more above', async () => {
-    // Below: (500 - 196) / 0.5 = 608 CSS px; above: 180 / 0.5 = 360.
-    const list = await openAt(180, 500);
-    expect(list).toHaveStyle({ maxHeight: '304px' });
-    expect(list.parentElement?.className).not.toMatch(/upwards/i);
-  });
-
-  it('opens towards the side with more room when neither fits the whole list', async () => {
-    // Below: (150 - 36) / 0.5 = 228 CSS px, short of 376; above: 20 / 0.5 = 40. So down, into 228 - 72 = 156.
-    const list = await openAt(20, 150);
-    expect(list).toHaveStyle({ maxHeight: '156px' });
-    expect(list.parentElement?.className).not.toMatch(/upwards/i);
-  });
-
-  it('typing filters the titles', async () => {
-    const user = userEvent.setup();
-    seedPlanner();
-    render(<TimerWidget />);
-    await user.click(screen.getByRole('combobox', { name: 'Task' }));
-    await screen.findByRole('option', { name: 'Essay plan' });
-    await user.type(screen.getByLabelText('Find a task'), 'lab');
-    expect(optionNames()).toEqual(['Lab report', 'Lab safety quiz']);
-    await user.keyboard('{ArrowDown}{Enter}');
-    expect(api.timer.setTask).toHaveBeenCalledWith(5);
-  });
-
-  it('opens on the held task, so Enter, Enter does not swap it for "No task"', async () => {
-    const user = userEvent.setup();
-    setup({ status: 'running', taskId: 4, taskText: 'Essay plan' });
-    seedPlanner();
-    render(<TimerWidget />);
-    screen.getByRole('combobox', { name: 'Task' }).focus();
-    await user.keyboard('{Enter}');
-    // Once the fetch reorders the list the held task is still the highlighted one.
-    await screen.findByRole('option', { name: 'Read ch. 3' });
-    expect(screen.getByRole('option', { name: 'Essay plan' }).className).toMatch(/activeOption/);
-    await user.keyboard('{Enter}');
-    expect(api.timer.setTask).not.toHaveBeenCalled();
-  });
-
-  it('a pick that main rejects as gone says the task no longer exists', async () => {
-    const user = userEvent.setup();
-    seedPlanner();
+    seedTasks();
     vi.mocked(api.timer.setTask).mockRejectedValue(new Error(TASK_GONE));
     render(<TimerWidget />);
     await user.click(screen.getByRole('combobox', { name: 'Task' }));
-    await user.click(await screen.findByRole('option', { name: 'Essay plan' }));
+    await user.click(await screen.findByRole('option', { name: 'Lab report' }));
     expect(await screen.findByText('That task no longer exists.')).toBeInTheDocument();
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalledTimes(2));
   });
 
   it('any other rejection says the task could not be set', async () => {
     const user = userEvent.setup();
-    seedPlanner();
+    seedTasks();
     vi.mocked(api.timer.setTask).mockRejectedValue(new Error('boom'));
     render(<TimerWidget />);
     await user.click(screen.getByRole('combobox', { name: 'Task' }));
-    await user.click(await screen.findByRole('option', { name: 'Essay plan' }));
+    await user.click(await screen.findByRole('option', { name: 'Lab report' }));
     expect(await screen.findByText("Couldn't set that task.")).toBeInTheDocument();
     expect(screen.queryByText('That task no longer exists.')).toBeNull();
   });
@@ -389,11 +301,11 @@ describe('TaskSelect', () => {
 
   it('a held task that is now done still shows its text while running', async () => {
     setup({ status: 'running', taskId: 2, taskText: 'Old' });
-    seedPlanner();
+    seedTasks();
     render(<TimerWidget />);
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     await userEvent.click(screen.getByRole('combobox', { name: 'Task' }));
-    await waitFor(() => expect(api.planner.week).toHaveBeenCalled());
+    await waitFor(() => expect(api.tasks.list).toHaveBeenCalled());
     expect(screen.getByRole('combobox', { name: 'Task' })).toHaveTextContent('Old');
     expect(api.timer.setTask).not.toHaveBeenCalled();
   });

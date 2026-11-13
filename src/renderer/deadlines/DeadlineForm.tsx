@@ -3,7 +3,7 @@
 // when editing an existing deadline.
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DEADLINE_DEFAULT_TIME } from '../../core/deadlines';
-import { DEADLINE_NOTE_MAX, DEADLINE_TITLE_MAX } from '../../shared/planner';
+import { DEADLINE_NOTE_MAX, DEADLINE_TITLE_MAX } from '../../shared/limits';
 import type { Deadline, DeadlineInput, DeadlineKind } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import styles from './DeadlinesWidget.module.css';

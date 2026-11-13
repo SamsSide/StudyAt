@@ -6,7 +6,7 @@
 // back to the dock item on close; Esc (useShortcuts), W, a click outside or tabbing away closes it.
 import { useEffect, useId, useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
 import type { WidgetId } from '../../shared/types';
-import { LIMIT_COPY, MAX_STAT_WIDGETS } from '../../shared/planner';
+import { LIMIT_COPY, MAX_STAT_WIDGETS } from '../../shared/limits';
 import { useImagesStore } from '../images/imagesStore';
 import { useStatWidgetsStore } from '../statWidgets/statWidgetsStore';
 import styles from './shell.module.css';

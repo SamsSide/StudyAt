@@ -2,7 +2,7 @@
 // "By the end I will…", saved on blur or Enter. Main owns the text; this shows `timer.intention`.
 import { useState } from 'react';
 import { isFocusMode } from '../../shared/modes';
-import { INTENTION_MAX } from '../../shared/planner';
+import { INTENTION_MAX } from '../../shared/limits';
 import { DEFAULT_SETTINGS } from '../../shared/settings';
 import { useStudyStore } from '../shell/store';
 import styles from './timer.module.css';

@@ -206,49 +206,6 @@
   border-color: rgba(255, 255, 255, 0.14);
 }
 
-/* Estimates */
-.estimates {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.ratio {
-  font-weight: 600;
-}
-
-.subhead {
-  margin: var(--space-1) 0 0;
-  color: var(--text-faint);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.lines {
-  display: grid;
-  gap: 2px;
-  font-size: var(--text-sm);
-}
-
-.line {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.lineName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lineValue {
-  flex: none;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
 /* The range switch: a small segmented control, as in the Stats overlay. */
 .segmented {
   display: inline-flex;

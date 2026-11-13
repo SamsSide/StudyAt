@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   CardData,
-  EstimatesCardData,
   GoalCardData,
   StatCard,
   StatRange,
@@ -70,21 +69,6 @@ const goal = (over: Partial<GoalCardData> = {}): GoalCardData => ({
   ...over,
 });
 
-const estimates = (over: Partial<EstimatesCardData> = {}): EstimatesCardData => ({
-  card: 'estimates',
-  range: 'week',
-  tasks: 4,
-  plannedMs: 3 * HOUR,
-  focusedMs: 4 * HOUR,
-  ratio: 1.3,
-  overruns: [
-    { taskId: 1, title: 'Past paper 2019', estimateMs: HOUR, actualMs: 2 * HOUR },
-    { taskId: 2, title: 'Lab report', estimateMs: 30 * MINUTE, actualMs: 50 * MINUTE },
-  ],
-  bySubject: [{ subjectId: 3, label: 'COMP2261', ratio: 1.6 }],
-  ...over,
-});
-
 const timer = (todayFocusMs: number): TimerState => ({
   ...useStudyStore.getState().timer,
   status: 'running',
@@ -135,25 +119,26 @@ describe('StatWidgets', () => {
   });
 
   it('the menu changes the card, hides the background and removes', async () => {
-    renderWidgets([widget()], (c, r) => (c === 'estimates' ? estimates({ range: r }) : total({ range: r })));
+    renderWidgets([widget()], (_c, r) => total({ range: r }));
     await screen.findByRole('group', { name: 'Total time' });
 
     await userEvent.click(screen.getByRole('button', { name: 'Stats widget menu' }));
     const menu = screen.getByRole('menu');
-    for (const name of ['Total time', 'By subject', 'Goal + streak', 'Estimates']) {
+    for (const name of ['Total time', 'By subject', 'Goal + streak']) {
       expect(within(menu).getByRole('menuitemradio', { name })).toBeInTheDocument();
     }
-    await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'Estimates' }));
-    expect(api.statWidgets.update).toHaveBeenCalledWith(1, { card: 'estimates' });
-    expect(await screen.findByRole('group', { name: 'Estimates' })).toBeInTheDocument();
-    await waitFor(() => expect(api.stats.card).toHaveBeenCalledWith('estimates', 'week'));
+    expect(within(menu).queryByRole('menuitemradio', { name: 'Estimates' })).not.toBeInTheDocument();
+    await userEvent.click(within(menu).getByRole('menuitemradio', { name: 'By subject' }));
+    expect(api.statWidgets.update).toHaveBeenCalledWith(1, { card: 'subjects' });
+    expect(await screen.findByRole('group', { name: 'By subject' })).toBeInTheDocument();
+    await waitFor(() => expect(api.stats.card).toHaveBeenCalledWith('subjects', 'week'));
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Stats widget menu' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Hide background' }));
     expect(api.statWidgets.update).toHaveBeenLastCalledWith(1, { bare: true });
     // Bare: no header (no title handle or close button); the toolbar holds the controls.
-    const frame = screen.getByRole('group', { name: 'Estimates' });
+    const frame = screen.getByRole('group', { name: 'By subject' });
     expect(within(frame).queryByRole('button', { name: 'Remove stats widget' })).not.toBeInTheDocument();
     expect(frame.querySelector('[class*="widgetHeader"]')).toBeNull();
     expect(frame.querySelector('[class*="bareTools"]')).toContainElement(
@@ -165,7 +150,7 @@ describe('StatWidgets', () => {
     expect(screen.getByRole('menuitem', { name: 'Show background' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
     expect(api.statWidgets.remove).toHaveBeenCalledWith(1);
-    await waitFor(() => expect(screen.queryByRole('group', { name: 'Estimates' })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'By subject' })).not.toBeInTheDocument());
   });
 
   it('the menu closes on Escape and gives focus back to its button', async () => {
@@ -303,20 +288,6 @@ describe('StatWidgets', () => {
     expect(dots[1]).toHaveAttribute('data-state', 'missed');
     expect(dots[6]).toHaveAttribute('data-state', 'future');
     expect(screen.getByText('🔥 3-day streak')).toBeInTheDocument();
-  });
-
-  it('Estimates shows the ratio, the over-runs and a line per subject', async () => {
-    renderWidgets([widget({ card: 'estimates' })], () => estimates());
-    expect(await screen.findByText('Tasks took 1.3× your estimates')).toBeInTheDocument();
-    expect(screen.getByText('COMP2261 · 1.6×')).toBeInTheDocument();
-    expect(screen.getByText('Past paper 2019')).toBeInTheDocument();
-  });
-
-  it('Estimates says so when nothing is estimated', async () => {
-    renderWidgets([widget({ card: 'estimates' })], () =>
-      estimates({ tasks: 0, plannedMs: 0, focusedMs: 0, ratio: null, overruns: [], bySubject: [] }),
-    );
-    expect(await screen.findByText('No estimated tasks yet')).toBeInTheDocument();
   });
 
   it('a segment end refetches', async () => {

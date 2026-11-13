@@ -27,7 +27,7 @@ import { logIpcError } from '../lib/ipcError';
 import shell from '../shell/shell.module.css';
 import { useStudyStore } from '../shell/store';
 import { type FramePatch, WidgetFrame } from '../shell/WidgetFrame';
-import { EstimatesCard, GoalCard, SubjectsCard, TotalCard } from './cards';
+import { GoalCard, SubjectsCard, TotalCard } from './cards';
 import styles from './statWidgets.module.css';
 import { refreshStatCards, useStatWidgetsStore } from './statWidgetsStore';
 
@@ -35,10 +35,9 @@ export const CARD_NAMES: Record<StatCard, string> = {
   total: 'Total time',
   subjects: 'By subject',
   goal: 'Goal + streak',
-  estimates: 'Estimates',
 };
 
-const CARDS: readonly StatCard[] = ['total', 'subjects', 'goal', 'estimates'];
+const CARDS: readonly StatCard[] = ['total', 'subjects', 'goal'];
 
 const RANGES: readonly { value: StatRange; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -212,8 +211,6 @@ function CardBody({ data, liveMs }: { data: CardData; liveMs: number }) {
       return <SubjectsCard data={data} />;
     case 'goal':
       return <GoalCard data={data} />;
-    case 'estimates':
-      return <EstimatesCard data={data} />;
   }
 }
 

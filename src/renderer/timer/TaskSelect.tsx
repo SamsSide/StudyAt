@@ -1,171 +1,97 @@
-// The task picker (v1.2 spec §3.8): "No task", then the open planner tasks grouped Today, This week
-// (the other days of it) and Lists, with a type-to-filter box. A combobox like the subject picker;
-// the lists are fetched each time it opens, so a task added in the planner a moment ago is there.
-// The task the timer holds is shown by its remembered text even once it is done or deleted: the
-// timer keeps it until the segment ends (v1.1 spec §3.3).
-import { type FocusEvent, type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import { TASK_GONE } from '../../shared/planner';
-import { DEFAULT_SETTINGS } from '../../shared/settings';
-import type { PlannerTask } from '../../shared/types';
-import { plannerToday } from '../planner/format';
+// The task picker (spec §3.3): "No task" plus every not-done task in list order, a select-only
+// combobox like the subject picker. The list is fetched each time it opens, so a task added in the
+// Tasks widget a moment ago is there. The task the timer holds is shown by its remembered text even
+// once it is ticked off or deleted: the timer keeps it until the segment ends (spec §3.3).
+import { type KeyboardEvent, useId, useRef, useState } from 'react';
+import { TASK_GONE } from '../../shared/limits';
+import type { Task } from '../../shared/types';
 import { useStudyStore } from '../shell/store';
 import styles from './timer.module.css';
 
-type Group = 'Today' | 'This week' | 'Lists';
-type Choice = { id: number | null; text: string; group: Group | null };
+type Choice = { id: number | null; text: string };
 
-const NO_TASK: Choice = { id: null, text: 'No task', group: null };
-/** The options' tallest (as `.taskOptions` in timer.module.css) and shortest height, in CSS px. */
-const OPTIONS_MAX = 7 * 34 + 3 * 22;
-const OPTIONS_MIN = 2 * 34;
-/** What the open list adds around its options: the find box, gaps, padding and the window edge. */
-const LIST_CHROME = 72;
-/** The room, in CSS px, that shows the whole list. */
-const LIST_ROOM = OPTIONS_MAX + LIST_CHROME;
-
-type Found = { today: PlannerTask[]; week: PlannerTask[]; lists: PlannerTask[] };
-const EMPTY: Found = { today: [], week: [], lists: [] };
-
-const byOrder = (a: PlannerTask, b: PlannerTask): number => a.sort - b.sort || a.id - b.id;
+const NO_TASK: Choice = { id: null, text: 'No task' };
+/** Room the list needs below the box before it opens upwards instead. */
+const LIST_ROOM = 300;
 
 export function TaskSelect() {
   const taskId = useStudyStore((s) => s.timer.taskId);
   const taskText = useStudyStore((s) => s.timer.taskText);
-  const rolloverHour = useStudyStore((s) => s.settings?.rolloverHour ?? DEFAULT_SETTINGS.rolloverHour);
-  const [found, setFound] = useState<Found>(EMPTY);
-  const [filter, setFilter] = useState('');
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [failed, setFailed] = useState<'gone' | 'other' | null>(null);
-
-  const needle = filter.trim().toLowerCase();
-  const matches = (text: string): boolean => needle === '' || text.toLowerCase().includes(needle);
-  const listed: Choice[] = [];
-  const add = (tasks: PlannerTask[], group: Group): void => {
-    for (const t of [...tasks].sort(byOrder)) {
-      if (!t.done && matches(t.title)) listed.push({ id: t.id, text: t.title, group });
-    }
-  };
-  add(found.today, 'Today');
-  add(found.week, 'This week');
-  add(found.lists, 'Lists');
-  const heldText = taskText ?? 'Task';
-  const heldListed = [...found.today, ...found.week, ...found.lists].some((t) => t.id === taskId && !t.done);
-  const choices: Choice[] = [];
-  if (needle === '') choices.push(NO_TASK);
-  // The held task stays shown even when it is no longer in the open lists.
-  if (taskId !== null && !heldListed && matches(heldText)) {
-    choices.push({ id: taskId, text: heldText, group: null });
+  const listed: Choice[] = tasks.filter((t) => !t.done).map((t) => ({ id: t.id, text: t.text }));
+  const choices: Choice[] = [NO_TASK, ...listed];
+  // The held task stays shown even when it is no longer in the not-done list.
+  if (taskId !== null && !listed.some((c) => c.id === taskId)) {
+    choices.splice(1, 0, { id: taskId, text: taskText ?? 'Task' });
   }
-  choices.push(...listed);
+  const selected = Math.max(
+    0,
+    choices.findIndex((c) => c.id === taskId),
+  );
 
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState(selected);
   const [upwards, setUpwards] = useState(false);
-  // The options' height for the room on the side it opens to, so it never runs off the window.
-  const [optionsMax, setOptionsMax] = useState(OPTIONS_MAX);
   const box = useRef<HTMLDivElement>(null);
-  const wrap = useRef<HTMLDivElement>(null);
-  const search = useRef<HTMLInputElement>(null);
-  // Set once the user moves the highlight or types; until then it follows the held task.
-  const moved = useRef(false);
   const id = useId();
   const labelId = `${id}-label`;
   const listId = `${id}-list`;
   const optionId = (i: number): string => `${id}-option-${i}`;
 
-  useEffect(() => {
-    if (open) search.current?.focus();
-  }, [open]);
-
-  // Open on the held task, so Enter, Enter never swaps it for "No task"; the planner fetch can
-  // reorder the list, so keep following it until the user takes over.
-  const heldIndex = Math.max(
-    0,
-    choices.findIndex((c) => c.id === taskId),
-  );
-  useEffect(() => {
-    if (open && !moved.current) setActive(heldIndex);
-  }, [open, heldIndex]);
-  const highlight = (i: number): void => {
-    moved.current = true;
-    setActive(i);
+  const load = (): void => {
+    window.studyat.tasks
+      .list()
+      .then(setTasks)
+      .catch(() => undefined); // keep the last list; "No task" still works
   };
-
   const show = (): void => {
     const rect = box.current?.getBoundingClientRect();
-    // The widget is drawn scaled (WidgetFrame), so window pixels become CSS pixels by its scale.
-    const drawn = box.current?.offsetHeight ?? 0;
-    const scale = rect !== undefined && drawn > 0 && rect.height > 0 ? rect.height / drawn : 1;
-    const below = rect === undefined ? Infinity : (window.innerHeight - rect.bottom) / scale;
-    const above = rect === undefined ? 0 : rect.top / scale;
-    // Down when the whole list fits; otherwise towards the side with more room.
-    const up = below < LIST_ROOM && above > below;
-    setUpwards(up);
-    const room = up ? above : below;
-    setOptionsMax(Math.max(OPTIONS_MIN, Math.min(OPTIONS_MAX, room - LIST_CHROME)));
-    setFilter('');
+    setUpwards(rect !== undefined && rect.bottom + LIST_ROOM > window.innerHeight);
+    setActive(selected);
     setFailed(null);
-    moved.current = false;
-    setActive(heldIndex);
     setOpen(true);
-    const today = plannerToday(rolloverHour);
-    Promise.all([window.studyat.planner.week(today), window.studyat.planner.lists()])
-      .then(([week, lists]) =>
-        setFound({
-          today: week.tasks.filter((t) => t.day === today),
-          week: week.tasks.filter((t) => t.day !== null && t.day !== today),
-          lists: lists.tasks.filter((t) => t.listId !== null),
-        }),
-      )
-      .catch(() => undefined); // keep the last lists; "No task" still works
+    load();
   };
-  const close = (refocus = false): void => {
-    setOpen(false);
-    if (refocus) box.current?.focus();
-  };
+  const close = (): void => setOpen(false);
   const pick = (i: number): void => {
+    close();
     const choice = choices[i];
-    close(true);
     if (!choice || choice.id === taskId) return;
     setFailed(null);
+    // A task ticked off or removed between opening the picker and choosing it.
     window.studyat.timer.setTask(choice.id).catch((err: unknown) => {
       setFailed(err instanceof Error && err.message.includes(TASK_GONE) ? 'gone' : 'other');
+      load();
     });
   };
   const clamp = (i: number): number => Math.min(choices.length - 1, Math.max(0, i));
 
-  const onKey = (e: KeyboardEvent<HTMLElement>): void => {
+  const onKey = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const { key } = e;
     if (!open) {
       if (key === 'ArrowDown' || key === 'ArrowUp' || key === 'Enter' || key === ' ') show();
       else return;
-    } else if (key === 'ArrowDown') highlight(clamp(active + 1));
-    else if (key === 'ArrowUp') highlight(clamp(active - 1));
-    else if (key === 'Enter') pick(active);
-    else if (key === 'Escape') close(true);
+    } else if (key === 'ArrowDown') setActive(clamp(active + 1));
+    else if (key === 'ArrowUp') setActive(clamp(active - 1));
+    else if (key === 'Home') setActive(0);
+    else if (key === 'End') setActive(choices.length - 1);
+    else if (key === 'Enter' || key === ' ') pick(active);
+    else if (key === 'Escape') close();
     else if (key === 'Tab') {
       // Close without picking: a stray Tab must never split a focus session (appplan §5).
       close();
       return; // let Tab move focus on as usual
-    } else {
-      // Typing in the filter box: keep the in-app shortcuts (Space, R...) out of it.
-      e.stopPropagation();
-      return;
-    }
+    } else return;
     // Handled here, so the in-app shortcuts (Space, R, Esc...) leave it alone.
     e.preventDefault();
   };
-  // Focus moving between the box and the filter keeps it open; anywhere else closes it.
-  const onBlur = (e: FocusEvent<HTMLDivElement>): void => {
-    if (!wrap.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
-  };
 
-  const current = taskId === null ? NO_TASK : { id: taskId, text: heldText, group: null };
-  const heldNow = choices.find((c) => c.id === taskId);
-  const shown = heldNow?.text ?? current.text;
+  const current = choices[selected]!;
 
   return (
-    <div className={`${styles.subject} ${styles.taskPicker}`} ref={wrap} onBlur={onBlur}>
+    <div className={styles.subject}>
       <span id={labelId} className={styles.visuallyHidden}>
         Task
       </span>
@@ -178,13 +104,13 @@ export function TaskSelect() {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        title={shown}
+        aria-activedescendant={open ? optionId(active) : undefined}
+        title={current.text}
         onClick={() => (open ? close() : show())}
-        onKeyDown={(e) => {
-          if (!open) onKey(e); // the filter box has focus once it is open
-        }}
+        onKeyDown={onKey}
+        onBlur={close}
       >
-        <span className={styles.comboText}>{shown}</span>
+        <span className={styles.comboText}>{current.text}</span>
         <svg className={styles.chevron} viewBox="0 0 12 12" aria-hidden="true">
           <path
             d="M3 4.5 6 7.5 9 4.5"
@@ -201,58 +127,30 @@ export function TaskSelect() {
         </p>
       )}
       {open && (
-        <div className={`${styles.listbox} ${styles.taskList} ${upwards ? styles.upwards : ''}`}>
-          <input
-            ref={search}
-            type="search"
-            className={styles.taskFilter}
-            aria-label="Find a task"
-            aria-controls={listId}
-            aria-activedescendant={choices.length > 0 ? optionId(active) : undefined}
-            placeholder="Find a task"
-            autoComplete="off"
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value);
-              highlight(0); // typing narrows the list, so the highlight goes back to its top
-            }}
-            onKeyDown={onKey}
-          />
-          <ul
-            id={listId}
-            role="listbox"
-            aria-labelledby={labelId}
-            className={styles.taskOptions}
-            style={{ maxHeight: optionsMax }}
-            tabIndex={-1}
-          >
-            {choices.map((c, i) => (
-              <li key={c.id ?? 'none'} role="presentation">
-                {c.group !== null && choices[i - 1]?.group !== c.group && (
-                  <span className={styles.groupLabel}>{c.group}</span>
-                )}
-                <div
-                  id={optionId(i)}
-                  role="option"
-                  aria-selected={c.id === taskId}
-                  className={`${styles.option} ${i === active ? styles.activeOption : ''}`}
-                  title={c.text}
-                  // Keep focus in the filter box, so choosing doesn't blur and close it first.
-                  onMouseDown={(e) => e.preventDefault()}
-                  onMouseEnter={() => highlight(i)}
-                  onClick={() => pick(i)}
-                >
-                  <span className={styles.optionText}>{c.text}</span>
-                </div>
-              </li>
-            ))}
-            {choices.length === 0 && (
-              <li role="presentation" className={styles.groupLabel}>
-                No open tasks match
-              </li>
-            )}
-          </ul>
-        </div>
+        <ul
+          id={listId}
+          role="listbox"
+          aria-labelledby={labelId}
+          className={`${styles.listbox} ${upwards ? styles.upwards : ''}`}
+          tabIndex={-1}
+        >
+          {choices.map((c, i) => (
+            <li
+              key={c.id ?? 'none'}
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === selected}
+              className={`${styles.option} ${i === active ? styles.activeOption : ''}`}
+              title={c.text}
+              // Keep focus on the combobox, so choosing doesn't blur and close it first.
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => setActive(i)}
+              onClick={() => pick(i)}
+            >
+              <span className={styles.optionText}>{c.text}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

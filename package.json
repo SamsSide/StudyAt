@@ -16,8 +16,6 @@
     "dist": "npm run build && electron-builder --win nsis"
   },
   "devDependencies": {
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^7.0.1",

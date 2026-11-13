@@ -2,7 +2,7 @@
 // `stat_widgets`; this mirrors them for the shell's floating widgets. The numbers on each card are
 // never worked out here: every card asks main (`stats.card`) again whenever `revision` moves.
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
-import { MAX_STAT_WIDGETS } from '../../shared/planner';
+import { MAX_STAT_WIDGETS } from '../../shared/limits';
 import type { StatWidget, StatWidgetPatch } from '../../shared/types';
 import { logIpcError } from '../lib/ipcError';
 

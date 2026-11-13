@@ -1,8 +1,7 @@
-// The four stats widget cards (v1.2 spec §3.12). Each draws data main has already worked out
+// The three stats widget cards (v1.2 spec §3.12). Each draws data main has already worked out
 // (`stats.card`, from the pure functions in src/core/stats/cards.ts), so the numbers have one
 // tested source; the cards only format them. All of it is focus-timer time (appplan §5).
 import type {
-  EstimatesCardData,
   GoalCardData,
   StatRange,
   SubjectsCardData,
@@ -21,7 +20,6 @@ const VERSUS: Record<StatRange, string> = {
 };
 
 /** "1.3×": a ratio main has already rounded to one decimal place. */
-const times = (ratio: number): string => `${ratio.toFixed(1)}×`;
 
 function Streak({ days }: { days: number }) {
   return <p className={styles.streak}>{`🔥 ${days}-day streak`}</p>;
@@ -115,45 +113,6 @@ export function GoalCard({ data }: { data: GoalCardData }) {
         })}
       </ul>
       <Streak days={data.streak} />
-    </div>
-  );
-}
-
-/** Planned against focused for done, estimated tasks; the biggest over-runs; a ratio per subject. */
-export function EstimatesCard({ data }: { data: EstimatesCardData }) {
-  if (data.tasks === 0) return <p className={styles.empty}>No estimated tasks yet</p>;
-  return (
-    <div className={styles.estimates}>
-      <p className={styles.muted}>
-        {`Planned ${formatGoal(data.plannedMs)} · Focused ${formatGoal(data.focusedMs)}`}
-      </p>
-      {data.ratio !== null && (
-        <p className={styles.ratio}>{`Tasks took ${times(data.ratio)} your estimates`}</p>
-      )}
-      {data.overruns.length > 0 && (
-        <>
-          <h4 className={styles.subhead}>Biggest over-runs</h4>
-          <ul className={styles.lines}>
-            {data.overruns.map((o) => (
-              <li key={o.taskId} className={styles.line}>
-                <span className={styles.lineName}>{o.title}</span>
-                <span className={styles.lineValue}>
-                  {`${formatGoal(o.actualMs)} of ${formatGoal(o.estimateMs)}`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {data.bySubject.length > 0 && (
-        <ul className={styles.lines} aria-label="By subject">
-          {data.bySubject.map((s) => (
-            <li key={s.subjectId ?? 'none'} className={styles.line}>
-              {`${s.label} · ${times(s.ratio)}`}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

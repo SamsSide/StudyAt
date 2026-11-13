@@ -54,7 +54,6 @@ const OVERLAY_TITLES: Record<OverlayId, string> = {
   stats: 'Stats',
   settings: 'Settings',
   help: 'Keyboard shortcuts',
-  tasks: 'Tasks',
 };
 
 const DEFAULT_AUTO_HIDE_SECONDS = 5;
@@ -195,7 +194,6 @@ export function Shell({ registry }: { registry: Registry }) {
           title={OVERLAY_TITLES[overlay]}
           onClose={() => setOverlay(null)}
           narrow={overlay === 'help'}
-          full={overlay === 'tasks'}
         >
           {OverlayBody ? <OverlayBody /> : <ShortcutsHelp />}
         </Overlay>

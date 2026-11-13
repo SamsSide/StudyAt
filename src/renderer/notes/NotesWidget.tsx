@@ -7,7 +7,7 @@
 // goes again on the next try, even after the widget closes. The notes themselves live in
 // notesStore.ts, shared with the stickies. The shell's WidgetFrame supplies the glass and title.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { LIMIT_COPY, MAX_POPPED_NOTES } from '../../shared/planner';
+import { LIMIT_COPY, MAX_POPPED_NOTES } from '../../shared/limits';
 import type { Note } from '../../shared/types';
 import { Icon } from '../shell/icons';
 import { TASK_COLOURS } from '../tasks/taskColours';

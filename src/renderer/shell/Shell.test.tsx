@@ -358,24 +358,12 @@ describe('Shell', () => {
     expect(useSpacesStore.getState().backgroundPaused).toBe(false);
   });
 
-  it('B opens the Tasks board, closes it again, swaps from Stats, and not while typing', async () => {
+  it('B opens nothing', async () => {
     const user = userEvent.setup();
     await renderShell();
-    const shell = () => document.querySelector('[data-overlay]');
     await user.keyboard('b');
-    expect(shell()).toHaveAttribute('data-overlay', 'tasks');
-    await user.keyboard('b');
-    expect(shell()).toHaveAttribute('data-overlay', 'none');
-    act(() => useStudyStore.getState().setOverlay('stats'));
-    await user.keyboard('b');
-    expect(shell()).toHaveAttribute('data-overlay', 'tasks');
-    act(() => useStudyStore.getState().setOverlay(null));
-    const box = document.createElement('textarea');
-    document.body.appendChild(box);
-    box.focus();
-    await user.keyboard('b');
-    box.remove();
-    expect(shell()).toHaveAttribute('data-overlay', 'none');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.querySelector('[data-overlay]')).toHaveAttribute('data-overlay', 'none');
   });
 
   it('? shows shortcut help listing every key of spec §3.7', async () => {
@@ -393,7 +381,6 @@ describe('Shell', () => {
       '1 / 2 / 3',
       '4',
       'S',
-      'B',
       'T',
       'W',
       'K',
@@ -405,8 +392,8 @@ describe('Shell', () => {
       'Esc',
       '?',
     ]);
-    expect(SHORTCUTS).toHaveLength(17);
-    expect(SHORTCUTS.find((k) => k.keys === 'B')?.action).toBe('Tasks board');
+    expect(SHORTCUTS).toHaveLength(16);
+    expect(SHORTCUTS.find((k) => k.keys === 'B')).toBeUndefined();
     expect(SHORTCUTS.find((k) => k.keys === 'V')?.action).toBe('Pause or play the background');
     expect(SHORTCUTS.find((k) => k.keys === 'H')?.action).toBe('Hide or show the interface');
     expect(SHORTCUTS.find((k) => k.keys === '4')?.action).toBe('Countdown');

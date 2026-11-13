@@ -6,7 +6,6 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { formatCountdown } from '../../core/deadlines';
 import { calendarDate, parseDue } from '../../core/wallclock';
 import type { Deadline, DeadlineInput, DeadlinesView } from '../../shared/types';
-import { usePlannerStore } from '../planner/plannerStore';
 import { useStudyStore } from '../shell/store';
 import { DeadlineForm } from './DeadlineForm';
 import styles from './DeadlinesWidget.module.css';
@@ -94,8 +93,6 @@ export function DeadlinesWidget() {
     setAnswered({ past, failed: false });
     setRows(past ? view.past : view.upcoming);
     setEditing(null);
-    // Every write comes through here: the planner's chips and exam lines refresh from main.
-    void usePlannerStore.getState().reload();
   };
 
   const loaded = answered?.past === past;
