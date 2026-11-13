@@ -31,10 +31,17 @@ a task drags by its whole line, one click opens a small Tweek card (Expand for t
 and a click on any blank board line types a task there. Recorded in the v1.2 verification record,
 "Tweek board feel".
 
+**Planned (2026-11-13): simple tasks replace the planner before merge.** Sam ruled the planner too
+much: Tweek stays an external app, and StudyAt goes back to the v1.1 sticky-note Tasks widget (with
+▶ to start focus). Migration v5 brings back the old stickies and the planner's tasks, and keeps the
+planner tables as archives. Spec `docs/planning/specs/2026-11-13-simple-tasks-design.md`, plan
+`docs/planning/plans/2026-11-13-simple-tasks.md`.
+
 ## Up next
 
-1. **Sam's v1.2 hand-walk** (spec §10) and the Tweek board feel hand-walk (v1.2 verification
-   record, "Tweek board feel"), then push and merge `worktree-feat-v1-2`.
+1. **Build the simple-tasks plan** (`docs/planning/plans/2026-11-13-simple-tasks.md`), then Sam's
+   v1.2 hand-walk (spec §10, minus the planner steps) and the simple-tasks hand-walk (its spec
+   §10), then push and merge `worktree-feat-v1-2`. The Tweek board feel hand-walk is dropped.
 2. Sam's v1.1 hand-walk and look calls (verification record §5, §6), if not done yet.
 3. The v1.0 hand-walk items, if not done yet: spaces (one of your videos, a YouTube link), a rain
    and brown-noise mix, a Pomodoro tagged COMP2261 with both chimes, locking the PC mid-focus,
