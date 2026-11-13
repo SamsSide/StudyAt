@@ -413,7 +413,68 @@ describe('TasksWidget', () => {
       const api = setup([task(5, 'Lab 7')]);
       await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
       expect(api.timer.startTask).toHaveBeenCalledWith(5);
+      // Let startTask's promise settle before asserting there is no notice.
+      await act(async () => {
+        await vi.mocked(api.timer.startTask).mock.results[0]!.value;
+      });
       expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('▶ resolving to a running focus shows no notice', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValue({
+        ...idleTimerState(),
+        mode: 'focus',
+        status: 'running',
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      await act(async () => {
+        await vi.mocked(api.timer.startTask).mock.results[0]!.value;
+      });
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+
+    it('▶ resolving to a paused break shows the notice', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValue({
+        ...idleTimerState(),
+        mode: 'short',
+        status: 'paused',
+      });
+      await userEvent.click(await screen.findByRole('button', { name: 'Start focus on "Lab 7"' }));
+      expect(await screen.findByRole('status')).toHaveTextContent('Task set for your next focus.');
+    });
+
+    it('the notice clears on the next ▶ that resolves to a running focus', async () => {
+      const api = setup([task(5, 'Lab 7')]);
+      vi.mocked(api.timer.startTask).mockResolvedValueOnce({
+        ...idleTimerState(),
+        mode: 'short',
+        status: 'running',
+      });
+      vi.mocked(api.timer.startTask).mockResolvedValueOnce({
+        ...idleTimerState(),
+        mode: 'focus',
+        status: 'running',
+      });
+      const play = await screen.findByRole('button', { name: 'Start focus on "Lab 7"' });
+      await userEvent.click(play);
+      await screen.findByText('Task set for your next focus.');
+      await userEvent.click(play);
+      await waitFor(() => expect(api.timer.startTask).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    });
+
+    it('Alt+ArrowDown on a note\'s ▶ moves the note and keeps focus on its ▶', async () => {
+      const api = setup([task(1, 'One'), task(2, 'Two')]);
+      await screen.findByText('Two');
+      const play = within(noteTexts()[0]!).getByRole('button', { name: 'Start focus on "One"' });
+      expect(play).toHaveAttribute('data-control', 'start');
+      play.focus();
+      await userEvent.keyboard('{Alt>}{ArrowDown}{/Alt}');
+      await waitFor(() => expect(noteTexts()[1]).toHaveTextContent('One'));
+      expect(api.tasks.reorder).toHaveBeenCalledWith([2, 1]);
+      expect(within(noteTexts()[1]!).getByRole('button', { name: 'Start focus on "One"' })).toHaveFocus();
     });
 
     it('Tab reaches ▶ between the text and the colour button', async () => {
