@@ -122,14 +122,32 @@ test('screenshots: stickies, ▶ on hover, the timer picker and the next-focus n
   await shot(win, 'tasks-widget.png');
 
   const longNote = items.filter({ hasText: 'Write up the titration' });
+  const play = longNote.getByRole('button', { name: /^Start focus on/ });
   const box = async () => (await longNote.boundingBox())!;
-  const before = await box();
-  await longNote.hover();
-  await expect(longNote.getByRole('button', { name: /^Start focus on/ })).toBeVisible();
+  const opacity = () => play.evaluate((el) => getComputedStyle(el).opacity);
+  await win.mouse.move(5, 5);
   await sleep(400);
+  expect(await opacity()).toBe('0');
+  const before = await box();
+  await shot(win, 'tasks-no-hover.png');
+  await longNote.hover();
+  await sleep(400);
+  expect(await opacity()).toBe('1');
   const after = await box();
   test.info().annotations.push({ type: 'hover reflow', description: `before ${JSON.stringify(before)} after ${JSON.stringify(after)}` });
+  // The ▶ keeps its slot, so the note must not reflow when it appears.
+  expect(after.height).toBe(before.height);
   await shot(win, 'tasks-play-hover.png');
+
+  // Keyboard focus reveals ▶ too: Tab from the note's first control until it lands on ▶.
+  await win.mouse.move(5, 5);
+  await longNote.getByRole('checkbox').first().focus();
+  for (let i = 0; i < 6 && !(await play.evaluate((el) => el === document.activeElement)); i++) await win.keyboard.press('Tab');
+  await expect(play).toBeFocused();
+  await sleep(400);
+  expect(await opacity()).toBe('1');
+  expect((await box()).height).toBe(before.height);
+  await shot(win, 'tasks-play-focus.png');
 
   await win.mouse.move(5, 5);
   await win.getByRole('combobox', { name: 'Task' }).click();
