@@ -4,17 +4,11 @@
 // throwaway STUDYAT_USER_DATA (the fixtures); screenshots go to STUDYAT_SHOTS_DIR when it is set.
 // Bridge writes the renderer has no event for (notes, deadlines, planner seeds) are followed by a
 // renderer reload, so the stores read them back from main.
-import type { ElectronApplication, Locator, Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { addDays, dayKeyOf, weekStartOf } from '../src/core/time';
-import { formatDayLabel } from '../src/renderer/stats/format';
-import { expect, prepare, queryDb, quitApp, shot, sleep, test } from './fixtures';
+import type { Locator, Page } from '@playwright/test';
+import { expect, prepare, quitApp, shot, sleep, test } from './fixtures';
 
 /** Task 1's spike video: it has a 2160p stream (task-1-report.md). */
 const VIDEO_4K = 'LXb3EKWsInQ';
-const ROLLOVER = 4;
 
 const dock = (win: Page, label: string) =>
   win.locator('nav[aria-label="Dock"]').getByRole('button', { name: new RegExp(`^${label}`) }).first();
@@ -56,37 +50,6 @@ async function online(): Promise<boolean> {
     .catch(() => false);
 }
 
-/**
- * The bottom-right corner of the real Windows screen, where toasts show, into STUDYAT_SHOTS_DIR: a
- * toast is an OS window a page screenshot can't see. Returns the path, or null when no shots are taken.
- */
-async function toastGrab(app: ElectronApplication, name: string): Promise<string | null> {
-  const dir = process.env.STUDYAT_SHOTS_DIR;
-  if (!dir || process.platform !== 'win32') return null;
-  mkdirSync(dir, { recursive: true });
-  const path = join(dir, name);
-  // Physical pixels: the display's DIP size through its scale factor.
-  const rect = await app.evaluate(({ screen }) => {
-    const d = screen.getPrimaryDisplay();
-    const w = Math.round(d.bounds.width * d.scaleFactor);
-    const h = Math.round(d.bounds.height * d.scaleFactor);
-    return { x: Math.round(w * 0.68), y: Math.round(h * 0.68), width: Math.round(w * 0.32), height: Math.round(h * 0.32) };
-  });
-  const ps = [
-    'Add-Type -AssemblyName System.Drawing',
-    'Add-Type -Name D -Namespace W -MemberDefinition \'[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();\'',
-    '[void][W.D]::SetProcessDPIAware()',
-    `$bmp = New-Object System.Drawing.Bitmap ${rect.width}, ${rect.height}`,
-    '$g = [System.Drawing.Graphics]::FromImage($bmp)',
-    `$g.CopyFromScreen(${rect.x}, ${rect.y}, 0, 0, $bmp.Size)`,
-    `$bmp.Save('${path.replace(/'/g, "''")}', [System.Drawing.Imaging.ImageFormat]::Png)`,
-  ].join('; ');
-  execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'ignore' });
-  return path;
-}
-
-/** A study day's key for an instant, with the default rollover. */
-const studyDay = (ms: number): string => dayKeyOf(ms, ROLLOVER);
 /** Local `YYYY-MM-DD` and `HH:MM` of an instant (the deadline form's fields). */
 function localParts(ms: number): { date: string; time: string } {
   const d = new Date(ms);
@@ -503,30 +466,6 @@ test('deadlines: form and bridge adds count down in the right format; Past; chip
   await calm(win);
   await shot(win, 'v12-deadlines.png');
 
-  // The board shows the chips on their days: Week for the two this week, Month for the exam.
-  await win.keyboard.press('b');
-  const board = win.getByRole('dialog', { name: 'Tasks' });
-  await board.getByRole('group', { name: 'Board view' }).getByRole('button', { name: 'Week' }).click();
-  const soonDay = formatDayLabel(studyDay(soonDue));
-  await expect(board.locator(`section[aria-label="${soonDay}"]`)).toContainText('Problem sheet 6');
-  const cwDue = new Date(`${localParts(tomorrow.getTime()).date}T12:00`).getTime();
-  await calm(win);
-  await shot(win, 'v12-deadlines-board-week.png');
-  // Tomorrow can fall in next study week (a Sunday run): step the board on to it.
-  if (weekStartOf(studyDay(cwDue)) !== weekStartOf(studyDay(Date.now()))) {
-    await board.getByRole('button', { name: 'Next week' }).click();
-  }
-  const cwDay = formatDayLabel(studyDay(cwDue));
-  await expect(board.locator(`section[aria-label="${cwDay}"]`)).toContainText('Lab report hand-in');
-  // Month, from today's month to the next: the exam sits in its own day's cell.
-  await board.getByRole('group', { name: 'Board view' }).getByRole('button', { name: 'Month' }).click();
-  const todayBtn = board.getByRole('button', { name: 'Today', exact: true });
-  if ((await todayBtn.getAttribute('aria-disabled')) !== 'true') await todayBtn.click();
-  await board.getByRole('button', { name: 'Next month' }).click();
-  const examDay = studyDay(new Date(exam.due).getTime());
-  await expect(board.locator(`[data-month-cell="${examDay}"]`)).toContainText('COMP2261 final exam');
-  await win.keyboard.press('Escape');
-
   // Mark the lab report done in its detail; Past shows it as done.
   await row('Lab report hand-in').getByRole('button').first().click();
   await w.getByRole('button', { name: 'Mark done' }).click();
@@ -577,12 +516,12 @@ test('stats widgets: three set up, six at most, Today live, bare, all six back a
   await add();
   await setUp('By subject', 'Week');
   await add();
-  await setUp('Estimates', 'Month');
+  await setUp('Goal + streak', 'Month');
   const three = await win.evaluate(() => window.studyat.statWidgets.list());
   expect(three.map((s) => [s.card, s.range])).toEqual([
     ['total', 'today'],
     ['subjects', 'week'],
-    ['estimates', 'month'],
+    ['goal', 'month'],
   ]);
 
   for (let i = 0; i < 3; i++) await add();
@@ -647,7 +586,7 @@ test('stats widgets: three set up, six at most, Today live, bare, all six back a
   expect(back.map((s) => [s.id, s.card, s.range, s.x, s.y, s.bare])).toEqual(saved.map((s) => [s.id, s.card, s.range, s.x, s.y, s.bare]));
   for (let i = 0; i < back.length; i++) {
     const g = statGroups(win).nth(i);
-    const names = { total: 'Total time', subjects: 'By subject', goal: 'Goal + streak', estimates: 'Estimates' };
+    const names = { total: 'Total time', subjects: 'By subject', goal: 'Goal + streak' };
     await expect(g).toHaveAttribute('aria-label', names[back[i]!.card]);
     const label = { today: 'Today', week: 'Week', month: 'Month' }[back[i]!.range];
     await expect(g.getByRole('radio', { name: label })).toBeChecked();
@@ -689,162 +628,4 @@ test('switches: countdown pips off survives a relaunch; intention off hides the 
   await expect.poll(async () => (await win.evaluate(() => window.studyat.settings.get())).sessionIntention).toBe(false);
   await win.keyboard.press('Escape');
   await expect(field).toHaveCount(0);
-});
-
-// ---------------------------------------------------------------------------------------------
-// The dispatcher's checks: a reminder's toast on Windows (it has an empty body).
-
-test('a task reminder shows a Windows notification with its title', async ({ launch, dataDir }) => {
-  const { app, win } = await launch();
-  await prepare(win, { notifications: true });
-  // Records every notification main shows, and whether Windows took it.
-  await app.evaluate(({ Notification }) => {
-    const g = globalThis as unknown as { shown: { title: string; body: string; event?: string }[] };
-    g.shown = [];
-    const show = Notification.prototype.show;
-    Notification.prototype.show = function (this: Electron.Notification) {
-      const rec: { title: string; body: string; event?: string } = { title: this.title, body: this.body };
-      g.shown.push(rec);
-      this.on('show', () => (rec.event = 'show'));
-      this.on('failed', (_e, error) => (rec.event = `failed: ${error}`));
-      return show.call(this);
-    };
-  });
-  const now = Date.now();
-  const day = studyDay(now);
-  const hm = localParts(now).time;
-  const id = await win.evaluate(
-    async ({ d }) => (await window.studyat.tasks.create({ title: 'Email supervisor about project scope', day: d })).tasks[0]!.id,
-    { d: day },
-  );
-  await win.evaluate(({ i, r }) => window.studyat.tasks.update(i, { reminder: r }), { i: id, r: hm });
-  // Fired on the next 30 s pass, while the window is behind nothing.
-  const shown = await expect
-    .poll(async () => app.evaluate(() => (globalThis as unknown as { shown: { title: string }[] }).shown.length), { timeout: 45_000 })
-    .toBeGreaterThan(0)
-    .then(() => app.evaluate(() => (globalThis as unknown as { shown: { title: string; body: string; event?: string }[] }).shown));
-  await sleep(2_500);
-  const grab = await toastGrab(app, 'v12-reminder-toast-screen.png');
-  const record = shown[0]!;
-  test.info().annotations.push({ type: 'reminder', description: `${JSON.stringify(shown)}; grab ${grab}` });
-  expect(record.title).toBe('Reminder · Email supervisor about project scope');
-  expect(record.body).toBe('');
-  // Provenance: main marked the task reminded for its day (on disk once the app has quit).
-  expect(await quitApp(app)).toBe(0);
-  expect(await queryDb(dataDir, `SELECT reminded_day FROM tasks WHERE id = ${id}`)).toEqual([{ reminded_day: day }]);
-});
-
-// ---------------------------------------------------------------------------------------------
-// The Tweek-look shots for Sam (dispatcher's extra): the board on Week with run 2's seed, the list
-// row, and a real-pointer drag mid-move.
-
-test('board shots: Week, the list row, a drag mid-move', async ({ launch }) => {
-  test.skip(!process.env.STUDYAT_SHOTS_DIR, 'screenshots only: set STUDYAT_SHOTS_DIR');
-  const { win } = await launch();
-  await prepare(win);
-  const today = studyDay(Date.now());
-  const mon = weekStartOf(today);
-  const seeded = await win.evaluate(
-    async ({ mon, today, days }) => {
-      const api = window.studyat;
-      const subjects = await api.subjects.list();
-      const sub = (code: string) => subjects.find((s) => s.name.startsWith(code))?.id ?? null;
-      const views = await api.planner.lists();
-      const list = (name: string) => views.lists.find((l) => l.name.startsWith(name))!.id;
-      const t = async (title: string, at: { day?: string; listId?: number }, more: Record<string, unknown> = {}) =>
-        (await api.tasks.create({ title, ...at, ...more })).tasks[0]!.id;
-      await t('Lecture 5: propositional logic notes', { day: mon }, { estimateMin: 40, tags: ['lecture'], subjectId: sub('COMP2181') });
-      await t('Problem sheet 5, Q1 to Q4', { day: mon }, { estimateMin: 60, subjectId: sub('COMP2181') });
-      await t('Lab 4 write-up', { day: days[1] }, { estimateMin: 60, tags: ['coursework'], subjectId: sub('COMP2211') });
-      const done = await t('Flashcards: pumping lemma', { day: days[1] }, { estimateMin: 20, subjectId: sub('COMP2181') });
-      await api.tasks.update(done, { done: true });
-      const main = await t('Revise lecture 7: informed search and A*', { day: today }, { estimateMin: 45, tags: ['ai', 'revision'], subjectId: sub('COMP2261') });
-      await api.tasks.update(main, { repeat: { kind: 'weekly' }, reminder: '18:30' });
-      for (const s of ['Trace A* by hand', 'Admissibility proof', 'Compare with UCS']) await api.subtasks.add(main, s);
-      await t('Watch lecture 8: adversarial search', { day: today }, { estimateMin: 50, tags: ['lecture'], subjectId: sub('COMP2261') });
-      await t('Past paper 2023, questions 1 to 3', { day: today }, { estimateMin: 60, tags: ['past-paper'], subjectId: sub('COMP2261') });
-      await t('Read chapter 3: uninformed search', { day: today }, { estimateMin: 30, tags: ['reading'], subjectId: sub('COMP2261') });
-      const flash = await t('Flashcards: graph theory', { day: days[3] }, { estimateMin: 20, subjectId: sub('COMP2181') });
-      await t('Minimax worked examples', { day: days[3] }, { estimateMin: 45, subjectId: sub('COMP2261') });
-      await t('Network layer summary', { day: days[4] }, { estimateMin: 30, subjectId: sub('COMP2211') });
-      await t('Haskell folds practice', { day: days[5] }, { estimateMin: 40, subjectId: sub('COMP2221') });
-      await t('Plan next week', { day: days[6] }, { estimateMin: 15 });
-      await t('Email supervisor about project scope', { listId: list('Inbox') });
-      await t('Buy printer paper', { listId: list('Inbox') });
-      await t('Look up the proof that A* is optimal', { listId: list('Inbox') }, { estimateMin: 25 });
-      await t('Do the 2022 mock under exam conditions', { listId: list('COMP2181') }, { estimateMin: 180 });
-      await t('Ask about the exam format', { listId: list('COMP2181') });
-      await t('Summarise every lecture on one page', { listId: list('COMP2261') }, { estimateMin: 180 });
-      await t('Minimax worked examples', { listId: list('COMP2261') }, { estimateMin: 45 });
-      return { flash };
-    },
-    { mon, today, days: [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(mon, n)) },
-  );
-  // Deadlines as run 2 had them: two pieces of coursework this week, the exam next month.
-  const ai = (await win.evaluate(() => window.studyat.subjects.list())).find((s) => s.name.startsWith('COMP2261'))!;
-  const at = (ms: number, hm: string) => `${localParts(ms).date}T${hm}`;
-  await win.evaluate(
-    async (list) => {
-      for (const d of list) await window.studyat.deadlines.create(d);
-    },
-    [
-      { title: 'Lab report hand-in', kind: 'coursework' as const, subjectId: null, due: at(Date.now() + 86_400_000, '12:00') },
-      { title: 'Problem sheet 6', kind: 'coursework' as const, subjectId: null, due: at(Date.now() + 2 * 86_400_000, '09:00') },
-      { title: 'COMP2261 final exam', kind: 'exam' as const, subjectId: ai.id, due: at(Date.now() + 31 * 86_400_000, '09:00') },
-    ],
-  );
-  await reload(win);
-
-  await calm(win);
-  await win.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await win.keyboard.press('b');
-  const board = win.getByRole('dialog', { name: 'Tasks' });
-  const views = board.getByRole('group', { name: 'Board view' });
-  await expect(views).toBeVisible();
-  await views.getByRole('button', { name: 'Week' }).click();
-  await expect(views.getByRole('button', { name: 'Week' })).toHaveAttribute('aria-pressed', 'true');
-  await sleep(800);
-  await calm(win);
-  await shot(win, 'tweek-01-board-week.png');
-
-  const lists = board.locator('section[aria-label="Lists"]');
-  await lists.scrollIntoViewIfNeeded();
-  await sleep(600);
-  await shot(win, 'tweek-02-board-lists.png');
-
-  // The drag: Thursday's "Flashcards: graph theory" to the next day, with the real pointer.
-  const from = addDays(mon, 3);
-  const to = addDays(mon, 4);
-  const toSection = board.locator(`section[aria-label="${formatDayLabel(to)}"]`);
-  // The line is the handle now: the pointer starts on the title text (the grip is clipped to a pixel).
-  const title = board.locator(`section[aria-label="${formatDayLabel(from)}"]`).locator('li[data-task-id]').filter({ hasText: 'Flashcards: graph theory' }).locator('span[role="button"]').first();
-  // After the Lists shot the board is scrolled down and Friday's head is above the window: a target
-  // measured there sends the pointer off the window, dnd-kit autoscrolls the board and the drop
-  // misses. Bring Friday into view first, then the row, and check both points are on the window.
-  await toSection.scrollIntoViewIfNeeded();
-  await title.scrollIntoViewIfNeeded();
-  await sleep(300);
-  // The centre of the title's first line of text (a wrapped title's box centre can fall between lines).
-  const start = await title.evaluate((n) => {
-    const r = n.getClientRects()[0]!;
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2, h: window.innerHeight };
-  });
-  const target = await toSection.boundingBox();
-  if (!target) throw new Error('no target');
-  const tx = target.x + target.width / 2;
-  const ty = Math.min(target.y + 90, target.y + target.height - 10);
-  for (const y of [start.y, ty]) expect(y > 0 && y < start.h, `pointer y ${y} on the window`).toBe(true);
-  await win.mouse.move(start.x, start.y);
-  await win.mouse.down();
-  await win.mouse.move(start.x + 8, start.y + 8, { steps: 4 }); // past the 6 px activation distance first
-  await expect(win.locator('[data-drag-overlay]')).toBeVisible(); // the drag is live: the line follows the pointer
-  await win.mouse.move(tx, ty, { steps: 20 });
-  await sleep(400);
-  await shot(win, 'tweek-03-drag.png');
-  await win.mouse.up();
-  await expect
-    .poll(async () => (await win.evaluate((i) => window.studyat.planner.task(i), seeded.flash))?.day)
-    .toBe(to);
-  test.info().annotations.push({ type: 'drag', description: `Flashcards: graph theory ${from} -> ${to}` });
-  await win.keyboard.press('Escape');
 });

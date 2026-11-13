@@ -58,8 +58,8 @@ test('final screenshots: widgets, settings, help', async ({ launch, dataDir }) =
   await shot(win, 'main-view.png');
 
   await win.evaluate(async () => {
-    await window.studyat.tasks.create({ title: 'Read chapter 4 of the biology notes' });
-    await window.studyat.tasks.create({ title: 'Past paper Q3' });
+    await window.studyat.tasks.create({ text: 'Read chapter 4 of the biology notes', colour: 'yellow' });
+    await window.studyat.tasks.create({ text: 'Past paper Q3', colour: 'blue' });
     const notes = await window.studyat.notes.create();
     const id = notes[0]?.id;
     if (id !== undefined) await window.studyat.notes.update(id, { text: 'Ask about Q3 in office hours' });
