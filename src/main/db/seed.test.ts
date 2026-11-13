@@ -58,41 +58,6 @@ describe('seedIfEmpty', () => {
     expect(settingsRepo(db).get().activeSpaceId).toBe(spaces[0]!.id);
   });
 
-  // v1.2 Plan notes 2: migrations run before the first seed, so a fresh install gets its lists here,
-  // the same result migration v4 gives an existing database.
-  // Migration v4 already made the Inbox (stamped with the wall clock, not NOW), so the seed adds only
-  // the subject lists after it.
-  it('a fresh install has the Inbox, then one list per seeded subject', () => {
-    const subjects = subjectsRepo(db).list();
-    const lists = () => all(db.raw, 'SELECT name, subject_id, sort FROM task_lists ORDER BY sort, id');
-    expect(lists()).toEqual([
-      { name: 'Inbox', subject_id: null, sort: 0 },
-      ...SEED_SUBJECTS.map((s, i) => ({ name: s.name, subject_id: subjects[i]!.id, sort: i + 1 })),
-    ]);
-    expect(
-      all(db.raw, 'SELECT created_at FROM task_lists WHERE subject_id IS NOT NULL').every(
-        (r) => r.created_at === NOW,
-      ),
-    ).toBe(true);
-    // Subjects already there: no extra lists, even with none left.
-    seedIfEmpty(db, builtin, NOW + 1000);
-    expect(lists()).toHaveLength(7);
-    db.raw.run('DELETE FROM task_lists');
-    seedIfEmpty(db, builtin, NOW + 2000);
-    expect(lists()).toEqual([]);
-  });
-
-  it('adds the Inbox itself, at sort 0, when the subjects and lists are both empty', () => {
-    db.raw.run('DELETE FROM task_lists');
-    db.raw.run('DELETE FROM subjects');
-    seedIfEmpty(db, builtin, NOW + 1000);
-    const rows = all(db.raw, 'SELECT name, subject_id, sort, created_at FROM task_lists ORDER BY sort, id');
-    expect(rows).toHaveLength(7);
-    expect(rows[0]).toEqual({ name: 'Inbox', subject_id: null, sort: 0, created_at: NOW + 1000 });
-    expect(rows.slice(1).map((r) => r.name)).toEqual(SEED_SUBJECTS.map((s) => s.name));
-    expect(rows.map((r) => r.sort)).toEqual([0, 1, 2, 3, 4, 5, 6]);
-  });
-
   it('keeps a chosen active space', () => {
     const spaces = spacesRepo(db).list();
     settingsRepo(db).set({ activeSpaceId: spaces[2]!.id });

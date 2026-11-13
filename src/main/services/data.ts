@@ -12,15 +12,13 @@ import { schemaVersion } from '../db/migrations';
 import { deadlinesRepo } from '../db/repos/deadlines';
 import { mixesRepo } from '../db/repos/mixes';
 import { notesRepo } from '../db/repos/notes';
-import { plannerTasksRepo } from '../db/repos/plannerTasks';
 import { recapsRepo } from '../db/repos/recaps';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
 import { soundsRepo } from '../db/repos/sounds';
 import { spacesRepo } from '../db/repos/spaces';
 import { subjectsRepo } from '../db/repos/subjects';
-import { taskListsRepo } from '../db/repos/taskLists';
-import { all, bool, int, intOrNull, text } from '../db/sql';
+import { tasksRepo } from '../db/repos/tasks';
 import { publicSettings } from './settings';
 import { IpcValidationError } from './validate';
 
@@ -53,30 +51,14 @@ export function csvLine(fields: string[]): string {
 
 export const CSV_HEADER = 'date,start,end,minutes,subject';
 
-/** The old sticky-note rows migration v4 archived (v1.2 spec §5); read-only, nothing writes them. */
-function archivedStickyTasks(db: Db) {
-  return all(
-    db.raw,
-    'SELECT id, text, colour, done, sort, created_at, done_at FROM tasks_v1_archive ORDER BY sort, id',
-  ).map((r) => ({
-    id: int(r.id),
-    text: text(r.text),
-    colour: text(r.colour),
-    done: bool(r.done),
-    sort: int(r.sort),
-    createdAt: int(r.created_at),
-    doneAt: intOrNull(r.done_at),
-  }));
-}
-
 export function dataService(deps: DataServiceDeps) {
   const fs = deps.fs ?? nodeFs;
   const { db } = deps;
 
   return {
     /**
-     * Spec §3.11: everything Sam owns, settings without `spotifyTokens`. v1.2: `tasks` is the
-     * planner's task table, `tasksV1` the old sticky-note rows archived by migration v4.
+     * Spec §3.11: everything Sam owns, settings without `spotifyTokens`. `tasks` is the sticky-note
+     * tasks (simple tasks spec §3.4); the planner archives stay in the database and every backup.
      */
     async exportJson(path: string): Promise<void> {
       const data = {
@@ -84,10 +66,8 @@ export function dataService(deps: DataServiceDeps) {
         schemaVersion: schemaVersion(db.raw),
         subjects: subjectsRepo(db).list(),
         sessions: sessionsRepo(db).all(),
-        taskLists: taskListsRepo(db).list(),
-        tasks: plannerTasksRepo(db).all(),
+        tasks: tasksRepo(db).list(),
         deadlines: deadlinesRepo(db).all(),
-        tasksV1: archivedStickyTasks(db),
         spaces: spacesRepo(db)
           .list()
           .map(({ missing: _missing, ...s }) => s),

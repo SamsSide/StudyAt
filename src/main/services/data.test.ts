@@ -4,11 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Db } from '../db/db';
 import { deadlinesRepo } from '../db/repos/deadlines';
 import { notesRepo } from '../db/repos/notes';
-import { plannerTasksRepo } from '../db/repos/plannerTasks';
 import { sessionsRepo } from '../db/repos/sessions';
 import { settingsRepo } from '../db/repos/settings';
-import { taskListsRepo } from '../db/repos/taskLists';
 import { subjectsRepo } from '../db/repos/subjects';
+import { tasksRepo } from '../db/repos/tasks';
 import { nodeFs, type DbFs } from '../db/db-fs';
 import { NOW, openTestDb, tempDir } from '../db/test-helpers';
 import { csvLine, dataService, localStamp } from './data';
@@ -79,31 +78,34 @@ describe('dataService', () => {
     ]);
   });
 
-  it('JSON export has taskLists, tasks, deadlines and tasksV1', async () => {
-    db.raw.run(
-      "INSERT INTO tasks_v1_archive (text, colour, done, sort, created_at) VALUES ('Old sticky task', 'pink', 0, 0, ?)",
-      [NOW],
-    );
-    const list = taskListsRepo(db).create({ name: 'Revision', subjectId: null }, NOW);
-    plannerTasksRepo(db).create({ title: 'Past papers', day: null, listId: list.id, tags: ['maths'] }, NOW);
+  // Simple tasks spec §3.4: `tasks` is the v1 sticky shape, as on main; the planner's lists and the
+  // v1 archive leave the export (they stay in the database and every backup).
+  it('JSON export has the sticky tasks and deadlines, and no tasksV1 or taskLists', async () => {
+    const task = tasksRepo(db).create({ text: 'Past papers', colour: 'pink' }, NOW);
+    tasksRepo(db).update(task.id, { done: true }, NOW + 5);
     deadlinesRepo(db).create(
       { title: 'Calculus exam', kind: 'exam', subjectId: null, due: '2026-12-01T09:00', note: '' },
       NOW,
     );
     const out = join(dir, 'export.json');
     await service().svc.exportJson(out);
-    const json = JSON.parse(readFileSync(out, 'utf8')) as {
-      taskLists: { name: string }[];
-      tasks: { title: string; tags: string[] }[];
+    const exported = JSON.parse(readFileSync(out, 'utf8')) as {
+      tasks: unknown[];
       deadlines: { due: string }[];
-      tasksV1: unknown[];
     };
-    expect(json.taskLists.map((l) => l.name)).toContain('Revision');
-    expect(json.tasks.find((t) => t.title === 'Past papers')!.tags).toEqual(['maths']);
-    expect(json.deadlines[0]!.due).toBe('2026-12-01T09:00');
-    expect(json.tasksV1).toEqual([
-      { id: expect.any(Number), text: 'Old sticky task', colour: 'pink', done: false, sort: 0, createdAt: NOW, doneAt: null },
-    ]);
+    expect(exported.tasks).toHaveLength(1);
+    expect(exported.tasks[0]).toEqual({
+      id: task.id,
+      text: 'Past papers',
+      colour: 'pink',
+      done: true,
+      sort: 0,
+      createdAt: NOW,
+      doneAt: NOW + 5,
+    });
+    expect(exported.deadlines[0]!.due).toBe('2026-12-01T09:00');
+    expect('tasksV1' in exported).toBe(false);
+    expect('taskLists' in exported).toBe(false);
     // The CSV is sessions only and unchanged.
     const csv = join(dir, 'sessions.csv');
     await service().svc.exportCsv(csv);
@@ -133,10 +135,8 @@ describe('dataService', () => {
       'schemaVersion',
       'subjects',
       'sessions',
-      'taskLists',
       'tasks',
       'deadlines',
-      'tasksV1',
       'spaces',
       'sounds',
       'mixes',
@@ -145,7 +145,7 @@ describe('dataService', () => {
       'settings',
     ]);
     expect(json.exportedAt).toBe(NOW);
-    expect(json.schemaVersion).toBe(4);
+    expect(json.schemaVersion).toBe(5);
     expect(json.notes).toEqual([
       {
         id: note!.id,

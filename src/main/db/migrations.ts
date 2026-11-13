@@ -205,6 +205,63 @@ export const MIGRATIONS: Migration[] = [
       db.run("INSERT INTO sqlite_sequence (name, seq) VALUES ('tasks', ?)", [seq]);
     },
   },
+  {
+    // v5 (simple tasks spec §3.4): the planner goes and the v1.1 sticky-note tasks come back. The
+    // planner's tables are archived untouched as `*_v4_archive` (each rename carries its indexes and
+    // its `sqlite_sequence` row); `tasks` is made again exactly as v1 made it. The v1 stickies come
+    // back first with their own ids, then every planner task as a sticky with its own id: day tasks
+    // in date order, then list tasks. Notes, tags, subtasks and estimates stay in the archives only;
+    // `tasks_v1_archive` stays as it is. Sessions are not touched (appplan §5).
+    version: 5,
+    up(db) {
+      db.exec(`
+        ALTER TABLE tasks RENAME TO planner_tasks_v4_archive;
+        ALTER TABLE task_lists RENAME TO task_lists_v4_archive;
+        ALTER TABLE task_tags RENAME TO task_tags_v4_archive;
+        ALTER TABLE subtasks RENAME TO subtasks_v4_archive;
+        CREATE TABLE tasks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL,
+          colour TEXT NOT NULL,
+          done INTEGER NOT NULL DEFAULT 0,
+          sort INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          done_at INTEGER NULL
+        );
+        INSERT INTO tasks (id, text, colour, done, sort, created_at, done_at)
+          SELECT id, text, colour, done, sort, created_at, done_at FROM tasks_v1_archive;
+      `);
+      // The planner tasks follow the stickies just copied back (spec §3.4 step 4).
+      const base = Number(one(db, 'SELECT coalesce(max(sort) + 1, 0) AS base FROM tasks')!.base);
+      db.run(
+        `INSERT INTO tasks (id, text, colour, done, sort, created_at, done_at)
+           SELECT id, substr(title, 1, 500), coalesce(colour, 'yellow'), done,
+                  ? + ROW_NUMBER() OVER (ORDER BY day IS NULL, day, sort, id) - 1,
+                  created_at,
+                  CASE WHEN done = 1 THEN coalesce(done_at, updated_at) ELSE NULL END
+           FROM planner_tasks_v4_archive`,
+        [base],
+      );
+      // A new sticky's id starts above every id either archive ever gave out (their AUTOINCREMENT
+      // counters, carried over by the renames) and every `sessions.task_id`, so By-task stats never
+      // merge a new sticky with unrelated history. The copies above left a `tasks` row in
+      // `sqlite_sequence` only if they inserted anything, so it is replaced, never assumed.
+      const seq = Number(
+        one(
+          db,
+          `SELECT max(
+             coalesce((SELECT max(id) FROM tasks), 0),
+             coalesce((SELECT max(seq) FROM sqlite_sequence WHERE name = 'planner_tasks_v4_archive'), 0),
+             coalesce((SELECT max(seq) FROM sqlite_sequence WHERE name = 'tasks_v1_archive'), 0),
+             coalesce((SELECT max(task_id) FROM sessions), 0),
+             0) AS seq`,
+        )!.seq,
+      );
+      db.run("DELETE FROM sqlite_sequence WHERE name = 'tasks'");
+      db.run("INSERT INTO sqlite_sequence (name, seq) VALUES ('tasks', ?)", [seq]);
+      db.run("DELETE FROM stat_widgets WHERE card = 'estimates'");
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
