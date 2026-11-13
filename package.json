@@ -46,5 +46,6 @@
   },
   "dependencies": {
     "sql.js": "^1.15.2"
-  }
+  },
+  "license": "PolyForm-Noncommercial-1.0.0"
 }
