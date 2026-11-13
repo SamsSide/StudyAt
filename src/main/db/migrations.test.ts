@@ -72,7 +72,7 @@ describe('migrations', () => {
     await db.close();
   });
 
-  it('a fresh install goes straight to v5 with the v1 tasks table, empty planner archives and no backup', async () => {
+  it('a fresh install goes straight to v5 with the v1 tasks table, planner archives holding only v4\'s Inbox list and no backup', async () => {
     const db = await openTestDb(dir);
     expect(schemaVersion(db.raw)).toBe(5);
     expect(

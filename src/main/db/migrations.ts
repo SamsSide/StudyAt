@@ -211,7 +211,8 @@ export const MIGRATIONS: Migration[] = [
     // its `sqlite_sequence` row); `tasks` is made again exactly as v1 made it. The v1 stickies come
     // back first with their own ids, then every planner task as a sticky with its own id: day tasks
     // in date order, then list tasks. Notes, tags, subtasks and estimates stay in the archives only;
-    // `tasks_v1_archive` stays as it is. Sessions are not touched (appplan §5).
+    // `tasks_v1_archive` stays as it is. The Estimates stats card goes with the planner, so its
+    // `stat_widgets` row is deleted (step 6). Sessions are not touched (appplan §5).
     version: 5,
     up(db) {
       db.exec(`
